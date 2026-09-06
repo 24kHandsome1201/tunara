@@ -1359,13 +1359,13 @@ test("terminal font family escapes backslashes before quotes", () => {
   assert.deepEqual([...quotedFamily], ["\"", "A", "\\", "\\", "\\", "\"", "B", "\""]);
 });
 
-test("Claude lifecycle replay clears sidebar busy state and restores terminal title on exit", () => {
+test("Claude lifecycle replay keeps stable sidebar identity while clearing busy state", () => {
   const h = createHarness();
 
   assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "starting");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code · 启动中");
+  assert.equal(deriveTitle(h.session).primary, "终端");
   assert.equal(isSessionBusy(h.session), true);
 
   assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 20), true);
@@ -1406,7 +1406,7 @@ test("terminal process exit clears stale agent state and marks background unread
   const h = createHarness(makeSession({
     agent: "CC",
     agentActivity: "running",
-    title: "Claude Code",
+    title: "Terminal 2",
     runState: "idle",
     lastCommand: "claude",
   }));
@@ -1414,33 +1414,30 @@ test("terminal process exit clears stale agent state and marks background unread
   assert.equal(h.apply(terminalExitedUpdate(h.session, 9, false, 60)), true);
   assert.equal(h.session.agent, undefined);
   assert.equal(h.session.agentActivity, undefined);
-  assert.equal(h.session.title, "终端");
+  assert.equal(h.session.title, "Terminal 2");
   assert.equal(h.session.lastCommand, undefined);
   assert.equal(h.session.lastExitCode, 9);
   assert.equal(h.session.runState, "failed");
   assert.equal(h.session.unread, true);
-  assert.equal(deriveTitle(h.session).primary, "终端");
+  assert.equal(deriveTitle(h.session).primary, "Terminal 2");
   assert.equal(h.gitRefreshes, 1);
 });
 
-test("agent session title appends live activity and falls back to the bare name", () => {
+test("agent lifecycle and shell titles do not replace stable session identity", () => {
   const h = createHarness();
 
-  // Agent detected → "starting" → name + 启动中.
   assert.equal(h.applyAgentOsc("tunara-agent;start;s-1;CC;", 10), true);
   assert.equal(h.session.agent, "CC");
   assert.equal(h.session.agentActivity, "starting");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code · 启动中");
+  assert.equal(deriveTitle(h.session).primary, "终端");
 
-  // Working → "running" → name + 工作中.
   assert.equal(h.applyAgentOsc("tunara-agent;busy;s-1;CC;", 20), true);
   assert.equal(h.session.agentActivity, "running");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code · 工作中");
+  assert.equal(deriveTitle(h.session).primary, "终端");
 
-  // Idle (waiting for input) → no suffix, just the agent name.
   assert.equal(h.applyAgentOsc("tunara-agent;idle;s-1;CC;", 30), true);
   assert.equal(h.session.agentActivity, "idle");
-  assert.equal(deriveTitle(h.session).primary, "Claude Code");
+  assert.equal(deriveTitle(h.session).primary, "终端");
 
   // Agent sessions never adopt an OSC shellTitle — those are just the agent name.
   assert.equal(shellTitleUpdate(h.session, "✳ Claude Code"), null);
@@ -1786,7 +1783,7 @@ test("untracked agents keep identity without activity status", () => {
   assert.equal(opencode.session.agent, "OC");
   assert.equal(opencode.session.agentActivity, undefined);
   assert.equal(isSessionBusy(opencode.session), false);
-  assert.equal(deriveTitle(opencode.session).primary, "OpenCode");
+  assert.equal(deriveTitle(opencode.session).primary, "终端");
   assert.equal(detectPromptAgentScreenState("OC", [
     "OK",
     "╭──────────────────────────────────────────────────────── medium ─╮",
@@ -1799,7 +1796,7 @@ test("untracked agents keep identity without activity status", () => {
   assert.equal(cursor.session.agent, "CR");
   assert.equal(cursor.session.agentActivity, undefined);
   assert.equal(isSessionBusy(cursor.session), false);
-  assert.equal(deriveTitle(cursor.session).primary, "Cursor");
+  assert.equal(deriveTitle(cursor.session).primary, "终端");
 });
 
 test("terminal tail includes bounded TUI status rows below the input cursor", () => {

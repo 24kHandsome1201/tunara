@@ -66,8 +66,6 @@ beforeEach(() => {
   useUIStore.setState({
     configLoaded: false,
     inspectorTab: "files",
-    inspectorLocked: false,
-    inspectorLockSessionId: null,
     inspectorPreviewOpenedSessionIds: {},
     readers: {},
     focusedPaneId: null,
@@ -78,43 +76,48 @@ beforeEach(() => {
   });
 });
 
-test("mounts only the active Inspector panel and keeps every view in the compact switcher", async () => {
+test("mounts only the active panel and keeps unavailable tools in More", async () => {
   render(<InspectorPanel session={remoteSession} filesOnly={false} />);
 
   expect(screen.getByTestId("files-panel")).toBeTruthy();
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.queryByTestId("preview-panel")).toBeNull();
   expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual([
-    "Changes",
     "Files",
+    "Changes",
+  ]);
+  expect(screen.queryByText("Auto")).toBeNull();
+  expect(screen.queryByText("Locked")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
     "Preview",
     "Transfers",
     "Forwarding",
   ]);
-  expect(screen.queryByText("Auto")).toBeNull();
-  expect(screen.queryByText("Locked")).toBeNull();
-  expect(screen.queryByRole("button", { name: "More inspector tools" })).toBeNull();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Preview" }));
+  expect(screen.getByTestId("preview-panel")).toBeTruthy();
+  expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
+  expect(useUIStore.getState().inspectorPreviewOpenedSessionIds[session.id]).toBe(true);
 
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   expect(screen.queryByTestId("files-panel")).toBeNull();
   expect(await screen.findByTestId("changes-panel")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
-  expect(useUIStore.getState().inspectorLocked).toBe(true);
-
   fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
   expect(screen.queryByTestId("changes-panel")).toBeNull();
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Preview" }).getAttribute("aria-selected")).toBe("true");
   expect(useUIStore.getState().inspectorPreviewOpenedSessionIds[session.id]).toBe(true);
 
-  fireEvent.click(screen.getByRole("tab", { name: "Transfers" }));
+  fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Transfers" }));
   expect(screen.queryByTestId("preview-panel")).toBeNull();
   expect(screen.getByRole("tab", { name: "Transfers" }).getAttribute("aria-selected")).toBe("true");
   expect(await screen.findByTestId("transfers-panel")).toMatchObject({
     dataset: { scopeKind: "logical-session", scopeKey: `session:${session.id}`, session: session.id },
   });
 
-  expect(screen.getByRole("tab", { name: "Forwarding" })).toBeTruthy();
+  expect(screen.queryByRole("tab", { name: "Forwarding" })).toBeNull();
 });
 
 test("keeps the active tab visible and preserves APG roving focus navigation", async () => {
@@ -123,23 +126,23 @@ test("keeps the active tab visible and preserves APG roving focus navigation", a
   HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
   try {
-    useUIStore.setState({ inspectorTab: "changes", inspectorLocked: true, inspectorLockSessionId: session.id });
+    useUIStore.setState({ inspectorTab: "changes" });
     render(<InspectorPanel session={remoteSession} filesOnly={false} />);
     const changes = screen.getByRole("tab", { name: "Changes" });
     const files = screen.getByRole("tab", { name: "Files" });
 
     changes.focus();
     fireEvent.keyDown(changes, { key: "End" });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Forwarding" })));
-    expect(screen.getByRole("tab", { name: "Forwarding" }).getAttribute("aria-selected")).toBe("true");
-
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Forwarding" }), { key: "Home" });
-    await waitFor(() => expect(document.activeElement).toBe(changes));
+    expect(document.activeElement).toBe(changes);
     expect(changes.getAttribute("aria-selected")).toBe("true");
 
-    fireEvent.keyDown(changes, { key: "ArrowRight" });
-    await waitFor(() => expect(document.activeElement).toBe(files));
-    expect(files.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(changes, { key: "Home" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Files" })));
+    expect(screen.getByRole("tab", { name: "Files" }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.keyDown(files, { key: "ArrowRight" });
+    await waitFor(() => expect(document.activeElement).toBe(changes));
+    expect(changes.getAttribute("aria-selected")).toBe("true");
     expect(scrollIntoView).toHaveBeenCalled();
   } finally {
     HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
@@ -159,7 +162,7 @@ test("projects only Files controls when filesOnly is set", () => {
 });
 
 test("offers forwarding only to SSH sessions and withholds the binding while reconnecting", async () => {
-  useUIStore.setState({ inspectorTab: "forwarding", inspectorLocked: true, inspectorLockSessionId: session.id });
+  useUIStore.setState({ inspectorTab: "forwarding" });
   const view = render(<InspectorPanel session={remoteSession} filesOnly={false} />);
   expect((await screen.findByTestId("forwarding-panel")).textContent).toBe("live");
 
@@ -170,26 +173,21 @@ test("offers forwarding only to SSH sessions and withholds the binding while rec
   expect(screen.getByTestId("forwarding-panel").textContent).toBe("offline");
 });
 
-test("auto-follows unreviewed changes unless the view is locked", async () => {
+test("does not auto-switch for current-session changes", async () => {
   const dirty: Session = {
     ...session,
     reviewChangesHint: true,
     changes: { files: [{ path: "src/a.ts", status: "modified", stage: "unstaged", added: 1, removed: 0 }] },
   };
   const view = render(<InspectorPanel session={dirty} filesOnly={false} />);
-  await waitFor(() => expect(useUIStore.getState().inspectorTab).toBe("changes"));
-  expect(await screen.findByTestId("changes-panel")).toBeTruthy();
-  expect(useUIStore.getState().inspectorLocked).toBe(false);
-
-  fireEvent.click(screen.getByRole("tab", { name: "Files" }));
-  expect(useUIStore.getState()).toMatchObject({ inspectorTab: "files", inspectorLocked: true });
+  expect(screen.getByTestId("files-panel")).toBeTruthy();
+  expect(useUIStore.getState().inspectorTab).toBe("files");
   view.rerender(<InspectorPanel session={dirty} filesOnly={false} />);
   expect(screen.getByTestId("files-panel")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
   expect(useUIStore.getState().inspectorTab).toBe("files");
 });
 
-test("defers auto-switch with a quiet hint while a workspace file tab is open", async () => {
+test("keeps the reader and file list in place when new changes arrive", async () => {
   useUIStore.setState({
     inspectorTab: "files",
     readers: {
@@ -213,7 +211,7 @@ test("defers auto-switch with a quiet hint while a workspace file tab is open", 
   expect(useUIStore.getState().inspectorTab).toBe("files");
 });
 
-test("auto-selects Preview only after the user has opened it for the session", async () => {
+test("shows Preview for a source but changes view only on user activation", () => {
   const withSource: Session = { ...session, previewSources: [previewSource()] };
   render(<InspectorPanel session={withSource} filesOnly={false} />);
   expect(screen.getByTestId("files-panel")).toBeTruthy();
@@ -221,4 +219,13 @@ test("auto-selects Preview only after the user has opened it for the session", a
   fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
   expect(screen.getByTestId("preview-panel")).toBeTruthy();
   expect(useUIStore.getState().inspectorPreviewOpenedSessionIds[session.id]).toBe(true);
+});
+
+test("keeps explicit selection across session and activity changes", async () => {
+  useUIStore.setState({ inspectorTab: "changes" });
+  const view = render(<InspectorPanel session={session} />);
+  expect(await screen.findByTestId("changes-panel")).toBeTruthy();
+  view.rerender(<InspectorPanel session={{ ...remoteSession, id: "another-session", agentActivity: "running", previewSources: [previewSource()] }} />);
+  expect(screen.getByTestId("changes-panel")).toBeTruthy();
+  expect(useUIStore.getState().inspectorTab).toBe("changes");
 });

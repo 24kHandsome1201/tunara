@@ -1,8 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useT } from "@/modules/i18n";
-import { useUIStore } from "@/state/ui";
 import type { useAppUpdate } from "../useAppUpdate";
-import { SECTION_LABEL, SECTION_HINT, Stepper } from "./controls";
+import { SECTION_LABEL, SECTION_HINT } from "./controls";
 
 /** The update flow state stays in the dialog shell (useAppUpdate) so an
  * in-progress download survives while Settings stays open; About only renders it. */
@@ -11,10 +10,6 @@ type AppUpdateState = ReturnType<typeof useAppUpdate>;
 /** About: version and signed updater flow. */
 export function AppSettings({ appVersion, updateStatus, updateVersion, updateProgress, canInstallUpdate, checkForUpdates, installUpdate }: AppUpdateState) {
   const t = useT();
-  const downloadMaxFiles = useUIStore((s) => s.downloadMaxFiles);
-  const downloadMaxFileBytes = useUIStore((s) => s.downloadMaxFileBytes);
-  const downloadMaxTotalBytes = useUIStore((s) => s.downloadMaxTotalBytes);
-  const setDownloadLimits = useUIStore((s) => s.setDownloadLimits);
   const updateBusy = updateStatus === "checking" || updateStatus === "downloading" || updateStatus === "restarting";
 
   return (
@@ -78,45 +73,6 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
             >
               {updateStatus === "restartReady" ? t("settings.app.updates.restart") : canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
             </button>
-          </div>
-        </div>
-      </div>
-      <div style={{ paddingTop: 20 }}>
-        <div style={SECTION_LABEL}>{t("settings.transfers.title")}</div>
-        <div style={{ ...SECTION_HINT, marginBottom: 14 }}>{t("settings.transfers.hint")}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 6 }}>{t("settings.transfers.max_files")}</div>
-            <Stepper
-              display={`${downloadMaxFiles}`}
-              valueMinWidth={48}
-              decrementLabel={t("common.decrement")}
-              incrementLabel={t("common.increment")}
-              onDecrement={() => setDownloadLimits({ maxFiles: Math.max(1, downloadMaxFiles - 10) })}
-              onIncrement={() => setDownloadLimits({ maxFiles: Math.min(10_000, downloadMaxFiles + 10) })}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 6 }}>{t("settings.transfers.max_file_mib")}</div>
-            <Stepper
-              display={`${Math.round(downloadMaxFileBytes / (1024 * 1024))}`}
-              valueMinWidth={48}
-              decrementLabel={t("common.decrement")}
-              incrementLabel={t("common.increment")}
-              onDecrement={() => setDownloadLimits({ maxFileBytes: Math.max(1 * 1024 * 1024, downloadMaxFileBytes - 10 * 1024 * 1024) })}
-              onIncrement={() => setDownloadLimits({ maxFileBytes: Math.min(1024 * 1024 * 1024, downloadMaxFileBytes + 10 * 1024 * 1024) })}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 6 }}>{t("settings.transfers.max_total_gib")}</div>
-            <Stepper
-              display={`${(downloadMaxTotalBytes / (1024 ** 3)).toFixed(1)}`}
-              valueMinWidth={48}
-              decrementLabel={t("common.decrement")}
-              incrementLabel={t("common.increment")}
-              onDecrement={() => setDownloadLimits({ maxTotalBytes: Math.max(1024 ** 3, downloadMaxTotalBytes - 1024 ** 3) })}
-              onIncrement={() => setDownloadLimits({ maxTotalBytes: Math.min(10 * 1024 ** 3, downloadMaxTotalBytes + 1024 ** 3) })}
-            />
           </div>
         </div>
       </div>

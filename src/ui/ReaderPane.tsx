@@ -12,8 +12,10 @@ import { FileIcon } from "./file-explorer/icons";
 import { fileKindTint } from "./file-explorer/file-kind";
 import type { Session } from "./types";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
+import { readerRefIdentity } from "@/modules/session/reader-state";
 
 const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
+const ReaderDiff = lazy(() => import("./DiffPanel").then((module) => ({ default: module.ReaderDiff })));
 
 interface ReaderPaneProps {
   session: Session;
@@ -79,7 +81,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
       position: { x: rect.left, y: rect.bottom },
       items: history.map((entry, index) => ({
         id: `${entry.filePath}:${index}`,
-        label: entry.fileName + (reader?.current?.filePath === entry.filePath && dirty && index === historyIndex ? " •" : ""),
+        label: entry.fileName + (entry.diff ? ` · ${t(`diff.section.${entry.diff.stage}`)}` : "") + (dirty && index === historyIndex ? " •" : ""),
         action: () => {
           const go = () => useUIStore.getState().selectReaderHistory(session.id, index);
           if (index !== historyIndex && dirty) {
@@ -220,6 +222,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           }}>
             {current.fileName}
           </span>
+          {current.diff && <span style={{ flexShrink: 0, color: "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>{t(`diff.section.${current.diff.stage}`)}</span>}
           {dirty ? <span className="reader-dirty-marker" aria-hidden="true">●</span> : null}
           <span aria-hidden="true" style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>▾</span>
         </button>
@@ -248,6 +251,9 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Suspense fallback={<PanelLoadingState label={t("preview.reading")} />}>
+        {current.diff ? (
+          <ReaderDiff key={`${readerRefIdentity(current)}:${session.ptyId}:${session.transportGeneration}:${session.connection?.phase}`} session={session} diffRef={current.diff} findRequest={findNonce} />
+        ) : (
           <FilePreview
             active={active}
             sessionId={session.id}
@@ -266,6 +272,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
             embedded
             findRequest={findNonce}
           />
+        )}
         </Suspense>
       </div>
       {historyMenu && (

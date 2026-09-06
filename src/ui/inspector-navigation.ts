@@ -1,24 +1,12 @@
 import type { InspectorTab } from "@/state/ui";
 
 export const INSPECTOR_TAB_IDS: readonly InspectorTab[] = [
-  "changes",
   "files",
+  "changes",
   "preview",
   "transfers",
   "forwarding",
 ];
-
-export const PRIMARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = INSPECTOR_TAB_IDS;
-
-export const SECONDARY_INSPECTOR_TAB_IDS: readonly InspectorTab[] = [];
-
-export type InspectorOverflowSection = "workspace" | "transfer" | "ssh";
-
-export const INSPECTOR_OVERFLOW_SECTION: Partial<Record<InspectorTab, InspectorOverflowSection>> = {
-  preview: "workspace",
-  transfers: "transfer",
-  forwarding: "ssh",
-};
 
 const REMOTE_ONLY_INSPECTOR_TAB_IDS = new Set<InspectorTab>([
   "transfers",
@@ -28,6 +16,9 @@ const REMOTE_ONLY_INSPECTOR_TAB_IDS = new Set<InspectorTab>([
 interface InspectorNavigationOptions {
   filesOnly: boolean;
   isRemote: boolean;
+  previewAvailable?: boolean;
+  hasInProgressTransfer?: boolean;
+  current?: InspectorTab;
 }
 
 export interface InspectorNavigationModel {
@@ -39,11 +30,17 @@ export interface InspectorNavigationModel {
 export function resolveInspectorNavigation({
   filesOnly,
   isRemote,
+  previewAvailable = false,
+  hasInProgressTransfer = false,
+  current,
 }: InspectorNavigationOptions): InspectorNavigationModel {
   if (filesOnly) {
     return { all: ["files"], primary: ["files"], secondary: [] };
   }
 
   const all = INSPECTOR_TAB_IDS.filter((id) => !REMOTE_ONLY_INSPECTOR_TAB_IDS.has(id) || isRemote);
-  return { all, primary: all, secondary: [] };
+  const primary = all.filter((id) => id === "files" || id === "changes" || id === current
+    || (id === "preview" && previewAvailable)
+    || (id === "transfers" && hasInProgressTransfer));
+  return { all, primary, secondary: all.filter((id) => !primary.includes(id)) };
 }

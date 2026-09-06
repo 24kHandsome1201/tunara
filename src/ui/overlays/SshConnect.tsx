@@ -550,7 +550,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
     } else {
       addSession({ ...session, pendingSavedHost });
     }
-    useUIStore.getState().unlockInspectorView();
     useUIStore.getState().showTerminal();
     setOverlay(null);
     onClose();

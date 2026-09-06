@@ -217,64 +217,16 @@ function shortDir(dir: string): string {
   return parts[parts.length - 1] || dir;
 }
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + "…" : s;
-}
-
 export function isPromptLikeShellTitle(title: string): boolean {
   return /(?:^|\s)[^@\s]+@[^%#$\n]+.*\s[%#$](?:\s|$)/.test(title.trim());
 }
 
-/**
- * 把 agent 的活动状态映射成侧栏标题里的状态后缀。idle（空闲等待输入）返回
- * undefined，让标题回退到纯 agent 名字——只有「正在动」的状态才值得占标题位。
- * 文案走 i18n（sidebar.agent.activity.*）。这里直接用模块级 t()：deriveTitle
- * 是纯函数拿不到 useT hook，而 t() 读全局已解析语言。调用方需自行订阅语言
- * store 才能在切换时重渲染：SessionCard 是 memo 组件，专门调了一次 useT() 订阅
- * （见 SessionCard.tsx）；Titlebar / CommandPalette 本来就有 useT。
- */
-export function agentActivityLabel(activity?: AgentActivity): string | undefined {
-  if (activity === "running") return t("sidebar.agent.activity.running");
-  if (activity === "starting") return t("sidebar.agent.activity.starting");
-  if (activity === "waiting_confirmation") return t("sidebar.agent.activity.waiting_confirmation");
-  return undefined;
-}
-
 export function deriveTitle(s: Session): { primary: string; subtitle: string; isCommand: boolean; totalAdded: number; totalRemoved: number } {
-  let primary: string;
-  let isCommand = false;
-
-  const lastCommand = s.lastCommand && !isPromptLikeShellTitle(s.lastCommand)
-    ? s.lastCommand
-    : undefined;
-
-  // A shellTitle is "meaningful" only if it adds information beyond what the
-  // dir already conveys. shellTitleUpdate already dropped agent, agent-name and
-  // prompt-like titles, so here we just guard against it collapsing to the dir.
-  const hasMeaningfulShellTitle =
-    !!s.shellTitle
-    && !s.suppressShellTitle
-    && !isPromptLikeShellTitle(s.shellTitle)
-    && s.shellTitle !== s.dir
-    && s.shellTitle !== shortDir(s.dir);
-
-  if (s.customTitle) {
-    primary = s.customTitle;
-  } else if (s.agent) {
-    // Agents (e.g. Claude Code) only report their own name via OSC titles, so we
-    // append the live activity from agentActivity instead — "Claude Code · 工作中"
-    // when working, just the name when idle.
-    const name = AGENT_NAMES[s.agent] ?? s.agent;
-    const status = agentActivityLabel(s.agentActivity);
-    primary = status ? `${name} · ${status}` : name;
-  } else if (lastCommand) {
-    primary = truncate(lastCommand, 60);
-    isCommand = true;
-  } else if (hasMeaningfulShellTitle) {
-    primary = s.shellTitle!;
-  } else {
-    primary = s.title && !isPromptLikeShellTitle(s.title) ? s.title : t("session.default_title");
-  }
+  // A card title is session identity, not live terminal activity. The store
+  // assigns a durable numbered title when a session is added; commands, OSC
+  // titles, and agent lifecycle updates must not replace that identity.
+  const primary = s.customTitle
+    || (s.title && !isPromptLikeShellTitle(s.title) ? s.title : t("session.default_title"));
 
   const dirLabel = shortDir(s.dir);
   const parts: string[] = [];
@@ -297,7 +249,7 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
     if (diffParts.length) parts.push(diffParts.join(" "));
   }
 
-  return { primary, subtitle: parts.join(" · "), isCommand, totalAdded, totalRemoved };
+  return { primary, subtitle: parts.join(" · "), isCommand: false, totalAdded, totalRemoved };
 }
 
 export function formatSize(bytes: number): string {

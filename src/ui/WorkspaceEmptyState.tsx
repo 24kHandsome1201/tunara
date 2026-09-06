@@ -80,12 +80,15 @@ export function WorkspaceEmptyState({
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, overflowY: "auto", padding: 24 }}>
       <div style={{ width: "min(560px, 100%)", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ textAlign: "center", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+          {t("app.empty.guide")}
+        </div>
         <div role="group" aria-label={t("app.empty.actions")} className="workspace-empty-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <button type="button" onClick={onNewTerminal} className="hover-bg" style={launchButtonStyle}>
+          <button type="button" onClick={onNewTerminal} className="hover-bg" style={{ ...launchButtonStyle, background: "var(--c-accent)", color: "var(--c-on-accent)", borderColor: "var(--c-accent)" }}>
             {t("app.empty.local_terminal")}
           </button>
           <button type="button" onClick={onNewTerminalInDirectory} className="hover-bg" style={launchButtonStyle}>
-            {t("app.empty.choose_folder")}
+            {t("app.empty.open_terminal_in_folder")}
           </button>
           <button type="button" onClick={onOpenSsh} className="hover-bg" style={launchButtonStyle}>
             {t("app.empty.connect_ssh")}

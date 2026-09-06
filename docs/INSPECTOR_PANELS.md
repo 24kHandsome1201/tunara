@@ -2,22 +2,22 @@
 
 The Inspector is Tunara's contextual right rail. It keeps review, files, Preview, transfers, and forwarding close to the terminal without becoming a second dashboard or an IDE. Chinese UI copy uses **检查器**.
 
-The container is [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx). Available views are defined by [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Auto-follow and lock live in [`inspector-context.ts`](../src/ui/inspector-context.ts). Scope labels come from [`inspector-scope.ts`](../src/ui/inspector-scope.ts). Only the active view is mounted. On narrow windows the rail becomes an overlay. Chrome fade dims the Inspector while the terminal is focused; ⌘⇧\\ still hides it.
+The container is [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx). Available views are defined by [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Scope labels come from [`inspector-scope.ts`](../src/ui/inspector-scope.ts). Only the active view is mounted. On narrow windows the rail becomes an overlay. Contrast stays stable when the terminal is focused; ⌘⇧\\ still hides it.
 
 ## Interaction model
 
-The Inspector follows the active session by default. Manual switching remains available, but chrome is secondary: a compact icon switcher in the header, plus ⌘K.
+The Inspector defaults to Files and remembers the user's selection. Background changes, Preview discovery, and transfer activity never switch the current view. There is no automatic-follow or hidden-lock state.
 
-### Automatic selection
+### Progressive navigation
 
-| Session state | Default Inspector view |
+| View | Header visibility |
 |---|---|
-| Unreviewed Git changes (`reviewChangesHint` and a non-empty `changes.files`) | **Changes** |
-| Loopback/localhost URL detected **and** the user has opened Preview for this session | **Preview** |
-| SSH file transfer queued or running | **Transfers** |
-| Otherwise | **Files** |
+| Files / Changes | Always visible as text tabs |
+| Preview | A source is available, previously opened in this session, or currently selected |
+| Transfers | SSH transfer queued/running, or currently selected |
+| Other available tools | More menu and ⌘K; selected tools remain visible |
 
-Priority is that ordered list. Detecting a localhost URL is not enough for Preview: the user must open Preview once (switcher or command palette). Jupyter notebook preview and Excel/table preview remain Files capabilities; they are not separate Inspector views.
+Tabs may become available without being selected. Jupyter notebook preview and Excel/table preview remain Files capabilities; they are not separate Inspector views.
 
 ## Reader pane
 
@@ -25,15 +25,9 @@ Opening a file from Files, Changes, a terminal path, or a completed transfer ins
 
 When the extra column would make the terminal unusable, the Inspector docks as an overlay (`⌘⇧\\` still recalls it). Session switch keeps each reader’s layout and drafts mounted. SSH reconnect re-fetches the same path on the new binding.
 
-Auto-switch is restrained:
+Changes opens read-only diffs in this same reader, not inside the narrow Inspector. File, staged diff, and unstaged diff have distinct history entries. Unsaved file drafts still require confirmation before navigating to a diff. Remote reads are canceled on disconnect and reload on the new binding after reconnect.
 
-- It never runs after the user has chosen a view by hand.
-- It never yanks the Inspector away from a workspace file the user is reading. In that case it shows a quiet “Show” hint instead of forcing the jump.
-- Switching sessions resumes follow.
-
-### Manual hold
-
-Choosing a view from the switcher, ⌘K, hint bars, or Files transfer entry holds the Inspector on that view. The hold lasts until the user switches sessions. There is no Auto / Locked chrome or command-palette toggle; the hold is silent.
+Switching sessions retains the selected view if available; a local session cannot show SSH-only tools and falls back to Files. The saved selection is global, not a separate per-session preference.
 
 ## Views
 
@@ -47,7 +41,7 @@ Choosing a view from the switcher, ⌘K, hint bars, or Files transfer entry hold
 
 ⌘K reaches every view (`Open changes` / `Open files` / `Open Preview`, plus SSH `Open Transfers` / `Open Forwarding`). When no longer valid, stored legacy tab values fall back to Changes.
 
-Remote file properties remain a Files context action. Connection diagnostics remain available through the SSH diagnostic flow, and known hosts remain under Settings → SSH; neither is a separate Inspector view.
+Remote file properties remain a Files context action. Connection diagnostics remain available through the SSH diagnostic flow, and known hosts remain under Settings → Connections & transfers; neither is a separate Inspector view.
 
 ## Product boundary
 
@@ -57,4 +51,4 @@ Remote file properties remain a Files context action. Connection diagnostics rem
 - Transfers and Forwarding are hidden without an SSH context and reject stale transport generations.
 - The Inspector does not keep per-session notes, activity timelines, or a fixed overview/dashboard.
 
-Legacy snapshots may still contain retired Inspector tab names or a session `note` field. Snapshot sanitization ignores unknown session fields and maps invalid tabs to Changes; there is no user-visible migration or cleanup action. The silent manual hold and “Preview opened” are runtime UI and are not persisted.
+Legacy snapshots may still contain retired Inspector tab names or a session `note` field. Snapshot sanitization ignores unknown session fields and maps invalid tabs to Changes; there is no user-visible migration or cleanup action. “Preview opened” is runtime UI and is not persisted; the selected Inspector tab is persisted.

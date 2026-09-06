@@ -107,7 +107,7 @@ test("folder-based terminal creation stays visible in empty and compact shells",
   assert.match(app, /const presentedSidebarVisible = hasSessions && sidebarVisible/);
   assert.match(app, /\{hasSessions && \(/);
   assert.match(empty, /onClick=\{onNewTerminal\}[\s\S]*app\.empty\.local_terminal/);
-  assert.match(empty, /onClick=\{onNewTerminalInDirectory\}[\s\S]*app\.empty\.choose_folder/);
+  assert.match(empty, /onClick=\{onNewTerminalInDirectory\}[\s\S]*app\.empty\.open_terminal_in_folder/);
   assert.match(empty, /onClick=\{onOpenSsh\}[\s\S]*app\.empty\.connect_ssh/);
   assert.match(titlebar, /id: "new-terminal-directory"[\s\S]*label: t\("titlebar\.new_terminal_in_directory"\)[\s\S]*action: onNewTerminalInDirectory/);
 });

@@ -19,6 +19,7 @@ import { CaretUp } from "@phosphor-icons/react/dist/ssr/CaretUp";
 import { Check } from "@phosphor-icons/react/dist/ssr/Check";
 import { ClipboardText } from "@phosphor-icons/react/dist/ssr/ClipboardText";
 import { CopySimple } from "@phosphor-icons/react/dist/ssr/CopySimple";
+import { DotsThree } from "@phosphor-icons/react/dist/ssr/DotsThree";
 import { DownloadSimple } from "@phosphor-icons/react/dist/ssr/DownloadSimple";
 import { File } from "@phosphor-icons/react/dist/ssr/File";
 import { FileText } from "@phosphor-icons/react/dist/ssr/FileText";
@@ -203,6 +204,7 @@ export {
   Check,
   ClipboardText,
   CopySimple,
+  DotsThree,
   DownloadSimple,
   File,
   FileText,

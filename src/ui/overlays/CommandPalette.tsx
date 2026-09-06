@@ -299,7 +299,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         uiStore.getState().recordCommandUse(usageId);
         uiStore.getState().setPanelVisible(true);
         uiStore.getState().setInspectorTab(tab, { sessionId: activeSession.id });
-        if (tab === "preview") uiStore.getState().markInspectorPreviewOpened(activeSession.id);
         onClose();
       };
       const activeIsLocal = !activeSession.remote;

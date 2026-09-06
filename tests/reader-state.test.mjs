@@ -40,6 +40,29 @@ test("back and forward walk history without growing it", () => {
   assert.equal(state.history.length, 3);
 });
 
+test("file and staged/unstaged diffs at the same path have distinct history identities", () => {
+  let state = emptyReaderState();
+  const file = { filePath: "/repo/a.ts", fileName: "a.ts" };
+  state = openReaderFileInState(state, file);
+  state = openReaderFileInState(state, { ...file, diff: { stage: "staged", repoPath: "/repo", relativePath: "a.ts" } });
+  state = openReaderFileInState(state, { ...file, diff: { stage: "unstaged", repoPath: "/repo", relativePath: "a.ts" } });
+  assert.equal(state.history.length, 3);
+  assert.deepEqual(state.history.map((entry) => entry.diff?.stage ?? "file"), ["file", "staged", "unstaged"]);
+});
+
+test("sanitize persists valid diff references and drops malformed ones", () => {
+  const valid = sanitizeSessionReaderState({
+    current: { filePath: "/repo/a.ts", fileName: "a.ts", diff: { stage: "staged", repoPath: "/repo", relativePath: "a.ts" } },
+    history: [],
+  });
+  assert.deepEqual(valid.current.diff, { stage: "staged", repoPath: "/repo", relativePath: "a.ts" });
+  const invalid = sanitizeSessionReaderState({
+    current: { filePath: "/repo/a.ts", fileName: "a.ts", diff: { stage: "other", repoPath: "/repo", relativePath: "a.ts" } },
+    history: [],
+  });
+  assert.equal(invalid.current.diff, undefined);
+});
+
 test("sanitize drops unsafe keys and restores current from history", () => {
   const state = sanitizeSessionReaderState({
     current: { filePath: "/ok.txt", fileName: "ok.txt" },

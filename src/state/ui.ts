@@ -278,10 +278,7 @@ interface UIState extends AppearanceSettings {
   focusedPaneId: string | null;
   readers: Record<string, SessionReaderState>;
   inspectorTab: InspectorTab;
-  /** Manual Inspector view hold. Session switch restores follow. */
-  inspectorLocked: boolean;
-  inspectorLockSessionId: string | null;
-  /** Sessions where the user has opened Preview; drives auto-select, not persisted. */
+  /** Keeps Preview discoverable after its source stops; never changes the view. */
   inspectorPreviewOpenedSessionIds: Record<string, true>;
   toasts: Toast[];
   /** FIFO queue of pending host-key confirmations. A queue (not a single slot)
@@ -312,12 +309,7 @@ interface UIState extends AppearanceSettings {
   togglePanel: () => void;
   setOverlay: (o: OverlayType) => void;
   openSshConnect: (prefill?: SshConnectPrefill | null) => void;
-  setInspectorTab: (t: InspectorTab, options?: { lock?: boolean; sessionId?: string | null }) => void;
-  lockInspectorView: (sessionId?: string | null) => void;
-  unlockInspectorView: () => void;
-  syncInspectorLockForSession: (sessionId: string | null) => void;
-  markInspectorPreviewOpened: (sessionId: string) => void;
-  clearInspectorPreviewOpened: (sessionId: string) => void;
+  setInspectorTab: (t: InspectorTab, options?: { sessionId?: string | null }) => void;
   openReader: (file: ReaderFileRef & { sessionId: string }) => boolean;
   closeReaderPane: (sessionId: string) => void;
   closeReaderForSession: (sessionId: string) => void;
@@ -391,9 +383,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     split: emptySplitState(),
     focusedPaneId: null,
     readers: {},
-    inspectorTab: "changes" as InspectorTab,
-    inspectorLocked: false,
-    inspectorLockSessionId: null,
+    inspectorTab: "files" as InspectorTab,
     inspectorPreviewOpenedSessionIds: {},
     toasts: [],
     hostKeyPrompts: [],
@@ -432,35 +422,13 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       sshPrefill: prefill ?? null,
     }),
     setInspectorTab: (inspectorTab, options) => set((state) => {
-      const lock = options?.lock !== false;
-      const sessionId = options?.sessionId === undefined ? state.inspectorLockSessionId : options.sessionId;
+      const sessionId = options?.sessionId;
       return {
         inspectorTab,
-        inspectorLocked: lock,
-        inspectorLockSessionId: lock ? sessionId : null,
+        ...(inspectorTab === "preview" && sessionId ? {
+          inspectorPreviewOpenedSessionIds: { ...state.inspectorPreviewOpenedSessionIds, [sessionId]: true },
+        } : {}),
       };
-    }),
-    lockInspectorView: (sessionId) => set((state) => ({
-      inspectorLocked: true,
-      inspectorLockSessionId: sessionId === undefined ? state.inspectorLockSessionId : sessionId,
-    })),
-    unlockInspectorView: () => set({ inspectorLocked: false, inspectorLockSessionId: null }),
-    syncInspectorLockForSession: (sessionId) => set((state) => {
-      if (!state.inspectorLocked) return {};
-      if (state.inspectorLockSessionId == null) return { inspectorLockSessionId: sessionId };
-      if (state.inspectorLockSessionId === sessionId) return {};
-      return { inspectorLocked: false, inspectorLockSessionId: null };
-    }),
-    markInspectorPreviewOpened: (sessionId) => set((state) => (
-      state.inspectorPreviewOpenedSessionIds[sessionId]
-        ? {}
-        : { inspectorPreviewOpenedSessionIds: { ...state.inspectorPreviewOpenedSessionIds, [sessionId]: true } }
-    )),
-    clearInspectorPreviewOpened: (sessionId) => set((state) => {
-      if (!state.inspectorPreviewOpenedSessionIds[sessionId]) return {};
-      const inspectorPreviewOpenedSessionIds = { ...state.inspectorPreviewOpenedSessionIds };
-      delete inspectorPreviewOpenedSessionIds[sessionId];
-      return { inspectorPreviewOpenedSessionIds };
     }),
     openReader: (file) => {
       let opened = false;

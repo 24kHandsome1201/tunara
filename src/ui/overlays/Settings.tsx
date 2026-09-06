@@ -21,7 +21,7 @@ interface SettingsProps {
 
 function SettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={`settings-section-${id}`} style={{ marginBottom: 32 }}>
+    <section id={`settings-section-${id}`} tabIndex={-1} aria-label={title} style={{ marginBottom: 32 }}>
       <h2 className="settings-section-title" style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--c-text-primary)", margin: "0 0 14px" }}>
         {title}
       </h2>
@@ -52,6 +52,15 @@ export function Settings({ onClose }: SettingsProps) {
 
   const footerButtonStyle: CSSProperties = { padding: "6px 14px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", cursor: "pointer" };
   const actionButtonStyle: CSSProperties = { height: 30, padding: "0 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "var(--c-bg-white)", color: "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 500, cursor: "pointer", flexShrink: 0 };
+  const sections = ["appearance", "terminal", "ssh", "advanced", "about"] as const;
+
+  const jumpTo = (section: typeof sections[number]) => {
+    const target = document.getElementById(`settings-section-${section}`);
+    const details = target?.querySelector("details");
+    if (details) details.open = true;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "start" });
+  };
 
   return (
     <Modal
@@ -70,9 +79,16 @@ export function Settings({ onClose }: SettingsProps) {
               <CloseIcon size={13} strokeWidth={2.2} />
             </button>
           </div>
+          <nav aria-label={t("settings.navigation")} style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+            {sections.map((section) => (
+              <button key={section} type="button" onClick={() => jumpTo(section)} className="hover-bg" style={{ border: "1px solid var(--c-border-1)", borderRadius: "999px", background: "transparent", color: "var(--c-text-4)", padding: "4px 9px", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>
+                {t(`settings.section.${section}`)}
+              </button>
+            ))}
+          </nav>
         </div>
 
-        <div id="settings-tabpanel" className="no-scrollbar scroll-fade-y">
+        <div id="settings-tabpanel" className="scroll-fade-y">
           <SettingsSection id="appearance" title={t("settings.section.appearance")}>
             <AppearanceSettings />
           </SettingsSection>
@@ -82,9 +98,10 @@ export function Settings({ onClose }: SettingsProps) {
           <SettingsSection id="ssh" title={t("settings.section.ssh")}>
             <SshSettings />
           </SettingsSection>
-          <SettingsSection id="about" title={t("settings.section.about")}>
-            <AppSettings {...appUpdate} />
-            <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
+          <SettingsSection id="advanced" title={t("settings.section.advanced")}>
+            <details style={{ border: "1px solid var(--c-border-1)", borderRadius: "var(--r-card)", padding: "12px 14px" }}>
+              <summary style={{ color: "var(--c-text-3)", fontSize: "var(--fs-body)", fontWeight: 600, cursor: "pointer" }}>{t("settings.advanced.show")}</summary>
+              <div style={{ marginTop: 18 }}>
               <CliSettings {...cliStatus} />
               <button
                 onClick={async () => {
@@ -99,8 +116,8 @@ export function Settings({ onClose }: SettingsProps) {
               >
                 {t("settings.cli.reset_overrides")}
               </button>
-            </div>
-            <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
+              </div>
+              <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--c-border-1)" }}>
               <div style={SECTION_LABEL}>{t("settings.config.path")}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                 {configError ? (
@@ -121,22 +138,16 @@ export function Settings({ onClose }: SettingsProps) {
                 </button>
               </div>
               <div style={{ ...SECTION_HINT, marginTop: 8 }}>{t("settings.config.shortcuts_hint")}</div>
-            </div>
+              </div>
+            </details>
+          </SettingsSection>
+          <SettingsSection id="about" title={t("settings.section.about")}>
+            <AppSettings {...appUpdate} />
           </SettingsSection>
         </div>
 
         <div className="settings-dialog-footer">
-          <button
-            onClick={async () => {
-              const ok = await tauriConfirmDialog(t("settings.appearance.reset_confirm"), { kind: "warning" });
-              if (!ok) return;
-              useUIStore.getState().resetAppearance();
-            }}
-            style={footerButtonStyle}
-            className="hover-bg settings-action-button"
-          >
-            {t("common.reset_defaults")}
-          </button>
+          <span />
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <kbd className="settings-key-hint" style={{ padding: "2px 6px" }}>{t("common.escape")}</kbd>
             <button onClick={onClose} className="hover-primary" style={{ padding: "6px 18px", borderRadius: "var(--r-btn)", border: "none", background: "var(--c-btn-primary-bg)", color: "var(--c-btn-primary-text)", fontSize: "var(--fs-body)", fontWeight: 500, cursor: "pointer", transition: "opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out)" }}>

@@ -248,6 +248,22 @@ export function createRemoteSession(remote: RemoteInfo, title?: string): Session
   return createSession(label, { title: title ?? label, remote });
 }
 
+function assignStableDefaultTitle(session: Session, sessions: Session[]): Session {
+  const defaultTitle = t("session.default_title");
+  const remoteDefault = session.remote ? `${session.remote.user}@${session.remote.host}` : undefined;
+  if (session.customTitle || (session.title && session.title !== defaultTitle && session.title !== remoteDefault)) return session;
+
+  const groupKey = sidebarGroupKey(session);
+  const occupied = new Set(
+    sessions
+      .filter((candidate) => sidebarGroupKey(candidate) === groupKey)
+      .flatMap((candidate) => [candidate.title, candidate.customTitle]),
+  );
+  let number = 1;
+  while (occupied.has(`${defaultTitle} ${number}`)) number += 1;
+  return { ...session, title: `${defaultTitle} ${number}` };
+}
+
 function isSessionObserved(activeSessionId: string | null, sessionId: string): boolean {
   return activeSessionId === sessionId
     && (typeof document === "undefined" || document.hasFocus());
@@ -311,18 +327,19 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   recentSessionIds: [],
 
   addSession: (s) => {
+    const session = assignStableDefaultTitle(s, get().sessions);
     const previousActiveSessionId = get().activeSessionId;
     useUIStore.getState().activateTerminal();
     set((state) => ({
-      sessions: [...state.sessions, s],
-      activeSessionId: s.id,
+      sessions: [...state.sessions, session],
+      activeSessionId: session.id,
       workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
-      launchedSessionIds: { ...state.launchedSessionIds, [s.id]: true },
+      launchedSessionIds: { ...state.launchedSessionIds, [session.id]: true },
       // Remote sessions' dir is "user@host", not a local path — keep it out
       // of the recent-dirs affordance.
-      recentDirs: s.remote ? state.recentDirs : pushRecentDir(state.recentDirs, s.dir),
+      recentDirs: session.remote ? state.recentDirs : pushRecentDir(state.recentDirs, session.dir),
     }));
-    ensureSessionVisibleInSplit(s.id, previousActiveSessionId);
+    ensureSessionVisibleInSplit(session.id, previousActiveSessionId);
   },
 
   removeSession: (id) => {

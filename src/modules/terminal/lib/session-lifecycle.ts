@@ -1,5 +1,5 @@
 import type { AgentCode, Session, TerminalProgress } from "../../../ui/types.ts";
-import { AGENT_NAMES, isPromptLikeShellTitle } from "../../../ui/types.ts";
+import { isPromptLikeShellTitle } from "../../../ui/types.ts";
 import { initialAgentActivity, isAgentShellTitle, tracksAgentActivity } from "./agent-lifecycle.ts";
 import { t } from "../../i18n/core.ts";
 import { formatElapsed } from "../../../ui/lib/elapsed.ts";
@@ -19,7 +19,6 @@ export function agentDetectedUpdate(
     patch: {
       agent,
       agentActivity: initialAgentActivity(agent),
-      title: AGENT_NAMES[agent] ?? agent,
       runState: "idle",
       startedAt: now,
       completedAt: undefined,
@@ -94,7 +93,6 @@ export function agentExitedUpdate(
     patch: {
       agent: undefined,
       agentActivity: undefined,
-      title: t("session.default_title"),
       lastCommand: undefined,
       lastExitCode: exitCode,
       shellTitle: undefined,
@@ -203,7 +201,7 @@ export function terminalExitedUpdate(
       transportGeneration: undefined,
       agent: undefined,
       agentActivity: undefined,
-      ...(wasAgent ? { title: t("session.default_title"), lastCommand: undefined } : {}),
+      ...(wasAgent ? { lastCommand: undefined } : {}),
       lastExitCode: exitCode,
       terminalProgress: undefined,
       runState: exitCode === 0 ? "done" : "failed",

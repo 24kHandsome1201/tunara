@@ -3,6 +3,7 @@ import {
   Suspense,
   useEffect,
   useRef,
+  useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -17,7 +18,8 @@ import {
   PanelIconButton,
   PanelLoadingState,
 } from "./shared";
-import { AlignLeftSimple, AppWindow, ArrowsDownUp, FolderSimple, Icon, ShareNetwork } from "@/ui/icons";
+import { DotsThree, Icon } from "@/ui/icons";
+import { ContextMenu } from "./ContextMenu";
 import { WorkspaceSourceChip } from "./WorkspaceSource";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { focusTabById, resolveRovingTabId, tabIdFromEventTarget } from "./lib/tab-list-navigation";
@@ -26,27 +28,12 @@ import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-sc
 import { resolveInspectorNavigation } from "./inspector-navigation";
 import { hasActivePreviewSource } from "@/modules/preview/preview-source";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
-import {
-  hasUnreviewedGitChanges,
-  isViewingInspectorFiles,
-  resolveInspectorAutoSwitch,
-  resolveInspectorAutoView,
-  sessionHasInProgressTransfer,
-} from "./inspector-context";
 
 const DiffPanel = lazy(() => import("./DiffPanel").then((module) => ({ default: module.DiffPanel })));
 const TransferCenter = lazy(() => import("./TransferCenter").then((module) => ({ default: module.TransferCenter })));
 const ForwardingPanel = lazy(() => import("@/modules/ssh/ForwardingPanel").then((module) => ({ default: module.ForwardingPanel })));
 
 const INSPECTOR_TABPANEL_ID = "inspector-tabpanel";
-
-const INSPECTOR_TAB_ICONS: Record<InspectorTab, ReactNode> = {
-  changes: <Icon icon={AlignLeftSimple} size={14} />,
-  files: <Icon icon={FolderSimple} size={14} />,
-  preview: <Icon icon={AppWindow} size={14} />,
-  transfers: <Icon icon={ArrowsDownUp} size={14} />,
-  forwarding: <Icon icon={ShareNetwork} size={14} />,
-};
 
 interface InspectorPanelProps {
   session: Session;
@@ -68,7 +55,8 @@ function SwitcherButton({
   children: ReactNode;
 }) {
   return (
-    <PanelIconButton
+    <button
+      type="button"
       onClick={onClick}
       role="tab"
       aria-selected={active}
@@ -79,9 +67,11 @@ function SwitcherButton({
       tabIndex={active ? 0 : -1}
       data-active={active ? "true" : "false"}
       className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
+      style={{ flexShrink: 0, minHeight: 30, padding: "0 8px", border: "none", borderRadius: "var(--r-btn)", background: active ? "var(--c-bg-3)" : "transparent", color: active ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-secondary)", fontWeight: active ? 600 : 400, cursor: "pointer" }}
     >
+      {label}
       {children}
-    </PanelIconButton>
+    </button>
   );
 }
 
@@ -89,23 +79,28 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
   const t = useT();
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
-  const inspectorLocked = useUIStore((s) => s.inspectorLocked);
   const previewOpened = useUIStore((s) => Boolean(s.inspectorPreviewOpenedSessionIds[session.id]));
-  const markInspectorPreviewOpened = useUIStore((s) => s.markInspectorPreviewOpened);
-  const focusedPaneId = useUIStore((s) => s.focusedPaneId);
-  const readerOpen = useUIStore((s) => Boolean(s.readers[session.id]?.current));
   const isRemote = !!session.remote;
   const binding: SessionBindingV1 | null = isRemote && session.ptyId !== undefined && session.transportGeneration
     ? { logicalSessionId: session.id, physicalPtyId: session.ptyId, transportGeneration: session.transportGeneration }
     : null;
   const forwardingBinding = session.connection?.phase === "ready" ? binding : null;
   const tabListRef = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const hasPreviewSource = hasActivePreviewSource(session.previewSources);
+  const transferCount = useTransferStore((s) => {
+    const aggregate = s.aggregateBySession.get(session.id);
+    return (aggregate?.queued ?? 0) + (aggregate?.running ?? 0);
+  });
 
   const navigation = resolveInspectorNavigation({
     filesOnly,
     isRemote,
+    previewAvailable: hasPreviewSource || previewOpened,
+    hasInProgressTransfer: transferCount > 0,
+    current: storeTab,
   });
-  const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "changes";
+  const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "files";
   const descriptor = INSPECTOR_TAB_DESCRIPTORS[tab];
   const inspectorScope = resolveInspectorScope(descriptor, session, binding);
   const scopeKey = inspectorScope.kind.replace("-", "_");
@@ -118,38 +113,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     || (!session.workspace && session.branch),
   );
   const showContextBar = showSourceSummary || inspectorScope.kind !== "logical-session";
-  const hasPreviewSource = hasActivePreviewSource(session.previewSources);
-  const hasInProgressTransfer = useTransferStore((s) =>
-    sessionHasInProgressTransfer(s.aggregateBySession.get(session.id)),
-  );
-  const recommended = resolveInspectorAutoView({
-    isRemote,
-    hasUnreviewedChanges: hasUnreviewedGitChanges(session),
-    previewOpened,
-    hasActivePreviewSource: hasPreviewSource,
-    hasInProgressTransfer,
-  });
-  const viewingFiles = isViewingInspectorFiles({
-    currentTab: tab,
-    hasActiveFileTab: readerOpen && focusedPaneId === `reader:${session.id}`,
-  });
-  const autoSwitch = filesOnly
-    ? { recommended, apply: false, defer: false }
-    : resolveInspectorAutoSwitch({
-        locked: inspectorLocked,
-        current: tab,
-        recommended,
-        viewingFiles,
-      });
-
-  useEffect(() => {
-    useUIStore.getState().syncInspectorLockForSession(session.id);
-  }, [session.id]);
-
-  useEffect(() => {
-    if (filesOnly || !autoSwitch.apply) return;
-    setTab(autoSwitch.recommended, { lock: false, sessionId: session.id });
-  }, [autoSwitch.apply, autoSwitch.recommended, filesOnly, session.id, setTab]);
 
   useEffect(() => {
     const activeTab = tabListRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tab)}"]`);
@@ -158,7 +121,6 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
 
   const selectTab = (nextTab: InspectorTab) => {
     setTab(nextTab, { sessionId: session.id });
-    if (nextTab === "preview") markInspectorPreviewOpened(session.id);
   };
 
   let activePanel: ReactNode;
@@ -229,34 +191,18 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            fontSize: "var(--fs-secondary)",
-            fontWeight: 600,
-            color: "var(--c-text-primary)",
-            whiteSpace: "nowrap",
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            paddingRight: 4,
-          }}
-        >
-          {t(descriptor.titleKey)}
-        </span>
-
-        <div style={{ flex: 1, minWidth: 0 }} />
-
         {!filesOnly && (
           <div
             ref={tabListRef}
-            className="no-scrollbar"
             role="tablist"
             aria-label={t("inspector.tab.aria_label")}
             onKeyDown={handleTabListKeyDown}
             style={{
               display: "flex",
               alignItems: "center",
-              flexShrink: 0,
+              flex: 1,
+              minWidth: 0,
+              overflowX: "auto",
             }}
           >
             {navigation.primary.map((id) => (
@@ -267,7 +213,8 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
                 label={t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey)}
                 onClick={() => selectTab(id)}
               >
-                {INSPECTOR_TAB_ICONS[id]}
+                {id === "changes" && !!session.changes?.files.length && <span style={{ marginLeft: 4 }}>{session.changes.files.length}</span>}
+                {id === "transfers" && transferCount > 0 && <span style={{ marginLeft: 4 }}>{transferCount}</span>}
               </SwitcherButton>
             ))}
           </div>
@@ -282,11 +229,25 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
             style={{ display: "flex", alignItems: "center", flexShrink: 0 }}
           >
             <SwitcherButton tabId="files" active label={t(INSPECTOR_TAB_DESCRIPTORS.files.titleKey)} onClick={() => {}}>
-              {INSPECTOR_TAB_ICONS.files}
+              {null}
             </SwitcherButton>
           </div>
         )}
 
+        {!filesOnly && navigation.secondary.length > 0 && (
+          <PanelIconButton
+            aria-label={t("inspector.more")}
+            title={t("inspector.more")}
+            aria-haspopup="menu"
+            aria-expanded={menu !== null}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setMenu({ x: rect.right, y: rect.bottom });
+            }}
+          >
+            <Icon icon={DotsThree} size={18} />
+          </PanelIconButton>
+        )}
         {onClose && (
           <PanelIconButton
             onClick={onClose}
@@ -298,6 +259,11 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
         )}
       </div>
 
+      {menu && <ContextMenu
+        position={menu}
+        items={navigation.secondary.map((id) => ({ id, label: t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey), action: () => selectTab(id) }))}
+        onClose={() => setMenu(null)}
+      />}
       {showContextBar && (
         <div
           id="inspector-context-bar"

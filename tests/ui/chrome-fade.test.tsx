@@ -1,34 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useUIStore } from "@/state/ui";
 import { useNativeContextMenuGuard } from "@/app/useNativeContextMenuGuard";
-import { useChromeFade } from "@/app/useChromeFade";
 import { Titlebar } from "@/ui/Titlebar";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
 import type { Session } from "@/ui/types";
 import { useSessionsStore } from "@/state/sessions";
 
 vi.mock("@/ui/lib/current-window", () => ({ tryGetCurrentWindow: () => null }));
-
-function ChromeFadeHarness() {
-  const faded = useChromeFade();
-  return (
-    <div data-chrome-faded={faded ? "true" : undefined} className={faded ? "chrome-faded" : undefined}>
-      <div className="tunara-titlebar" data-testid="titlebar">titlebar</div>
-      <div className="tunara-sidebar" data-testid="sidebar">sidebar</div>
-      <textarea data-testid="editor" defaultValue="draft" />
-      <div
-        data-testid="terminal-surface"
-        data-terminal-canvas
-        tabIndex={0}
-        className="xterm"
-      >
-        terminal
-      </div>
-      <div className="tunara-panel" data-testid="panel">panel</div>
-    </div>
-  );
-}
 
 function ContextMenuGuardHarness({
   onContextMenu,
@@ -54,52 +33,6 @@ function ContextMenuGuardHarness({
     </div>
   );
 }
-
-test("chrome root gets data-chrome-faded when the terminal is focused", () => {
-  render(<ChromeFadeHarness />);
-  const root = screen.getByTestId("titlebar").parentElement!;
-  expect(root.getAttribute("data-chrome-faded")).toBeNull();
-
-  act(() => {
-    screen.getByTestId("terminal-surface").focus();
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBe("true");
-  expect(root.classList.contains("chrome-faded")).toBe(true);
-
-  act(() => {
-    fireEvent.pointerOver(screen.getByTestId("sidebar"));
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBeNull();
-
-  act(() => {
-    fireEvent.pointerOut(screen.getByTestId("sidebar"), { relatedTarget: screen.getByTestId("terminal-surface") });
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBe("true");
-
-  act(() => {
-    screen.getByTestId("editor").focus();
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBeNull();
-});
-
-test("an open overlay restores chrome opacity", () => {
-  render(<ChromeFadeHarness />);
-  const root = screen.getByTestId("titlebar").parentElement!;
-  act(() => {
-    screen.getByTestId("terminal-surface").focus();
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBe("true");
-
-  act(() => {
-    useUIStore.setState({ overlay: "command-palette" });
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBeNull();
-
-  act(() => {
-    useUIStore.setState({ overlay: null });
-  });
-  expect(root.getAttribute("data-chrome-faded")).toBe("true");
-});
 
 test("native chrome menus are suppressed without consuming component contextmenu events", () => {
   const onContextMenu = vi.fn();

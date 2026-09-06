@@ -21,7 +21,6 @@ export function SidebarNewTerminalControl({
     setMenu({
       position: { x: rect.right, y: rect.bottom },
       items: [
-        { id: "new-terminal", label: t("sidebar.new_terminal"), icon: "terminal", action: onNewTerminal },
         ...(onNewTerminalInDirectory
           ? [{ id: "new-terminal-directory", label: t("sidebar.new_terminal_in_directory"), icon: "folder" as const, action: onNewTerminalInDirectory }]
           : []),
@@ -34,35 +33,45 @@ export function SidebarNewTerminalControl({
   return (
     <>
       <div style={{ padding: "8px 12px 6px" }}>
-        <button
-          type="button"
-          onClick={openNewMenu}
-          title={t("sidebar.new_menu")}
-          aria-label={t("sidebar.new_menu")}
-          aria-haspopup="menu"
-          aria-expanded={Boolean(menu)}
-          className="hover-bg"
-          style={{
-            width: "100%",
-            height: 30,
-            padding: "0 9px",
-            border: "1px solid var(--c-control-border)",
-            borderRadius: "var(--r-btn)",
-            background: "var(--c-bg-white)",
-            color: "var(--c-text-2)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            fontFamily: "var(--font-ui)",
-            fontSize: "var(--fs-secondary)",
-            fontWeight: 600,
-          }}
-        >
-          <Icon icon={Plus} size={12} weight="bold" />
-          <span>{t("sidebar.new_compact")}</span>
-          <Icon icon={CaretDown} size={10} weight="bold" style={{ marginLeft: "auto" }} />
-        </button>
+        <div style={{ display: "flex", width: "100%" }}>
+          <button
+            type="button"
+            onClick={onNewTerminal}
+            title={t("sidebar.new_terminal")}
+            className="hover-bg"
+            style={{
+              flex: 1,
+              height: 30,
+              padding: "0 9px",
+              border: "1px solid var(--c-control-border)",
+              borderRadius: "var(--r-btn) 0 0 var(--r-btn)",
+              background: "var(--c-bg-white)",
+              color: "var(--c-text-2)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              fontFamily: "var(--font-ui)",
+              fontSize: "var(--fs-secondary)",
+              fontWeight: 600,
+            }}
+          >
+            <Icon icon={Plus} size={12} weight="bold" />
+            <span>{t("sidebar.new_terminal")}</span>
+          </button>
+          <button
+            type="button"
+            onClick={openNewMenu}
+            title={t("sidebar.new_menu")}
+            aria-label={t("sidebar.new_menu")}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(menu)}
+            className="hover-bg"
+            style={{ width: 30, height: 30, border: "1px solid var(--c-control-border)", borderLeft: 0, borderRadius: "0 var(--r-btn) var(--r-btn) 0", background: "var(--c-bg-white)", color: "var(--c-text-2)", cursor: "pointer", padding: 0 }}
+          >
+            <Icon icon={CaretDown} size={10} weight="bold" />
+          </button>
+        </div>
       </div>
       {menu && <ContextMenu items={menu.items} position={menu.position} onClose={() => setMenu(null)} />}
     </>

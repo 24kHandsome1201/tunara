@@ -5,6 +5,7 @@ import { t } from "@/modules/i18n";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { readerRefIdentity, type ReaderDiffRef } from "@/modules/session/reader-state";
 
 export type ResourceRef = {
   transport: "local" | "ssh";
@@ -13,6 +14,7 @@ export type ResourceRef = {
   path: string;
   line?: number;
   column?: number;
+  diff?: ReaderDiffRef;
 };
 
 export function resourceRefForSession(session: Session, path: string, line?: number, column?: number): ResourceRef {
@@ -51,6 +53,7 @@ export async function openResource(ref: ResourceRef, localDisposition: "editor" 
       fileName: ref.path.split("/").filter(Boolean).pop() ?? ref.path,
       line: ref.line,
       column: ref.column,
+      diff: ref.diff,
     });
     if (!opened) {
       useUIStore.getState().addToast({
@@ -62,7 +65,8 @@ export async function openResource(ref: ResourceRef, localDisposition: "editor" 
     }
   };
   const current = useUIStore.getState().readers[ref.logicalSessionId]?.current;
-  if (current && current.filePath !== ref.path) {
+  const nextIdentity = readerRefIdentity({ filePath: ref.path, fileName: "", diff: ref.diff });
+  if (current && readerRefIdentity(current) !== nextIdentity) {
     if (requestDirtyDraftFileAction(ref.logicalSessionId, current.filePath, apply)) apply();
     return;
   }

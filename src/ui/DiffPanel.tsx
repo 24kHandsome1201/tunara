@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatSize, type Session } from "./types";
 import {
-  cancelGitDiff,
-  gitDiff,
   gitAheadBehind,
+  gitDiff,
   sshGitDiff,
+  cancelGitDiff,
   type FileChange,
   type FileDiff,
   type RemoteState,
@@ -18,10 +18,13 @@ import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelIconButton, PanelLoadingState } from "./shared";
 import { ArrowSquareOut, CaretRight, Check, CopySimple, Icon } from "@/ui/icons";
-import { copyText } from "./lib/clipboard";
 import { buildMiniDiffRows, collectHunkTexts, filterRowsByQuery } from "./lib/diff-parse";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 import { highlightDiffBodies, type SyntaxSegment } from "@/modules/editor/syntax-highlight";
+import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
+import type { ReaderDiffRef } from "@/modules/session/reader-state";
+import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
+import { copyText } from "./lib/clipboard";
 
 interface DiffPanelProps {
   session: Session;
@@ -31,20 +34,10 @@ interface DiffPanelProps {
 
 interface DiffFileRowProps {
   file: FileChange;
-  expanded: boolean;
-  diffs: Record<string, FileDiff>;
-  diffErrors: Record<string, string>;
-  searchQuery: string;
   isRemote: boolean;
   repoPath: string | null;
   sessionId: string;
-  // loadFileDiff is held in a ref inside DiffPanel so this stable wrapper
-  // never goes stale without forcing every row to re-mount.
-  loadFileDiff: (file: FileChange) => void;
-  onToggle: (file: FileChange) => void;
-  onSearchQueryChange: (value: string) => void;
-  onCopyHunk: (hunkText: string) => void;
-  isComposingRef: React.MutableRefObject<boolean>;
+  onOpen: (file: FileChange) => void;
   t: ReturnType<typeof useT>;
 }
 
@@ -84,7 +77,7 @@ function isDiffCodeRow(row: { line: string; isAdd: boolean; isDel: boolean; isHu
   return row.line.startsWith(" ");
 }
 
-function MiniDiff({
+export function MiniDiff({
   diff,
   error,
   searchQuery,
@@ -200,7 +193,7 @@ function MiniDiff({
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }}
+      style={{ flex: 1, minHeight: 0, fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", borderRadius: "0 0 var(--r-btn) var(--r-btn)", overflow: "auto" }}
       className="scroll-fade-y"
     >
       {/* Hidden probe row to measure the real rendered row height once. It's
@@ -281,6 +274,86 @@ function MiniDiff({
       })}
       <div style={{ height: slice.bottomPad }} />
       {diff.truncated && <div style={{ padding: "4px 8px", color: "var(--c-text-5)" }}>{t("diff.mini.truncated")}</div>}
+    </div>
+  );
+}
+
+let nextReaderDiffRequest = 0;
+
+/** Read-only diff content, hosted by the same reader as ordinary files. */
+export function ReaderDiff({ session, diffRef, findRequest }: {
+  session: Session;
+  diffRef: ReaderDiffRef;
+  findRequest: number;
+}) {
+  const t = useT();
+  const [diff, setDiff] = useState<FileDiff>();
+  const [error, setError] = useState<string>();
+  const [query, setQuery] = useState("");
+  const [retry, setRetry] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
+  const nonce = useSessionsStore((s) => getNumberRecordValue(s.gitNonce, session.id));
+  const isRemote = Boolean(session.remote);
+  const disconnected = isRemote && !readyBindingForSession(session);
+
+  useEffect(() => { if (findRequest) searchRef.current?.focus(); }, [findRequest]);
+  useEffect(() => {
+    let live = true;
+    const requestId = `reader-diff-${Date.now().toString(36)}-${++nextReaderDiffRequest}`;
+    setDiff(undefined);
+    setError(undefined);
+    if (disconnected) return;
+    const load = async () => {
+      try {
+        let result: FileDiff;
+        if (isRemote) {
+          const binding = readyBindingForSession(useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id));
+          if (!binding) return;
+          result = await sshGitDiff(binding.physicalPtyId, diffRef.repoPath, diffRef.relativePath, diffRef.stage, requestId);
+          const after = readyBindingForSession(useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id));
+          if (!after || after.physicalPtyId !== binding.physicalPtyId || after.transportGeneration !== binding.transportGeneration) return;
+        } else {
+          result = await gitDiff(diffRef.repoPath, diffRef.relativePath, diffRef.stage);
+        }
+        if (live) setDiff(result);
+      } catch (reason) {
+        if (live) setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    };
+    void load();
+    return () => {
+      live = false;
+      if (isRemote) void cancelGitDiff(requestId).catch(() => {});
+    };
+  }, [diffRef.repoPath, diffRef.relativePath, diffRef.stage, retry, nonce, session.id, isRemote, disconnected, session.ptyId, session.transportGeneration]);
+
+  const copyHunk = async (text: string) => {
+    const ok = await copyText(text);
+    useUIStore.getState().addToast({
+      sessionId: session.id,
+      title: t(ok ? "diff.toast.hunk_copied" : "diff.toast.copy_failed"),
+      subtitle: ok ? t("diff.toast.hunk_copied_lines", { count: text.split("\n").length }) : t("diff.toast.clipboard_unavailable"),
+      variant: ok ? "success" : "error",
+    });
+  };
+
+  if (disconnected) return <div role="status" style={{ padding: 16, color: "var(--c-warning-text)", fontSize: "var(--fs-secondary)" }}>{t("reader.disconnected")}</div>;
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <input
+        ref={searchRef}
+        className="ui-native-control"
+        aria-label={t("diff.search.placeholder")}
+        placeholder={t("diff.search.placeholder")}
+        value={query}
+        onCompositionStart={() => { isComposingRef.current = true; }}
+        onCompositionEnd={(event) => { isComposingRef.current = false; setQuery(event.currentTarget.value); }}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => { if (!event.nativeEvent.isComposing && !isComposingRef.current && event.key === "Escape") { event.stopPropagation(); setQuery(""); } }}
+        style={{ margin: 8, padding: "6px 8px", border: "1px solid var(--c-control-border)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-primary)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)" }}
+      />
+      <MiniDiff diff={diff} error={error} searchQuery={query} filePath={diffRef.relativePath} onRetry={() => setRetry((value) => value + 1)} onCopyHunk={(text) => { void copyHunk(text); }} />
     </div>
   );
 }
@@ -369,60 +442,24 @@ function fileRowKey(file: Pick<FileChange, "stage" | "path">): string {
   return `${file.stage}:${file.path}`;
 }
 
-let nextDiffRequest = 0;
-function createDiffRequestId(): string {
-  nextDiffRequest += 1;
-  return `diff-${Date.now().toString(36)}-${nextDiffRequest.toString(36)}`;
-}
-
-// Defined outside DiffPanel so React can reconcile rows by identity instead of
-// unmounting/remounting every row on each DiffPanel state change. The previous
-// nested definition created a fresh component type per render, which destroyed
-// and recreated every IntersectionObserver on every diffs/loadingDiffKeys bump.
+// Defined outside DiffPanel so React can reconcile rows by identity.
 function DiffFileRow({
   file,
-  expanded,
-  diffs,
-  diffErrors,
-  searchQuery,
   isRemote,
   repoPath,
   sessionId,
-  loadFileDiff,
-  onToggle,
-  onSearchQueryChange,
-  onCopyHunk,
-  isComposingRef,
+  onOpen,
   t,
 }: DiffFileRowProps) {
   const key = fileRowKey(file);
-  const rowRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const node = rowRef.current;
-    if (!node) return;
-    const scrollRoot = node.closest("[data-diff-scroll-root]") as HTMLElement | null;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          void loadFileDiff(file);
-        }
-      },
-      { root: scrollRoot, rootMargin: "120px 0px", threshold: 0 },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [file, expanded, key, loadFileDiff]);
-
   return (
-    <div ref={rowRef} key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
+    <div key={key} className="diff-file-row" style={{ background: "transparent", borderBottom: "1px solid var(--c-border-3)", overflow: "hidden" }}>
       <div
         role="button"
         tabIndex={0}
-        aria-expanded={expanded}
-        onClick={() => onToggle(file)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(file); } }}
+        aria-label={file.path}
+        onClick={() => onOpen(file)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(file); } }}
         className="hover-bg"
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
       >
@@ -462,54 +499,8 @@ function DiffFileRow({
         <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
           +{file.added} −{file.removed}
         </span>
-        {chevronIcon(expanded)}
+        {chevronIcon(false)}
       </div>
-      {expanded && (
-        <div style={{ animation: "contentIn var(--duration-normal) var(--ease-out-expo)", overflow: "hidden" }}>
-          {diffs[key]?.kind === "text" && (
-            <div style={{ padding: "4px 8px 2px", borderBottom: "1px solid var(--c-border-3)" }}>
-              <input
-                className="ui-native-control"
-                type="text"
-                placeholder={t("diff.search.placeholder")}
-                value={searchQuery}
-                onCompositionStart={() => { isComposingRef.current = true; }}
-                onCompositionEnd={(e) => {
-                  isComposingRef.current = false;
-                  onSearchQueryChange((e.target as HTMLInputElement).value);
-                }}
-                onChange={(e) => {
-                  if (isComposingRef.current) return;
-                  onSearchQueryChange(e.target.value);
-                }}
-                onKeyDown={(e) => {
-                  if (e.nativeEvent.isComposing) return;
-                  if (e.key === "Escape") onSearchQueryChange("");
-                }}
-                style={{
-                  width: "100%",
-                  fontSize: "var(--fs-meta)",
-                  fontFamily: "var(--font-mono)",
-                  padding: "3px 6px",
-                  background: "var(--c-bg-1)",
-                  color: "var(--c-text-2)",
-                  border: "1px solid var(--c-control-border)",
-                  borderRadius: "var(--r-btn)",
-                  outline: "none",
-                }}
-              />
-            </div>
-          )}
-          <MiniDiff
-            diff={diffs[key]}
-            error={diffErrors[key]}
-            searchQuery={searchQuery}
-            onCopyHunk={onCopyHunk}
-            onRetry={() => loadFileDiff(file)}
-            filePath={file.path}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -558,36 +549,8 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
 
   const [remote, setRemote] = useState<RemoteState | null>(null);
-  const [expandedFileKey, setExpandedFileKey] = useState<string | null>(null);
-  const [diffs, setDiffs] = useState<Record<string, FileDiff>>({});
-  const [diffErrors, setDiffErrors] = useState<Record<string, string>>({});
-  const [searchQuery, setSearchQuery] = useState("");
-  const isComposingRef = useRef(false);
-  const diffGenerationRef = useRef(0);
-  const activeDiffRequestsRef = useRef(new Map<string, { id: string; remote: boolean }>());
-  const repoPathRef = useRef(repoPath);
-  const sessionIdRef = useRef(session.id);
-  repoPathRef.current = repoPath;
-  sessionIdRef.current = session.id;
-
-  const cancelDiffRequest = useCallback((key: string) => {
-    const request = activeDiffRequestsRef.current.get(key);
-    if (!request) return;
-    activeDiffRequestsRef.current.delete(key);
-    if (request.remote) void cancelGitDiff(request.id).catch(() => {});
-  }, []);
-
-  const cancelAllDiffRequests = useCallback(() => {
-    for (const key of activeDiffRequestsRef.current.keys()) cancelDiffRequest(key);
-  }, [cancelDiffRequest]);
-
   useEffect(() => {
     let cancelled = false;
-    cancelAllDiffRequests();
-    diffGenerationRef.current += 1;
-    setExpandedFileKey(null);
-    setDiffs({});
-    setDiffErrors({});
     setRemote(null);
     if (notGit || (!isRemote && !repoPath)) return () => { cancelled = true; };
     // I3: remote (SSH) sessions now also resolve ahead/behind over the exec
@@ -595,112 +558,27 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     // of always showing a bare "Git" label.
     if (isRemote) {
       setRemote(session.gitRemoteState ?? null);
-      return () => { cancelled = true; cancelAllDiffRequests(); };
+      return () => { cancelled = true; };
     }
     gitAheadBehind(repoPath!)
       .then((r) => !cancelled && setRemote(r))
       .catch(() => !cancelled && setRemote(null));
     return () => {
       cancelled = true;
-      cancelAllDiffRequests();
     };
-  }, [repoPath, session.id, session.ptyId, session.dir, session.gitRemoteState, nonce, notGit, isRemote, cancelAllDiffRequests]);
-
-  useEffect(() => {
-    if (expandedFileKey && !files.some((f) => fileRowKey(f) === expandedFileKey)) {
-      cancelDiffRequest(expandedFileKey);
-      setExpandedFileKey(null);
-    }
-  }, [cancelDiffRequest, files, expandedFileKey]);
+  }, [repoPath, session.id, session.ptyId, session.dir, session.gitRemoteState, nonce, notGit, isRemote]);
 
   const toggleFile = useCallback((file: FileChange) => {
-    const key = fileRowKey(file);
-    if (expandedFileKey === key) {
-      cancelDiffRequest(key);
-      setExpandedFileKey(null);
-      setSearchQuery("");
-      return;
-    }
-    if (expandedFileKey) cancelDiffRequest(expandedFileKey);
-    setExpandedFileKey(key);
-    setSearchQuery("");
-  }, [cancelDiffRequest, expandedFileKey]);
-
-  const copyHunk = useCallback(async (text: string) => {
-    const ok = await copyText(text);
-    useUIStore.getState().addToast(ok
-      ? {
-          sessionId: session.id,
-          title: t("diff.toast.hunk_copied"),
-          subtitle: t("diff.toast.hunk_copied_lines", { count: text.split("\n").length }),
-          variant: "success",
-        }
-      : {
-          sessionId: session.id,
-          title: t("diff.toast.copy_failed"),
-          subtitle: t("diff.toast.clipboard_unavailable"),
-          variant: "error",
-        });
-  }, [session.id, t]);
-
-  const loadFileDiff = useCallback(async (file: FileChange) => {
-    const key = fileRowKey(file);
-    if (diffs[key] || activeDiffRequestsRef.current.has(key)) return;
-    const generation = diffGenerationRef.current;
-    const requestedRepoPath = repoPath;
-    const requestedSessionId = session.id;
-    const requestId = createDiffRequestId();
-    activeDiffRequestsRef.current.set(key, { id: requestId, remote: isRemote });
-    setDiffErrors((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    const diffPromise = isRemote
-      ? (session.ptyId !== undefined ? sshGitDiff(session.ptyId, session.dir, file.path, file.stage, requestId) : Promise.reject(new Error("no ptyId")))
-      : (requestedRepoPath ? gitDiff(requestedRepoPath, file.path, file.stage) : Promise.reject(new Error("no repoPath")));
-    try {
-      const d = await diffPromise;
-      if (
-        activeDiffRequestsRef.current.get(key)?.id === requestId &&
-        diffGenerationRef.current === generation &&
-        repoPathRef.current === requestedRepoPath &&
-        sessionIdRef.current === requestedSessionId
-      ) {
-        setDiffs((prev) => ({ ...prev, [key]: d }));
-      }
-    } catch (e) {
-      if (
-        activeDiffRequestsRef.current.get(key)?.id === requestId
-        && diffGenerationRef.current === generation
-        && repoPathRef.current === requestedRepoPath
-        && sessionIdRef.current === requestedSessionId
-      ) {
-        console.error("[DiffPanel] git_diff load failed", { repoPath: requestedRepoPath, file: file.path, error: e });
-        setDiffErrors((prev) => ({ ...prev, [key]: e instanceof Error ? e.message : String(e) }));
-      }
-    } finally {
-      if (activeDiffRequestsRef.current.get(key)?.id === requestId) {
-        activeDiffRequestsRef.current.delete(key);
-      }
-    }
-  }, [diffs, isRemote, repoPath, session.id, session.ptyId, session.dir]);
-
-  // Hold the latest loadFileDiff in a ref so DiffFileRow's IntersectionObserver
-  // effect doesn't re-subscribe every time the diff cache changes. The
-  // callback identity churn is harmless (the guard inside prevents duplicate
-  // loads), but re-subscribing every observer on every load completion is
-  // wasted work.
-  const loadFileDiffRef = useRef(loadFileDiff);
-  loadFileDiffRef.current = loadFileDiff;
-  const loadFileDiffStable = useCallback((file: FileChange) => {
-    loadFileDiffRef.current(file);
-  }, []);
+    const openedRepoPath = isRemote ? session.dir : repoPath;
+    if (!openedRepoPath) return;
+    const path = `${openedRepoPath.replace(/\/$/, "")}/${file.path}`;
+    const ref = resourceRefForSession(session, path);
+    ref.diff = { stage: file.stage, repoPath: openedRepoPath, relativePath: file.path };
+    void openResource(ref, "preview").catch(() => useUIStore.getState().addToast({ sessionId: session.id, title: t("diff.mini.load_failed"), subtitle: "", variant: "error" }));
+  }, [isRemote, repoPath, session, t]);
 
   const hasChanges = files.length > 0;
   const refresh = () => {
-    cancelAllDiffRequests();
     useSessionsStore.getState().refreshGit(session.id);
   };
 
@@ -772,10 +650,6 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                       count={section.files.length}
                       expanded={!collapsed}
                       onToggle={() => {
-                        if (!collapsed && expandedFileKey && section.files.some((file) => fileRowKey(file) === expandedFileKey)) {
-                          cancelDiffRequest(expandedFileKey);
-                          setExpandedFileKey(null);
-                        }
                         toggleDiffSectionCollapsed(section.key);
                       }}
                       titleColor={section.titleColor}
@@ -785,18 +659,10 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
                       <DiffFileRow
                         key={fileRowKey(file)}
                         file={file}
-                        expanded={expandedFileKey === fileRowKey(file)}
-                        diffs={diffs}
-                        diffErrors={diffErrors}
-                        searchQuery={searchQuery}
                         isRemote={isRemote}
                         repoPath={repoPath}
                         sessionId={session.id}
-                        loadFileDiff={loadFileDiffStable}
-                        onToggle={toggleFile}
-                        onSearchQueryChange={setSearchQuery}
-                        onCopyHunk={copyHunk}
-                        isComposingRef={isComposingRef}
+                        onOpen={toggleFile}
                         t={t}
                       />
                     ))}

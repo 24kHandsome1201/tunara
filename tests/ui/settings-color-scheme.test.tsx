@@ -65,12 +65,33 @@ test("appearance reset confirms and preserves terminal, accessibility and shortc
   useUIStore.setState({ ...preserved, fontFamily: "Custom Mono", fontSize: 20 });
   vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
   render(<Settings onClose={() => {}} />);
-  fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reset appearance to defaults" }));
   await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
   expect(useUIStore.getState().fontFamily).toBe("Custom Mono");
-  fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reset appearance to defaults" }));
   await waitFor(() => expect(useUIStore.getState().fontFamily).toBe(DEFAULT_SETTINGS.fontFamily));
   expect(useUIStore.getState()).toMatchObject({ ...preserved, fontSize: DEFAULT_SETTINGS.fontSize, theme: DEFAULT_SETTINGS.theme });
+});
+
+test("font family and size are grouped and IME Enter does not commit a draft", () => {
+  useUIStore.setState({ fontFamily: "JetBrains Mono", fontSize: 14 });
+  render(<Settings onClose={() => {}} />);
+
+  const family = screen.getByRole("textbox", { name: "Font family" });
+  fireEvent.change(family, { target: { value: "输入中的字体" } });
+  fireEvent.keyDown(family, { key: "Enter", keyCode: 229, isComposing: true });
+  expect(useUIStore.getState().fontFamily).toBe("JetBrains Mono");
+
+  fireEvent.click(screen.getByRole("button", { name: "Increase · Font size" }));
+  expect(useUIStore.getState().fontSize).toBe(15);
+});
+
+test("transfer limits are under connection and transfer rather than About", () => {
+  render(<Settings onClose={() => {}} />);
+  const transferSection = document.getElementById("settings-section-ssh");
+  const aboutSection = document.getElementById("settings-section-about");
+  expect(transferSection?.textContent).toContain("Remote transfers");
+  expect(aboutSection?.textContent).not.toContain("Remote transfers");
 });
 
 test("System, Light, and Dark are one mutually exclusive synchronized choice", async () => {

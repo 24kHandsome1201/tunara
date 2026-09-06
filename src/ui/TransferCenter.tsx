@@ -164,7 +164,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     <span>{item.source}</span><span aria-hidden="true">→</span><span>{item.destination}</span>
                   </div>
                   <div className="transfer-meta">
-                    {t(`transfer.direction.${item.direction}`)} · {item.binding.logicalSessionId} / PTY {item.binding.physicalPtyId} · {t("transfer.attempt", { attempt: item.attempt })}
+                    {t(`transfer.direction.${item.direction}`)} · {t("transfer.attempt", { attempt: item.attempt })}
                     {item.status === "running" && (() => {
                       const snapshot = transferRate(item.rateSamples ?? []);
                       if (!snapshot || snapshot.bytesPerSec <= 0) return null;
@@ -188,7 +188,18 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     )}
                     {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") announceRef.current(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
                   </div>
-                  {(item.status === "failed" || item.status === "needsReconcile") && error && <div role="alert" className="transfer-warning">{t("transfer.error_detail", { error: safeTransferErrorDetail(error) })}</div>}
+                  {(item.status === "failed" || item.status === "needsReconcile") && error && (
+                    <div role="alert" className="transfer-warning">
+                      {t(/permission denied|access denied|EACCES/i.test(error) ? "transfer.error.permission"
+                        : /no space|disk full|ENOSPC/i.test(error) ? "transfer.error.space"
+                        : /disconnect|connection.*(?:closed|lost)|offline|timed out/i.test(error) ? "transfer.error.connection"
+                        : "transfer.error.generic")}
+                      <details style={{ marginTop: 4 }}>
+                        <summary style={{ cursor: "pointer" }}>{t("transfer.error.details")}</summary>
+                        {t("transfer.error_detail", { error: safeTransferErrorDetail(error) })}
+                      </details>
+                    </div>
+                  )}
                   {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" className="transfer-warning">{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
                   {item.event?.totalBytes != null && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
                 </li>

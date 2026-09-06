@@ -22,8 +22,7 @@ beforeEach(() => {
     readers: {},
     focusedPaneId: null,
     split: { root: null },
-    inspectorLocked: false,
-    inspectorLockSessionId: null,
+    inspectorTab: "files",
     inspectorPreviewOpenedSessionIds: {},
   });
 });

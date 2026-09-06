@@ -24,24 +24,6 @@ test("pure mode keybinding and store fields are gone", () => {
   assert.doesNotMatch(ui, /setPresentationMode|togglePresentationMode/);
 });
 
-test("chrome fade is a runtime projection that does not persist", () => {
-  const init = read("src/app/useInit.ts");
-  const snapshotBuilder = init.slice(init.indexOf("function buildSnapshot"), init.indexOf("export function useInit"));
-  const persistSnapshot = read("src/state/persist-snapshot.ts");
-  const fade = read("src/app/useChromeFade.ts");
-  const app = read("src/app/App.tsx");
-  const main = read("src/ui/MainArea.tsx");
-
-  assert.doesNotMatch(snapshotBuilder, /chromeFaded|presentationMode/);
-  assert.match(persistSnapshot, /toggle-presentation-mode/);
-  assert.match(fade, /export function useChromeFade/);
-  assert.match(app, /data-chrome-faded=\{chromeFaded \? "true" : undefined\}/);
-  assert.match(app, /key="terminal-main-area"/);
-  assert.match(main, /key=\{`\$\{session\.id\}:\$\{session\.terminalMountNonce \?\? session\.reconnectNonce \?\? 0\}`\}/);
-  assert.match(main, /<TerminalPane session=\{s\} isActive=\{effectiveFocusedPaneId === s\.id\} \/>/);
-  assert.match(main, /<ReaderPane session=\{s\} active=\{effectiveFocusedPaneId === readerPaneId\(s\.id\)\} \/>/);
-});
-
 test("native context-menu guard does not consume mouse down or up", () => {
   const guard = read("src/app/useNativeContextMenuGuard.ts");
   assert.match(guard, /addEventListener\("contextmenu", suppressContextMenu, \{ capture: true \}\)/);

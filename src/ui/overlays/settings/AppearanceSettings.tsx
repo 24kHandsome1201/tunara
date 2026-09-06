@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUIStore } from "@/state/ui";
 import { isDarkTheme } from "@/styles/terminalTheme";
 import { useT, LANGUAGES, type Language } from "@/modules/i18n";
@@ -9,6 +9,7 @@ import {
   SECTION_LABEL,
   SECTION_LABEL_INLINE,
   Segmented,
+  Stepper,
   Toggle,
   TOGGLE_ROW,
   type ColorSchemeId,
@@ -43,12 +44,15 @@ export function AppearanceSettings() {
   const setCursorBlink = useUIStore((s) => s.setCursorBlink);
   const fontFamily = useUIStore((s) => s.fontFamily);
   const setFontFamily = useUIStore((s) => s.setFontFamily);
+  const fontSize = useUIStore((s) => s.fontSize);
+  const setFontSize = useUIStore((s) => s.setFontSize);
   const fontLigatures = useUIStore((s) => s.fontLigatures);
   const setFontLigatures = useUIStore((s) => s.setFontLigatures);
   const nerdFontFallback = useUIStore((s) => s.nerdFontFallback);
   const setNerdFontFallback = useUIStore((s) => s.setNerdFontFallback);
 
   const [fontDraft, setFontDraft] = useState(fontFamily);
+  const composingFont = useRef(false);
   useEffect(() => { setFontDraft(fontFamily); }, [fontFamily]);
 
   const [systemIsDark, setSystemIsDark] = useState(() => isDarkTheme("system"));
@@ -106,13 +110,17 @@ export function AppearanceSettings() {
         />
       </div>
       <div style={{ marginBottom: 24 }}>
-        <div style={SECTION_LABEL}>{t("settings.appearance.font_family")}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <label htmlFor="settings-font-family" style={SECTION_LABEL}>{t("settings.appearance.font_family")}</label>
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <input
+            id="settings-font-family"
             value={fontDraft}
             onChange={(e) => setFontDraft(e.target.value)}
-            onBlur={() => setFontFamily(fontDraft)}
+            onCompositionStart={() => { composingFont.current = true; }}
+            onCompositionEnd={() => { composingFont.current = false; }}
+            onBlur={() => { if (!composingFont.current) setFontFamily(fontDraft); }}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === "Enter") {
                 setFontFamily(fontDraft);
                 e.currentTarget.blur();
@@ -121,6 +129,10 @@ export function AppearanceSettings() {
             spellCheck={false}
             style={{ flex: "1 1 260px", minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-body)", outline: "none" }}
           />
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{t("settings.appearance.font_size")}</span>
+            <Stepper display={`${fontSize}px`} valueMinWidth={48} decrementLabel={`${t("common.decrement")} · ${t("settings.appearance.font_size")}`} incrementLabel={`${t("common.increment")} · ${t("settings.appearance.font_size")}`} onDecrement={() => setFontSize(Math.max(10, fontSize - 1))} onIncrement={() => setFontSize(Math.min(22, fontSize + 1))} />
+          </div>
           <button
             type="button"
             aria-pressed={nerdFontFallback}
@@ -162,6 +174,17 @@ export function AppearanceSettings() {
         </div>
         <CursorStylePicker value={cursorStyle} onChange={setCursorStyle} />
       </div>
+      <button
+        type="button"
+        onClick={async () => {
+          const { confirm } = await import("@tauri-apps/plugin-dialog");
+          if (await confirm(t("settings.appearance.reset_confirm"), { kind: "warning" })) useUIStore.getState().resetAppearance();
+        }}
+        className="hover-bg settings-action-button"
+        style={{ marginTop: 18, padding: "6px 12px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", background: "transparent", color: "var(--c-text-4)", cursor: "pointer" }}
+      >
+        {t("settings.appearance.reset_defaults")}
+      </button>
     </div>
   );
 }

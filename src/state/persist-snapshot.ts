@@ -176,7 +176,7 @@ export const DEFAULT_UI_LAYOUT_V2: PersistedUILayoutV2 = {
   collapsedDirs: {},
   collapsedDiffSections: {},
   split: emptySplitState(),
-  inspectorTab: "changes",
+  inspectorTab: "files",
 };
 
 export function toPersistedSession(s: Session): PersistedSession {

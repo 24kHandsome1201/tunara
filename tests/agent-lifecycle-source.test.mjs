@@ -475,13 +475,10 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(types, /agentResume\?: AgentResumeIntent;/);
   assert.match(types, /suppressShellTitle\?: boolean;/);
   assert.match(types, /export function isPromptLikeShellTitle\(title: string\): boolean/);
-  assert.match(types, /const lastCommand = s\.lastCommand && !isPromptLikeShellTitle\(s\.lastCommand\)/);
-  // Agent sessions show "name · activity"; the bare name when idle. Activity is
-  // derived from agentActivity (Claude Code's OSC title is just its own name).
-  assert.match(types, /export function agentActivityLabel\(activity\?: AgentActivity\): string \| undefined/);
-  assert.match(types, /const hasMeaningfulShellTitle =[\s\S]*&& !s\.suppressShellTitle[\s\S]*&& !isPromptLikeShellTitle\(s\.shellTitle\)[\s\S]*&& s\.shellTitle !== shortDir\(s\.dir\);/);
-  assert.match(types, /const status = agentActivityLabel\(s\.agentActivity\);[\s\S]*primary = status \? `\$\{name\} · \$\{status\}` : name;/);
-  assert.match(types, /primary = s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : t\("session\.default_title"\);/);
+  // Sidebar identity is the stable session title, independent of command,
+  // shell-title, and agent activity updates.
+  assert.doesNotMatch(types, /export function agentActivityLabel/);
+  assert.match(types, /const primary = s\.customTitle[\s\S]*\|\| \(s\.title && !isPromptLikeShellTitle\(s\.title\) \? s\.title : t\("session\.default_title"\)\);/);
   assert.match(source, /agentActivity: opts\?\.agent \? initialAgentActivity\(opts\.agent\) : undefined,/);
   assert.match(source, /agentDetectedUpdate\(session, agent\)/);
   assert.match(read("src/modules/terminal/lib/agent-resume.ts"), /export function buildAgentResumeIntent/);
@@ -506,7 +503,7 @@ test("session store separates identity, busy state, exit, and cwd refresh", () =
   assert.match(lifecycle, /export function agentDetectedUpdate\([\s\S]*?if \(!session \|\| session\.agent === agent\) return null;[\s\S]*?agentActivity: initialAgentActivity\(agent\),[\s\S]*?runState: "idle",/);
   assert.match(lifecycle, /export function agentReadyUpdate\([\s\S]*?session\.agentActivity === "idle"\) return null;[\s\S]*?agentActivity: "idle",[\s\S]*?runState: "idle",[\s\S]*?completedTurn \? \{ refreshGit: true \} : \{\}/);
   assert.match(lifecycle, /export function agentBusyUpdate\([\s\S]*?agentActivity: "running",[\s\S]*?runState: "idle",/);
-  assert.match(lifecycle, /export function agentExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?title: t\("session\.default_title"\),[\s\S]*?suppressShellTitle: true,[\s\S]*?refreshGit: true,/);
+  assert.match(lifecycle, /export function agentExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?suppressShellTitle: true,[\s\S]*?refreshGit: true,/);
   assert.match(lifecycle, /export function commandDetectedUpdate\([\s\S]*?session\?\.agent \|\| isPromptLikeShellTitle\(command\)[\s\S]*?suppressShellTitle: false,/);
   assert.match(lifecycle, /export function commandFinishedUpdate\([\s\S]*?if \(session\.agent \|\| !session\.lastCommand\)[\s\S]*?runState: exitCode === 0 \? "done" : "failed",/);
   assert.match(lifecycle, /export function terminalExitedUpdate\([\s\S]*?agent: undefined,[\s\S]*?agentActivity: undefined,[\s\S]*?runState: exitCode === 0 \? "done" : "failed",[\s\S]*?refreshGit: true,/);
@@ -563,22 +560,17 @@ test("runtime event consumers call semantic lifecycle transitions", () => {
   assert.match(terminalExit, /handleTerminalExited\(sessionId, code\);/);
 });
 
-test("UI renders sidebar progress only when an agent is busy", () => {
+test("UI keeps only explicit terminal progress in the sidebar", () => {
   const card = read("src/ui/SessionCard.tsx");
   const attentionRow = read("src/ui/AttentionRow.tsx");
   const main = read("src/ui/MainArea.tsx");
   const diff = read("src/ui/DiffPanel.tsx");
 
-  assert.match(card, /import \{ isSessionBusy, sessionDisplayRunState \}/);
+  assert.match(card, /import \{ sessionDisplayRunState \}/);
   assert.match(card, /const displayRunState = sessionDisplayRunState\(session\);/);
-  assert.match(card, /const busy = isSessionBusy\(session\);/);
-  assert.match(card, /const showTerminalProgress = !!session\.terminalProgress;/);
-  assert.match(card, /const showBusyProgress = !!session\.agent && busy && !showTerminalProgress;/);
   assert.match(card, /function TerminalProgressBar/);
   assert.match(card, /session\.terminalProgress && <TerminalProgressBar/);
-  assert.match(card, /showBusyProgress && <BusyProgress \/>/);
-  assert.doesNotMatch(card, /agentBusyProgress/);
-  assert.doesNotMatch(card, /const showBusyProgress = session\.runState === "running";/);
+  assert.doesNotMatch(card, /BusyProgress|showBusyProgress|agentBusyProgress/);
   assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
   assert.doesNotMatch(attentionRow, /agentResumePendingInput|gbar\.action\.review/);
   assert.doesNotMatch(main, /AgentStatusBar/);

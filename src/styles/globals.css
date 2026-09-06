@@ -18,20 +18,12 @@ html, body, #root {
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 
-/* Chrome fade: terminal focus dims sidebar/titlebar/inspector without
-   collapsing layout (no column-width reflow). Hovering chrome restores it.
-   Docked sidebar/inspector width stays instant so the terminal does not
-   reflow; overlay drawers may translate. */
+/* Docked chrome stays readable and never animates terminal column widths. */
 .tunara-titlebar,
 .tunara-sidebar,
 .tunara-panel {
   opacity: 1;
-  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
-}
-.chrome-faded .tunara-titlebar,
-.chrome-faded .tunara-sidebar,
-.chrome-faded .tunara-panel {
-  opacity: 0.6;
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .tunara-sidebar[data-overlay="true"] {
   animation: sidebarDrawerIn var(--dur-base) var(--ease-out);

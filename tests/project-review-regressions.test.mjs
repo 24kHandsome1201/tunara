@@ -97,7 +97,7 @@ test("discovery flows keep empty-state recents and preview prompts", () => {
   assert.match(app, /WorkspaceEmptyState/);
   assert.match(empty, /emptyStateRecentDirs\(recentDirs, 3\)/);
   assert.match(empty, /fsScanRecentRepos/);
-  assert.match(empty, /app\.empty\.choose_folder/);
+  assert.match(empty, /app\.empty\.open_terminal_in_folder/);
   assert.match(empty, /app\.empty\.nearby/);
   assert.match(init, /if \(result\.status === "empty"\) \{\s*workspaceHydrated = true;\s*useUIStore\.setState\(\{ ready: true \}\);/);
   assert.doesNotMatch(sessions, /createSession\("~"/);
@@ -284,9 +284,9 @@ test("remote diff previews cancel superseded SSH exec requests", () => {
   const bridge = read("src/modules/git/git-bridge.ts");
   const remoteGit = read("src-tauri/src/modules/ssh/remote_git.rs");
 
-  assert.match(diff, /activeDiffRequestsRef/);
-  assert.match(diff, /cancelGitDiff\(request\.id\)/);
-  assert.match(diff, /activeDiffRequestsRef\.current\.get\(key\)\?\.id === requestId/);
+  assert.match(diff, /live = false/);
+  assert.match(diff, /cancelGitDiff\(requestId\)/);
+  assert.match(diff, /after\.transportGeneration !== binding\.transportGeneration/);
   assert.match(bridge, /sshGitDiff\([\s\S]*requestId: string/);
   assert.match(bridge, /invoke<boolean>\("fs_cancel_search", \{ requestId \}\)/);
   assert.match(remoteGit, /pub async fn ssh_git_diff\([\s\S]*request_id: String/);
@@ -805,11 +805,11 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.doesNotMatch(bridge, /summary: string/);
   assert.match(diff, /session\.gitState === "notGit"/);
   assert.match(diff, /function fileRowKey\(file: Pick<FileChange, "stage" \| "path">\)/);
-  assert.match(diff, /expandedFileKey/);
-  assert.match(diff, /gitDiff\(requestedRepoPath, file\.path, file\.stage\)/);
-  assert.match(diff, /diffGenerationRef/);
-  assert.match(diff, /repoPathRef\.current === requestedRepoPath/);
-  assert.match(diff, /setDiffErrors\(\(prev\) => \(\{ \.\.\.prev, \[key\]: e instanceof Error \? e\.message : String\(e\) \}\)\)/);
+  assert.doesNotMatch(diff, /expandedFileKey/);
+  assert.match(diff, /gitDiff\(diffRef\.repoPath, diffRef\.relativePath, diffRef\.stage\)/);
+  assert.match(diff, /if \(live\) setDiff\(result\)/);
+  assert.match(diff, /ref\.diff = \{ stage: file\.stage, repoPath: openedRepoPath, relativePath: file\.path \}/);
+  assert.match(diff, /if \(live\) setError/);
   assert.match(diff, /t\("diff\.mini\.retry"\)/);
   assert.match(diff, /useSessionsStore\.getState\(\)\.refreshGit\(session\.id\)/);
   assert.doesNotMatch(diff, /\bgitStatus\b/);
@@ -943,7 +943,7 @@ test("session store keeps active sessions visible in split mode and cleans per-s
 
   assert.match(source, /function ensureSessionVisibleInSplit\(sessionId: string, previousActiveSessionId: string \| null\)/);
   assert.match(source, /previousActiveSessionId && splitLayoutHasSession\(split, previousActiveSessionId\)[\s\S]*ui\.replaceSplitPane\(targetSessionId, sessionId\)/);
-  assert.match(source, /ensureSessionVisibleInSplit\(s\.id, previousActiveSessionId\)/);
+  assert.match(source, /ensureSessionVisibleInSplit\(session\.id, previousActiveSessionId\)/);
   assert.match(source, /if \(accepted\) \{[\s\S]*ensureSessionVisibleInSplit\(id, currentId\);[\s\S]*\}/);
   assert.match(source, /const \{ \[id\]: _gitNonce, \.\.\.gitNonce \} = state\.gitNonce;/);
   assert.match(source, /scheduleGitRefresh\(id, set\)/);
@@ -1199,7 +1199,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(zhDict, /"settings\.cli\.path_label": "CLI 路径"/);
   assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
   assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
-  assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
+  assert.match(settings, /confirm\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
 });
 
@@ -1261,7 +1261,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sessions, /unconfirmedBusy\.length > 0/);
   assert.match(sessions, /get\(\)\.closeSessions\(sessionIds, \{ toastSubtitle: t\("session\.close\.all_running_hint"\) \}\)/);
   assert.match(sessionCard, /e\.key === "F2"/);
-  assert.match(sessionCard, /active && e\.key === "Enter"/);
+  assert.match(sessionCard, /e\.key === "Enter" \|\| e\.key === " "/);
   assert.match(sessionCard, /useDestructiveConfirmCountdown/);
   assert.match(sidebarGroup, /confirmCloseAt=\{getNumberRecordValue\(closeConfirmations, s\.id\)\}/);
   assert.doesNotMatch(sidebar, /confirmClose=\{getNumberRecordValue\(closeConfirmations, s\.id\) > 0\}/);
@@ -1357,7 +1357,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(terminalSearch, /<SearchIcon size=\{13\} color=\{hasResults \? "var\(--c-accent\)" : noMatch \? "var\(--c-error\)" : "var\(--c-text-5\)"\} \/>/);
   assert.match(palette, /<SearchIcon size=\{14\} \/>/);
   assert.match(globals, /\.session-card-rail/);
-  assert.match(sessionCard, /paddingLeft: 6/);
+  assert.match(sessionCard, /padding: "7px 10px 7px 12px"/);
   assert.match(sessionCard, /data-session-card-id=\{session\.id\}/);
   assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
   assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
@@ -1388,7 +1388,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.doesNotMatch(settings, /\[9, 6, 8\]/);
   assert.doesNotMatch(settings, /key=\{i\}/);
   assert.doesNotMatch(settings, /boxShadow: selected \?/);
-  assert.match(settings, /className="no-scrollbar scroll-fade-y"/);
+  assert.match(settings, /className="scroll-fade-y"/);
   assert.match(diff, /function remoteLabel\(remote: RemoteState \| null\): string/);
   // buildMiniDiffRows now lives in src/ui/lib/diff-parse.ts and is consumed via import.
   const diffParseModule = read("src/ui/lib/diff-parse.ts");
@@ -1405,18 +1405,16 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   // Truncated hint must render whenever the diff is truncated — including under a no-match search.
   assert.match(diff, /diff\.truncated && <div[^>]*>\{t\("diff\.mini\.truncated"\)\}<\/div>/);
   assert.doesNotMatch(diff, /diff\.truncated && !q/);
-  // Search input is IME-safe: composition events gate the search query update
-  // so CJK typing doesn't flicker. DiffFileRow now receives a stable
-  // onSearchQueryChange prop instead of calling setSearchQuery directly.
+  // Reader search preserves IME composition rather than treating Escape as
+  // a command while a candidate is being selected.
   assert.match(diff, /isComposingRef = useRef\(false\)/);
   assert.match(diff, /onCompositionStart=\{\(\) => \{ isComposingRef\.current = true; \}\}/);
   assert.match(diff, /onCompositionEnd=\{/);
-  assert.match(diff, /if \(isComposingRef\.current\) return;\s*onSearchQueryChange\(e\.target\.value\)/);
-  assert.match(diff, /if \(e\.nativeEvent\.isComposing\) return;/);
+  assert.match(diff, /!event\.nativeEvent\.isComposing && !isComposingRef\.current/);
   // DiffFileRow is defined outside DiffPanel so React reconciles rows by
   // identity instead of remounting every row on each state change.
   assert.match(diff, /function DiffFileRow\(/);
-  assert.match(diff, /loadFileDiffStable/);
+  assert.match(diff, /openResource\(ref, "preview"\)/);
   assert.match(diff, /className="scroll-fade-y"/);
   assert.doesNotMatch(diff, /className="no-scrollbar scroll-fade-y"/);
   assert.match(explorer, /compactRelativePath\(/);

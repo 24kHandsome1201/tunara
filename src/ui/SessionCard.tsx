@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, useRef, useCallback } from "react";
 import { type Session, type TerminalProgress, deriveTitle } from "./types";
 import { getAgentCircleStyle, getAgentIcon } from "./agents";
-import { isSessionBusy, sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
+import { sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { sessionCue } from "@/modules/session/session-attention";
 import { sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import { SessionCueDot } from "./SessionCueDot";
@@ -12,7 +12,6 @@ import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { Icon, Terminal } from "@/ui/icons";
 import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
-import { formatElapsed } from "./lib/elapsed";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
@@ -70,34 +69,6 @@ function SessionIcon({ session }: { session: Session }) {
   );
 }
 
-function BusyProgress() {
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        left: 10,
-        right: 10,
-        bottom: 0,
-        height: 2,
-        overflow: "hidden",
-        borderRadius: 1,
-        background: "color-mix(in srgb, var(--c-accent) 14%, transparent)",
-      }}
-    >
-      <span
-        style={{
-          display: "block",
-          width: "38%",
-          height: "100%",
-          borderRadius: 1,
-          background: "var(--c-accent)",
-        }}
-      />
-    </div>
-  );
-}
-
 function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
   const t = useT();
   const color = progress.state === "error"
@@ -143,35 +114,6 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
   );
 }
 
-function useElapsed(startedAt: number | undefined, active: boolean): string | null {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!active || !startedAt) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [active, startedAt]);
-  if (!startedAt || !active) return null;
-  return formatElapsed(now - startedAt);
-}
-
-function DiffStat({ added, removed }: { added: number; removed: number }) {
-  if (added === 0 && removed === 0) return null;
-  return (
-    <span style={{ display: "inline-flex", gap: 4, flexShrink: 0, marginLeft: "auto", paddingLeft: 6 }}>
-      {added > 0 && (
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-add-text)" }}>
-          +{added}
-        </span>
-      )}
-      {removed > 0 && (
-        <span style={{ fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--c-diff-del-text)" }}>
-          -{removed}
-        </span>
-      )}
-    </span>
-  );
-}
-
 // ── SessionCard 主组件 ──
 
 interface SessionCardProps {
@@ -188,15 +130,15 @@ interface SessionCardProps {
 
 function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSelect, onClose, onRename, onKeyDown, onContextMenu }: SessionCardProps) {
   const confirmClose = confirmCloseAt > 0;
-  // Subscribe to the language store: deriveTitle localizes the agent activity
-  // suffix (· 运行中 / · Working), and this card is memoized.
+  // Subscribe to language changes used by labels and default session titles;
+  // this card is memoized.
   const t = useT();
   const closeSessionShortcut = useUIStore((s) => s.keybindings.closeSession);
   // Unsaved reader draft is user intent (like pinned), not agent state — it
   // sits beside the title, never in the single status-dot slot.
   const readerDirty = useUIStore((s) => s.readers[session.id]?.dirty === true);
   const closeLabel = `${t("session.close.title")} ${formatShortcut(closeSessionShortcut)}`;
-  const { primary, isCommand, totalAdded, totalRemoved } = deriveTitle(session);
+  const { primary, isCommand, subtitle } = deriveTitle(session);
   const displayRunState = sessionDisplayRunState(session);
   const lifecycleLabel = session.agentActivity === "waiting_confirmation"
     ? t("agent.status.waiting_confirmation")
@@ -211,10 +153,9 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
     readerDirty ? t("sidebar.session.unsaved") : "",
     session.remote ? `${t("sidebar.session.remote")}, ${sshEndpointLabel(session.remote)}` : t("sidebar.session.local"),
   ].filter(Boolean).join(", ");
-  const busy = isSessionBusy(session);
-  const showTerminalProgress = !!session.terminalProgress;
-  const showBusyProgress = !!session.agent && busy && !showTerminalProgress;
-  const elapsed = useElapsed(session.startedAt, busy);
+  const detailTitle = [subtitle, session.lastCommand, session.shellTitle]
+    .filter(Boolean)
+    .join(" · ");
   const closeCountdown = useDestructiveConfirmCountdown(confirmClose ? confirmCloseAt : 0);
   const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
   const isRenaming = renamingSessionId === session.id;
@@ -281,11 +222,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       startRename();
       return;
     }
-    if (!editing && onRename && active && e.key === "Enter") {
-      e.preventDefault();
-      startRename();
-      return;
-    }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelect(session.id);
@@ -327,6 +263,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           tabIndex={tabIndex ?? 0}
           aria-current={active ? "page" : undefined}
           aria-label={accessibleLabel}
+          title={detailTitle || undefined}
           onClick={handleClick}
           onClickCapture={touchMenu.onClickCapture}
           onPointerDown={touchMenu.onPointerDown}
@@ -479,7 +416,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             )}
           </div>
 
-          {/* 行2: 目录 · 分支 · diff */}
+          {/* 行2只保留目录；分支、命令和 diff 在选择按钮的 title 中。 */}
           <div
             style={{
               display: "flex",
@@ -507,19 +444,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 48%", minWidth: 0 }}>
               {sidebarCwdLabel(session)}
             </span>
-            {session.branch && (
-              <>
-                <span style={{ flexShrink: 0 }}>·</span>
-                <span title={session.branch} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1 auto", minWidth: 0, maxWidth: "42%" }}>⎇ {session.branch}</span>
-              </>
-            )}
-            {elapsed && (
-              <>
-                <span style={{ flexShrink: 0 }}>·</span>
-                <span style={{ flexShrink: 0, whiteSpace: "nowrap", color: "var(--c-accent)" }}>{elapsed}</span>
-              </>
-            )}
-            <DiffStat added={totalAdded} removed={totalRemoved} />
           </div>
         </div>
       </div>
@@ -579,7 +503,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       )}
 
       {session.terminalProgress && <TerminalProgressBar progress={session.terminalProgress} />}
-      {showBusyProgress && <BusyProgress />}
     </div>
   );
 }

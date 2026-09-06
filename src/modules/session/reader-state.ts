@@ -5,6 +5,13 @@ export interface ReaderFileRef {
   fileName: string;
   line?: number;
   column?: number;
+  diff?: ReaderDiffRef;
+}
+
+export interface ReaderDiffRef {
+  stage: "staged" | "unstaged" | "untracked";
+  repoPath: string;
+  relativePath: string;
 }
 
 export interface SessionReaderState {
@@ -37,16 +44,31 @@ export function sanitizeReaderFileRef(raw: unknown): ReaderFileRef | null {
   const column = typeof value.column === "number" && Number.isFinite(value.column) && value.column > 0
     ? Math.trunc(value.column)
     : undefined;
+  const rawDiff = value.diff && typeof value.diff === "object" ? value.diff as Record<string, unknown> : null;
+  const diff = rawDiff
+    && (rawDiff.stage === "staged" || rawDiff.stage === "unstaged" || rawDiff.stage === "untracked")
+    && typeof rawDiff.repoPath === "string" && rawDiff.repoPath.length > 0 && !/[\0\r\n]/.test(rawDiff.repoPath)
+    && typeof rawDiff.relativePath === "string" && rawDiff.relativePath.length > 0 && !/[\0\r\n]/.test(rawDiff.relativePath)
+    ? { stage: rawDiff.stage, repoPath: rawDiff.repoPath, relativePath: rawDiff.relativePath } as ReaderDiffRef
+    : undefined;
   return {
     filePath: value.filePath,
     fileName: sanitizeFileName(value.filePath, value.fileName),
     ...(line !== undefined ? { line } : {}),
     ...(column !== undefined ? { column } : {}),
+    ...(diff ? { diff } : {}),
   };
 }
 
+export function readerRefIdentity(file: ReaderFileRef | null | undefined): string | null {
+  if (!file) return null;
+  return file.diff
+    ? `diff\0${file.diff.stage}\0${file.diff.repoPath}\0${file.diff.relativePath}`
+    : `file\0${file.filePath}`;
+}
+
 function sameReaderPath(a: ReaderFileRef | null | undefined, b: ReaderFileRef | null | undefined): boolean {
-  return Boolean(a && b && a.filePath === b.filePath);
+  return Boolean(a && b && readerRefIdentity(a) === readerRefIdentity(b));
 }
 
 function withLocation(file: ReaderFileRef, location: Pick<ReaderFileRef, "line" | "column">): ReaderFileRef {
@@ -55,6 +77,7 @@ function withLocation(file: ReaderFileRef, location: Pick<ReaderFileRef, "line" 
     fileName: file.fileName,
     ...(location.line !== undefined ? { line: location.line } : {}),
     ...(location.column !== undefined ? { column: location.column } : {}),
+    ...(file.diff ? { diff: file.diff } : {}),
   };
 }
 
@@ -82,7 +105,7 @@ export function openReaderFileInState(
   }
 
   const truncated = current.history.slice(0, current.historyIndex + 1)
-    .filter((entry) => entry.filePath !== file.filePath);
+    .filter((entry) => readerRefIdentity(entry) !== readerRefIdentity(file));
   truncated.push(withLocation(file, file));
   const capped = capHistory(truncated, truncated.length - 1);
   return {
@@ -119,8 +142,9 @@ export function sanitizeSessionReaderState(raw: unknown): SessionReaderState | n
   const seen = new Set<string>();
   for (const item of historyRaw) {
     const file = sanitizeReaderFileRef(item);
-    if (!file || seen.has(file.filePath)) continue;
-    seen.add(file.filePath);
+    const identity = readerRefIdentity(file);
+    if (!file || !identity || seen.has(identity)) continue;
+    seen.add(identity);
     history.push(file);
     if (history.length >= READER_HISTORY_LIMIT) break;
   }
@@ -128,11 +152,11 @@ export function sanitizeSessionReaderState(raw: unknown): SessionReaderState | n
   let historyIndex = typeof value.historyIndex === "number" && Number.isFinite(value.historyIndex)
     ? Math.trunc(value.historyIndex)
     : -1;
-  if (current && !history.some((entry) => entry.filePath === current.filePath)) {
+  if (current && !history.some((entry) => readerRefIdentity(entry) === readerRefIdentity(current))) {
     history.push(current);
   }
   if (current) {
-    const currentIndex = history.findIndex((entry) => entry.filePath === current.filePath);
+    const currentIndex = history.findIndex((entry) => readerRefIdentity(entry) === readerRefIdentity(current));
     historyIndex = currentIndex >= 0 ? currentIndex : history.length - 1;
   } else if (historyIndex < 0 || historyIndex >= history.length) {
     historyIndex = history.length - 1;

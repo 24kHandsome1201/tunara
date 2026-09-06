@@ -25,7 +25,6 @@ import { splitHorizontalPaneCount } from "@/modules/session/split-layout";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { useAppServices } from "./useAppServices";
-import { useChromeFade } from "./useChromeFade";
 import { Icon, Terminal } from "@/ui/icons";
 
 const Settings = lazy(() => import("@/ui/overlays/Settings").then((module) => ({ default: module.Settings })));
@@ -309,7 +308,6 @@ export default function App() {
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
 
   useAppServices(ready);
-  const chromeFaded = useChromeFade();
 
   useEffect(() => {
     const syncWidth = () => setViewportWidth(window.innerWidth);
@@ -355,8 +353,6 @@ export default function App() {
 
   return (
     <div
-      className={chromeFaded ? "chrome-faded" : undefined}
-      data-chrome-faded={chromeFaded ? "true" : undefined}
       onPointerDownCapture={(event) => {
         const target = event.target instanceof HTMLElement ? event.target : null;
         if (!target?.closest('[role="menu"], [role="listbox"]')) advanceTerminalFocusEpoch();

@@ -33,11 +33,11 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 标题栏 | [`src/ui/Titlebar.tsx`](../src/ui/Titlebar.tsx) | 窗口 chrome。不再放终端/文件标签，也不再放设备菜单。 |
 | 侧栏 | [`src/ui/Sidebar.tsx`](../src/ui/Sidebar.tsx) | 本地按目录、SSH 按主机分组的会话；顶部一行「需要你 · N」 |
 | 主区 | [`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) | xterm 分栏；文件在终端旁的阅读面板打开，属于当前会话 |
-| 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | 按会话状态自动选择 Changes / Files / Preview，以及 SSH 专用 Transfers / Forwarding。Auto/Locked 行为保留，界面上没有标签和按钮。 |
+| 检查器 | [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx) | 默认 Files，记住用户选择；Files / Changes 常驻文字页签，其余工具按需出现或从更多菜单进入。 |
 
 窄窗口时侧栏和检查器改为覆盖层，优先保证终端可用宽度。布局按终端列宽预算决定是否停靠，见 [`src/app/lib/app-shell-layout.ts`](../src/app/lib/app-shell-layout.ts)。
 
-没有独立的 Pure Mode。终端聚焦时 chrome 自动淡化（侧栏、检查器、标题栏降到约 60% 不透明度，避免终端列宽重排）。真正收起侧栏 / 检查器仍是 ⌘\ / ⌘⇧\。
+没有独立的 Pure Mode，也不因终端聚焦自动淡化界面。收起侧栏 / 检查器仍是 ⌘\ / ⌘⇧\。
 
 ---
 
@@ -93,15 +93,15 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 3. 检查器（右栏）
 
-检查器默认跟随当前会话：有未审阅 Git 改动时显示 Changes；用户已打开 Preview 时显示 Preview；SSH 传输进行中显示 Transfers；其余显示 Files。手动选择会锁定，直到切换会话或回到自动。界面上没有 Auto / Locked 标签和按钮；行为仍按 [`inspector-context.ts`](../src/ui/inspector-context.ts) 工作。可用视图由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪。一次只挂载当前视图。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
+检查器默认 Files，持久保存用户选择；改动、传输和会话活动不会抢占当前视图，没有 Auto / Locked 模型。Files / Changes 常驻文字页签；Preview 有来源或已打开时出现，Transfers 在有活动或当前查看时出现。其余工具从更多菜单或 ⌘K 进入。可用视图由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪；不可用的视图回退到 Files。一次只挂载当前视图。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
 
 终端上方没有 SSH / Preview / Changes 提示条。需要你的会话走侧栏「需要你 · N」；改动在检查器 Changes 里看。
 
 | 视图 | 范围 | 内容 | 入口 |
 |------|------|------|------|
-| Changes | 仓库 profile | 只读 staged / unstaged / untracked | [`DiffPanel.tsx`](../src/ui/DiffPanel.tsx) |
+| Changes | 仓库 profile | staged / unstaged / untracked 列表；点击后在统一阅读面板查看只读 diff，支持历史、搜索、复制和重试 | [`DiffPanel.tsx`](../src/ui/DiffPanel.tsx) |
 | Files | 传输绑定 | 目录树、搜索、预览、SSH 传输 | [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx) · [`FilePreview.tsx`](../src/ui/FilePreview.tsx) |
-| Preview | 会话 | workspace-bound WebView；用户打开后才自动跟随 | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) |
+| Preview | 会话 | workspace-bound WebView；由用户显式打开 | [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx) |
 | Transfers | SSH | 上传/下载进度、取消、恢复 | [`TransferCenter.tsx`](../src/ui/TransferCenter.tsx) |
 | Forwarding | SSH 绑定 | 本地/动态/反向端口转发 | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
 
@@ -185,7 +185,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 检查器 Preview 页控制独立的 loopback WebView：来源绑定到 repository / worktree / session / terminal generation；支持导航、安全重启准备和显式 SSH tunnel。不自动扫端口，不自动启动服务，独立 Preview 窗口没有 app command 权限。合同见 [PHASE3_PREVIEW_SOURCE_CONTRACT.md](./archive/PHASE3_PREVIEW_SOURCE_CONTRACT.md)。
 
-终端上方没有「打开 Preview」提示条。Preview 从检查器或 ⌘K 打开。用户打开过 Preview 后，自动跟随才会选中该视图。
+终端上方没有「打开 Preview」提示条。Preview 从检查器或 ⌘K 打开，不自动切换当前视图。
 
 代码：[`src-tauri/src/modules/preview.rs`](../src-tauri/src/modules/preview.rs) · [`preview-window.ts`](../src/modules/preview/preview-window.ts) · [`PreviewPanel.tsx`](../src/ui/PreviewPanel.tsx)。
 
@@ -193,9 +193,9 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 ## 9. 设置与快捷键
 
-设置是单页，没有页签（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）。覆盖界面+终端配色（System / Light / Dark）、语言、字体、光标、读屏、外部编辑器、SSH known_hosts、应用更新、全局唤起、Agent CLI 路径与预检。
+设置是连续单页，顶部提供分区跳转（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）。覆盖外观、终端、连接与传输、关于；Agent CLI 路径与预检、配置文件放在折叠的高级区。字号与字体放在一起，批量下载的文件数及大小上限放在连接区，恢复默认外观只影响外观。
 
-快捷键改配置文件 `~/.config/tunara/config.toml`，设置里不再有快捷键编辑器。字号只用 ⌘+ / ⌘-（⌘0 重置）。配置经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。
+快捷键改配置文件 `~/.config/tunara/config.toml`，设置里不再有快捷键编辑器。字号可在外观设置调整，也可用 ⌘+ / ⌘-（⌘0 重置）。配置经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。
 
 命令面板：[`CommandPalette.tsx`](../src/ui/overlays/CommandPalette.tsx)，加权模糊匹配，覆盖动作与会话切换，包括打开当前会话的改动 / 文件 / Preview。
 
@@ -230,7 +230,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 - 右键菜单覆盖会话、目录组、文件
 - 响应式布局：终端可用宽度不足时，侧栏/检查器改为覆盖层
 - 窗口状态持久化（位置、尺寸）
-- 终端聚焦时 chrome 自动淡化；⌘\ / ⌘⇧\ 真正收起侧栏 / 检查器
+- 界面保持稳定对比度；⌘\ / ⌘⇧\ 收起侧栏 / 检查器
 
 ---
 

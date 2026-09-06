@@ -52,7 +52,7 @@ test("zero-session sidebar removes search and duplicate terminal actions", () =>
   expect(screen.queryByRole("region", { name: "SSH hosts" })).toBeNull();
 });
 
-test("sidebar restores one compact New menu with all launch modes once sessions exist", () => {
+test("sidebar offers direct terminal creation and a secondary launch menu", () => {
   const onNewTerminal = vi.fn();
   const onNewTerminalInDirectory = vi.fn();
   render(
@@ -66,10 +66,11 @@ test("sidebar restores one compact New menu with all launch modes once sessions 
   );
 
   const trigger = screen.getByRole("button", { name: "New session menu" });
-  expect(trigger.textContent).toContain("New…");
+  fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
+  expect(onNewTerminal).toHaveBeenCalledOnce();
   fireEvent.click(trigger);
   const menu = screen.getByRole("menu");
-  expect(within(menu).getByRole("menuitem", { name: "New terminal" })).toBeTruthy();
+  expect(within(menu).queryByRole("menuitem", { name: "New terminal" })).toBeNull();
   expect(within(menu).getByRole("menuitem", { name: "New terminal in folder…" })).toBeTruthy();
   expect(within(menu).getByRole("menuitem", { name: "New SSH connection…" })).toBeTruthy();
 });
@@ -101,11 +102,11 @@ test("empty workspace keeps one quiet launcher above recent folders and SSH host
   const launcher = screen.getByRole("group", { name: "Start a session" });
   expect(within(launcher).getAllByRole("button").map((button) => button.textContent)).toEqual([
     "Local terminal",
-    "Choose folder",
+    "Open terminal in folder",
     "Connect SSH",
   ]);
   fireEvent.click(within(launcher).getByRole("button", { name: "Local terminal" }));
-  fireEvent.click(within(launcher).getByRole("button", { name: "Choose folder" }));
+  fireEvent.click(within(launcher).getByRole("button", { name: "Open terminal in folder" }));
   fireEvent.click(within(launcher).getByRole("button", { name: "Connect SSH" }));
   expect(onNewTerminal).toHaveBeenCalledTimes(1);
   expect(onNewTerminalInDirectory).toHaveBeenCalledTimes(1);

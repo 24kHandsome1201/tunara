@@ -1,35 +1,35 @@
 import { describe, expect, test } from "vitest";
-import { INSPECTOR_OVERFLOW_SECTION, resolveInspectorNavigation } from "@/ui/inspector-navigation";
+import { resolveInspectorNavigation } from "@/ui/inspector-navigation";
 
 describe("inspector navigation", () => {
-  test("exposes every local Inspector view in the compact switcher", () => {
+  test("keeps Files and Changes primary and puts unavailable tools in overflow", () => {
     expect(resolveInspectorNavigation({
       filesOnly: false,
       isRemote: false,
     })).toEqual({
-      all: ["changes", "files", "preview"],
-      primary: ["changes", "files", "preview"],
-      secondary: [],
+      all: ["files", "changes", "preview"],
+      primary: ["files", "changes"],
+      secondary: ["preview"],
     });
   });
 
-  test("adds connection-specific views only for remote sessions", () => {
+  test("shows contextual tools when available or currently selected", () => {
     expect(resolveInspectorNavigation({
       filesOnly: false,
       isRemote: true,
+      previewAvailable: true,
+      hasInProgressTransfer: true,
     }).primary).toEqual([
-      "changes",
       "files",
+      "changes",
       "preview",
       "transfers",
-      "forwarding",
     ]);
-  });
-
-  test("keeps overflow section labels for grouping documentation", () => {
-    expect(INSPECTOR_OVERFLOW_SECTION.preview).toBe("workspace");
-    expect(INSPECTOR_OVERFLOW_SECTION.transfers).toBe("transfer");
-    expect(INSPECTOR_OVERFLOW_SECTION.forwarding).toBe("ssh");
+    expect(resolveInspectorNavigation({ filesOnly: false, isRemote: true, current: "forwarding" })).toEqual({
+      all: ["files", "changes", "preview", "transfers", "forwarding"],
+      primary: ["files", "changes", "forwarding"],
+      secondary: ["preview", "transfers"],
+    });
   });
 
   test("preserves a dedicated files-only projection for callers that request it", () => {
