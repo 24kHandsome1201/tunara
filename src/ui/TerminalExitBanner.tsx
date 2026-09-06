@@ -63,6 +63,17 @@ interface TerminalExitBannerProps {
   exitCode: number;
 }
 
+/** Shown once after a restored terminal becomes ready; history is not a live process. */
+export function RestoredHistoryNotice({ remote, onDismiss }: { remote: boolean; onDismiss: () => void }) {
+  const t = useT();
+  return (
+    <div role="status" style={{ position: "absolute", bottom: 8, left: 8, right: 8, zIndex: 4, display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+      <span style={{ flex: 1 }}>{t(remote ? "terminal.history.remote_ready" : "terminal.history.local_ready")}</span>
+      <button type="button" className="ui-button" onClick={onDismiss}>{t("common.done")}</button>
+    </div>
+  );
+}
+
 /**
  * Overlay shown after the PTY process exits. Without it the terminal is a dead
  * pane with a single grey "[process exited: N]" line and no obvious next step.

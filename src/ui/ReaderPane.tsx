@@ -13,6 +13,8 @@ import { fileKindTint } from "./file-explorer/file-kind";
 import type { Session } from "./types";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import { readerRefIdentity } from "@/modules/session/reader-state";
+import { focusActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
+import { recordTerminalFocusIntent } from "@/modules/terminal/lib/binding-aware-async-action";
 
 const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 const ReaderDiff = lazy(() => import("./DiffPanel").then((module) => ({ default: module.ReaderDiff })));
@@ -50,6 +52,16 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
   const historyBtnRef = useRef<HTMLButtonElement>(null);
   const overflowBtnRef = useRef<HTMLButtonElement>(null);
   const [findNonce, setFindNonce] = useState(0);
+  const readerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!active || !current || useUIStore.getState().overlay) return;
+    const root = readerRef.current;
+    if (root && !root.contains(document.activeElement)) {
+      recordTerminalFocusIntent(`reader:${session.id}`);
+      root.focus({ preventScroll: true });
+    }
+  }, [active, current, session.id]);
 
   useEffect(() => {
     if (!active) return;
@@ -71,7 +83,10 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
   }
 
   const closeReader = () => {
-    const run = () => useUIStore.getState().closeReaderPane(session.id);
+    const run = () => {
+      useUIStore.getState().closeReaderPane(session.id);
+      focusActiveTerminal(session.id);
+    };
     if (requestDirtyDraftFileAction(session.id, current.filePath, run)) run();
   };
 
@@ -141,7 +156,16 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
 
   return (
     <div
+      ref={readerRef}
+      tabIndex={-1}
+      role="region"
+      aria-label={t("reader.surface")}
       data-reader-session-id={session.id}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && event.target === event.currentTarget && !event.nativeEvent.isComposing) {
+          event.preventDefault(); event.stopPropagation(); focusActiveTerminal(session.id);
+        }
+      }}
       style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, background: "var(--c-bg-white)" }}
     >
       <div
@@ -227,6 +251,16 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           <span aria-hidden="true" style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>▾</span>
         </button>
         <button
+          type="button"
+          className="hover-bg"
+          title={t("reader.return_terminal")}
+          aria-label={t("reader.return_terminal")}
+          onClick={(event) => { event.stopPropagation(); focusActiveTerminal(session.id); }}
+          style={{ ...HEADER_BUTTON, width: "auto", padding: "0 7px", fontSize: "var(--fs-meta)" }}
+        >
+          {t("reader.return_terminal")}
+        </button>
+        <button
           ref={overflowBtnRef}
           type="button"
           className="hover-bg"
@@ -243,7 +277,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           className="hover-bg"
           title={t("common.close")}
           aria-label={t("common.close")}
-          onClick={closeReader}
+          onClick={(event) => { event.stopPropagation(); closeReader(); }}
           style={HEADER_BUTTON}
         >
           ✕

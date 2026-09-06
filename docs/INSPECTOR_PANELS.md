@@ -2,7 +2,7 @@
 
 The Inspector is Tunara's contextual right rail. It keeps review, files, Preview, transfers, and forwarding close to the terminal without becoming a second dashboard or an IDE. Chinese UI copy uses **检查器**.
 
-The container is [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx). Available views are defined by [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Scope labels come from [`inspector-scope.ts`](../src/ui/inspector-scope.ts). Only the active view is mounted. On narrow windows the rail becomes an overlay. Contrast stays stable when the terminal is focused; ⌘⇧\\ still hides it.
+The container is [`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx). Available views are defined by [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts). Scope contracts come from [`inspector-scope.ts`](../src/ui/inspector-scope.ts); technical descriptions stay in tooltips while project/branch or remote host identity is visible. Only the active view is mounted. On narrow windows the rail becomes an overlay. Contrast stays stable when the terminal is focused; ⌘⇧\\ still hides it.
 
 ## Interaction model
 
@@ -22,6 +22,8 @@ Tabs may become available without being selected. Jupyter notebook preview and E
 ## Reader pane
 
 Opening a file from Files, Changes, a terminal path, or a completed transfer inserts a `reader` leaf to the right of that session’s terminal (40% terminal / 60% reader). One reader per session; history lives on `‹ ›` and the filename menu. The terminal stays visible. Closing the reader (✕ or ⌘W while focused) restores the terminal to full width. The pane counts toward the four-split cap; a full layout toasts “Split is full” instead of opening.
+
+The reader receives keyboard focus when activated. Return to terminal keeps the reader open; closing returns to its owning terminal. Escape on the reader background returns focus, while search inputs keep their own Escape behavior. Focus transitions invalidate stale asynchronous focus-return tokens.
 
 When the extra column would make the terminal unusable, the Inspector docks as an overlay (`⌘⇧\\` still recalls it). Session switch keeps each reader’s layout and drafts mounted. SSH reconnect re-fetches the same path on the new binding.
 

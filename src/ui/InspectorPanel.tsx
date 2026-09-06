@@ -112,7 +112,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     || session.workspaceState === "unavailable"
     || (!session.workspace && session.branch),
   );
-  const showContextBar = showSourceSummary || inspectorScope.kind !== "logical-session";
+  const showContextBar = showSourceSummary || isRemote;
 
   useEffect(() => {
     const activeTab = tabListRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tab)}"]`);
@@ -282,9 +282,12 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
           }}
         >
           <span
-            title={t(scopeDescriptionKey)}
+            title={`${session.dir}\n${t(scopeDescriptionKey)}`}
             style={{
-              flexShrink: 0,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
               padding: "1px 6px",
               borderRadius: "var(--r-pill)",
               background: "var(--c-bg-3)",
@@ -293,7 +296,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
               fontFamily: "var(--font-mono)",
             }}
           >
-            {t(`inspector.scope.${scopeKey}`)}
+            {session.remote ? `${session.remote.user}@${session.remote.host}` : session.dir.split(/[\\/]/).filter(Boolean).pop() || session.dir}
           </span>
           <span style={{ flex: 1, minWidth: 0 }} />
           {showSourceSummary && (
@@ -330,7 +333,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
               border: 0,
             }}
           >
-            {t(scopeDescriptionKey)}
+            {session.remote ? `${session.remote.user}@${session.remote.host}: ${session.dir}` : session.dir}
           </span>
         </div>
       )}

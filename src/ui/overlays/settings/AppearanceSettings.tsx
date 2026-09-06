@@ -73,6 +73,7 @@ export function AppearanceSettings() {
 
   return (
     <div>
+      <div style={{ ...SECTION_HINT, marginTop: 0, marginBottom: 18 }}>{t("settings.appearance.changes_hint")}</div>
       <div style={{ marginBottom: 24 }}>
         <div id="color-scheme-label" style={SECTION_LABEL}>{t("settings.appearance.terminal_theme")}</div>
         <div id="color-scheme-description" style={{ fontSize: "var(--fs-secondary)", lineHeight: 1.45, color: "var(--c-text-4)", marginBottom: 10, marginTop: -4 }}>

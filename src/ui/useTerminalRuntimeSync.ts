@@ -75,7 +75,11 @@ export function useTerminalRuntimeSync({
       try {
         fit.fit();
         pty?.resize(term.cols, term.rows).catch(() => {});
-        term.focus();
+        const recovery = term.element?.closest("[data-terminal-session-id]")?.querySelector('[role="alert"]');
+        const actions = recovery?.querySelectorAll<HTMLButtonElement>("button");
+        const primary = actions?.[actions.length - 1];
+        if (primary && !primary.disabled) primary.focus();
+        else term.focus();
       } catch {
         /* noop */
       }

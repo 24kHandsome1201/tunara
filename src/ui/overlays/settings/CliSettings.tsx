@@ -15,7 +15,7 @@ const SOURCE_LABEL_KEYS: Record<ResolveSource, string> = {
 };
 
 /** About: resolved agent CLI paths, login preflights, and path overrides. */
-export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus, applyOverride }: ReturnType<typeof useCliStatus>) {
+export function CliSettings({ resolvedClis, cliError, overrideError, preflights, loadCliStatus, applyOverride }: ReturnType<typeof useCliStatus>) {
   const t = useT();
   const [editingOverride, setEditingOverride] = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState("");
@@ -30,6 +30,8 @@ export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus,
 
   return (
     <div style={{ color: "var(--c-text-4)", fontSize: "var(--fs-body)" }}>
+      <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginBottom: 14 }}>{t("settings.cli.changes_hint")}</div>
+      {overrideError && <div role="alert" style={{ color: "var(--c-error)", marginBottom: 12 }}>{t("settings.cli.override_error")}</div>}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ ...SECTION_LABEL, marginBottom: 4 }}>{t("settings.cli.path_label")}</div>

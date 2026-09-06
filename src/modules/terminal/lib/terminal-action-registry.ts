@@ -5,13 +5,14 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { copyText, readClipboardText } from "@/ui/lib/clipboard";
 import { pasteWithCapturedBracketedMode, requestProtectedTerminalPaste } from "./terminal-paste-protection";
-import { bindingAwareAsyncAction, issueFocusReturnToken, type BindingAwareAsyncAction } from "./binding-aware-async-action";
+import { bindingAwareAsyncAction, issueFocusReturnToken, recordTerminalFocusIntent, type BindingAwareAsyncAction } from "./binding-aware-async-action";
 import { findKeybindingConflict, matchesKeybinding, TERMINAL_KEYBINDING_ACTIONS, type TerminalKeybindingAction } from "@/modules/config/keybindings";
 import { isMac } from "@/ui/lib/platform";
 
 interface TerminalActions {
   terminal: Terminal;
   openSearch: () => void;
+  revealAttention?: () => void;
 }
 
 const actions = new Map<string, TerminalActions>();
@@ -67,6 +68,28 @@ export function copyActiveTerminal(sessionId: string): boolean {
 
 export function searchActiveTerminal(sessionId: string): void {
   actions.get(sessionId)?.openSearch();
+}
+
+/** Explicit navigation only: never executes or pastes terminal input. */
+export function revealSessionAttention(sessionId: string): void {
+  if (useSessionsStore.getState().activeSessionId !== sessionId) return;
+  const registration = actions.get(sessionId);
+  registration?.revealAttention?.();
+  focusActiveTerminal(sessionId);
+}
+
+export function focusActiveTerminal(sessionId: string): void {
+  if (useSessionsStore.getState().activeSessionId !== sessionId) return;
+  recordTerminalFocusIntent(sessionId);
+  useUIStore.getState().setFocusedPaneId(sessionId);
+  const phase = useSessionsStore.getState().sessions.find((s) => s.id === sessionId)?.connection?.phase;
+  if (phase === "disconnected" || phase === "failed" || phase === "needsUserAction") {
+    const pane = Array.from(document.querySelectorAll<HTMLElement>("[data-terminal-session-id]")).find((el) => el.dataset.terminalSessionId === sessionId);
+    const buttons = pane?.querySelectorAll<HTMLButtonElement>('[role="alert"] button');
+    const recovery = buttons?.[buttons.length - 1];
+    if (recovery && !recovery.disabled) { recovery.focus(); return; }
+  }
+  actions.get(sessionId)?.terminal.focus();
 }
 
 export async function safePasteActiveTerminal(sessionId: string): Promise<void> {

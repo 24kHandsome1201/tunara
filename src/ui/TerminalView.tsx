@@ -46,6 +46,7 @@ import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlo
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
 import { allocateTerminalInstanceEpoch, createDeferredTerminalFocus, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { RestoredHistoryNotice } from "./TerminalExitBanner";
 interface TerminalViewProps {
   sessionId: string;
   dir: string;
@@ -76,6 +77,7 @@ function TerminalViewImpl({
   const terminalInstanceEpochRef = useRef(allocateTerminalInstanceEpoch());
   // Gates the pendingInput effect to fire once when the PTY is ready.
   const [ptyReady, setPtyReady] = useState(false);
+  const [showRestoredHistory, setShowRestoredHistory] = useState(() => Boolean(getTerminalSnapshot(sessionId)));
   const webglRef = useRef<TerminalWebglRenderer | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -140,6 +142,10 @@ function TerminalViewImpl({
       cleanups.push(registerTerminalActions(sessionIdRef.current, {
         terminal: term,
         openSearch: search.openSearch,
+        revealAttention: () => {
+          const current = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
+          if (current?.runState === "failed" && !current.agent && (!current.remote || current.connection?.phase === "ready")) blocks.revealFailedCommand(current.lastCommand, current.lastExitCode);
+        },
       }));
       // Confirmer must be the Tauri dialog: window.confirm never renders in
       // wry's WKWebView and would silently drop every multiline/large paste.
@@ -610,6 +616,7 @@ function TerminalViewImpl({
       }} />}
       {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
       {openError !== null && session && <PtyErrorBanner session={session} error={openError} />}
+      {active && showRestoredHistory && ptyReady && exitCode === null && openError === null && session?.connection?.phase === "ready" && <RestoredHistoryNotice remote={Boolean(session.remote)} onDismiss={() => { setShowRestoredHistory(false); const token = issueFocusReturnToken(sessionId); if (token) returnTerminalFocus(token); }} />}
     </>
   );
 }

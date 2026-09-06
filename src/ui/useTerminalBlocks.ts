@@ -201,6 +201,17 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     term.scrollToLine(block.startRow);
   }, [termRef]);
 
+  const revealFailedCommand = useCallback((command: string | undefined, exitCode: number | undefined) => {
+    const term = termRef.current;
+    const block = blocksRef.current[blocksRef.current.length - 1];
+    // Only the latest matching command with a live scrollback marker is evidence.
+    // Agent confirmation prompts and restored history have no reliable target.
+    if (!term || term.buffer.active.type !== "normal" || !block?.startMarker || !command || !exitCode
+      || block.exitCode !== exitCode || normalizeBlockCommand(block.command) !== normalizeBlockCommand(command)) return;
+    const rows = resolveTerminalBlockRows(block);
+    if (rows) term.scrollToLine(rows.startRow);
+  }, [termRef]);
+
   /**
    * Resolve the command block under a viewport pixel (e.g. a context-menu
    * anchor). Row math uses the rendered .xterm-screen box, so it stays valid
@@ -259,6 +270,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     readBlockOutput,
     toggleBlock,
     revealBlock,
+    revealFailedCommand,
     handleCustomKeyEvent,
     registerScrollTracking,
   };

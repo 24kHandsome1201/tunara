@@ -16,6 +16,7 @@ import {
 import { auxiliarySurfaceToCloseOnOpen, resolveAppShellLayout } from "./lib/app-shell-layout";
 import { advanceTerminalFocusEpoch } from "@/modules/terminal/lib/binding-aware-async-action";
 import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
+import { focusActiveTerminal, revealSessionAttention } from "@/modules/terminal/lib/terminal-action-registry";
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -43,7 +44,7 @@ export function useKeybindings() {
           if (focused && isReaderPaneId(focused)) {
             const sessionId = sessionIdFromPaneId(focused);
             const current = ui.readers[sessionId]?.current;
-            const run = () => useUIStore.getState().closeReaderPane(sessionId);
+            const run = () => { useUIStore.getState().closeReaderPane(sessionId); focusActiveTerminal(sessionId); };
             if (!current || requestDirtyDraftFileAction(sessionId, current.filePath, run)) run();
             break;
           }
@@ -113,6 +114,7 @@ export function useKeybindings() {
           if (!target) break;
           st.setActive(target);
           ui.showTerminal();
+          revealSessionAttention(target);
           break;
         }
         default: {
@@ -144,6 +146,7 @@ export function useKeybindings() {
           ui.setOverlay(null);
           return;
         }
+        if (e.target instanceof HTMLElement && e.target.closest("[data-reader-session-id]")) return;
         if (!isEditableTarget(e.target) && compactLayout.panelOverlay && ui.panelVisible) {
           e.preventDefault();
           ui.setPanelVisible(false);

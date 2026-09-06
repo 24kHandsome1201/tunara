@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { Session } from "./types";
 import { deriveAttentionRow, nextAttentionSessionId } from "@/modules/session/session-attention";
 import { useT } from "@/modules/i18n";
+import { revealSessionAttention } from "@/modules/terminal/lib/terminal-action-registry";
 
 interface AttentionRowProps {
   sessions: Session[];
@@ -22,16 +23,22 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
     ? t("attention.row.needs_you", { count: row.count })
     : t("attention.row.running", { count: row.count });
   const emphasized = row.kind === "needs-you";
+  const targetId = nextAttentionSessionId(sessions, null)
+    ?? (row.kind === "running" ? [...sessions].filter((s) => s.agentActivity === "running" || s.agentActivity === "starting").sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id : null);
+  const target = sessions.find((s) => s.id === targetId);
+  const reason = target && emphasized ? t(target.connection?.phase === "disconnected" || target.connection?.phase === "failed" || target.connection?.phase === "needsUserAction"
+    ? "attention.reason.connection" : target.agentActivity === "waiting_confirmation" ? "attention.reason.confirmation" : "attention.reason.failure") : "";
 
   return (
     <div style={{ padding: "2px 12px 6px", flexShrink: 0 }}>
       <button
         type="button"
         onClick={() => {
-          const target = nextAttentionSessionId(sessions, null);
-          if (target) onSelectSession(target);
+          if (targetId) { onSelectSession(targetId); revealSessionAttention(targetId); }
         }}
         aria-label={label}
+        aria-description={reason || undefined}
+        title={target ? `${target.customTitle || target.title} · ${reason || label}` : label}
         className="attention-row-button"
         data-kind={row.kind}
         style={{
@@ -52,6 +59,7 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
         }}
       >
         {label}
+        {reason && <span style={{ marginLeft: "auto", paddingLeft: 8, fontWeight: 400, fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reason}</span>}
       </button>
     </div>
   );

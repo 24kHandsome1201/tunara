@@ -22,6 +22,7 @@ export interface Preflight {
 export function useCliStatus() {
   const [resolvedClis, setResolvedClis] = useState<ResolvedCommand[] | null>(null);
   const [cliError, setCliError] = useState(false);
+  const [overrideError, setOverrideError] = useState(false);
   const [preflights, setPreflights] = useState<Record<string, Preflight>>({});
   const cliLoadStartedRef = useRef(false);
 
@@ -62,6 +63,7 @@ export function useCliStatus() {
   const applyOverride = useCallback((code: string, cliBin: string, path: string) => {
     const trimmed = path.trim();
     if (!trimmed) return;
+    setOverrideError(false);
     // The resolver keys overrides by cli_bin (resolve_all_bins resolves cli_bin
     // then relabels name=code), so the override must be stored under cliBin, not
     // the agent code, or it would never take effect. Then invalidate the
@@ -70,8 +72,8 @@ export function useCliStatus() {
     invoke("set_bin_override", { name: cliBin, path: trimmed })
       .then(() => invoke("agent_preflight_invalidate", { agent: code }).catch(() => {}))
       .then(() => loadCliStatus())
-      .catch(() => {});
+      .catch(() => setOverrideError(true));
   }, [loadCliStatus]);
 
-  return { resolvedClis, cliError, preflights, loadCliStatus, applyOverride };
+  return { resolvedClis, cliError, overrideError, preflights, loadCliStatus, applyOverride };
 }

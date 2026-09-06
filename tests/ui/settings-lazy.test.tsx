@@ -60,6 +60,7 @@ test("CLI settings renders the registry and preserves override identifiers", () 
   render(<CliSettings
     resolvedClis={[{ name: "CR", path: "/usr/bin/cursor-agent", source: "systemPath" }]}
     cliError={false}
+    overrideError={false}
     preflights={{}}
     loadCliStatus={vi.fn()}
     applyOverride={applyOverride}

@@ -71,7 +71,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 **用户能做什么：** 本地按工作目录分组，SSH 按目标主机分组；置顶、重命名、模糊搜索（含主机名）；关闭 running 会话需二次确认；选择目录新建终端；在已连接主机上再开窗口。
 
-侧栏顶部是一行「需要你 · N」（⌘↩ 跳转）。会话卡片只有一个状态点。Dock 角标与这一行同源。
+侧栏顶部是一行「需要你 · N」（⌘↩ 跳转），并说明下一个目标是在等待确认、命令失败还是连接需要处理。只有最新失败命令与有效的终端标记匹配时才滚动定位；其他情况只聚焦，不猜位置、不发送输入。断线时优先聚焦恢复按钮，不自动重连。会话卡片只有一个状态点。Dock 角标与这一行同源。
 
 | 能力 | 代码 |
 |------|------|
@@ -87,7 +87,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 置顶 | 星标；命令面板的会话结果里排得更靠前 |
 | 跨重启 | 恢复会话列表和 UI 布局，见 [STATE_AND_PERSISTENCE.md](./STATE_AND_PERSISTENCE.md) |
 
-工作区快照恢复会话列表、布局、终端 scrollback 和 Agent resume 意图。
+工作区快照恢复会话列表、布局、终端 scrollback 和 Agent resume 意图。恢复输出后，新终端就绪时显示一次可关闭的说明，明确历史输出不代表原进程仍在运行；SSH 连接状态继续由连接层单独展示。
 
 ---
 
@@ -96,6 +96,8 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 检查器默认 Files，持久保存用户选择；改动、传输和会话活动不会抢占当前视图，没有 Auto / Locked 模型。Files / Changes 常驻文字页签；Preview 有来源或已打开时出现，Transfers 在有活动或当前查看时出现。其余工具从更多菜单或 ⌘K 进入。可用视图由 [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts) 按本地/SSH 裁剪；不可用的视图回退到 Files。一次只挂载当前视图。作用域（全局 / profile / 会话 / 传输绑定）见 [`inspector-scope.ts`](../src/ui/inspector-scope.ts)。
 
 终端上方没有 SSH / Preview / Changes 提示条。需要你的会话走侧栏「需要你 · N」；改动在检查器 Changes 里看。
+
+检查器正文外只展示项目、分支或远端主机，完整路径和技术作用域放在悬停提示中，不再常驻「范围：配置」等内部术语。阅读面板打开后接收键盘焦点；「返回终端」不关闭阅读内容，关闭面板则回到所属终端。搜索框保留自己的 Escape 行为；阅读面板背景聚焦时 Escape 只返回终端。
 
 | 视图 | 范围 | 内容 | 入口 |
 |------|------|------|------|
@@ -194,6 +196,8 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 ## 9. 设置与快捷键
 
 设置是连续单页，顶部提供分区跳转（[`Settings.tsx`](../src/ui/overlays/Settings.tsx)）。覆盖外观、终端、连接与传输、关于；Agent CLI 路径与预检、配置文件放在折叠的高级区。字号与字体放在一起，批量下载的文件数及大小上限放在连接区，恢复默认外观只影响外观。
+
+分区导航随滚动标识当前位置。外观立即生效，CLI 路径影响后续启动；保存路径、重置路径或打开配置失败会显示错误，不暴露底层敏感信息。
 
 快捷键改配置文件 `~/.config/tunara/config.toml`，设置里不再有快捷键编辑器。字号可在外观设置调整，也可用 ⌘+ / ⌘-（⌘0 重置）。配置经 [`config-bridge.ts`](../src/modules/config/config-bridge.ts) 读写。
 

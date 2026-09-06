@@ -1,4 +1,9 @@
 import { createRoot } from "react-dom/client";
+import { useEffect, useRef, useState } from "react";
+import type { Terminal } from "@xterm/xterm";
+import { registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
+import { splitLayoutLeafIds } from "@/modules/session/split-layout";
+import { RestoredHistoryNotice } from "@/ui/TerminalExitBanner";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { setLanguage } from "@/modules/i18n";
 import { useTheme } from "@/app/useTheme";
@@ -21,7 +26,7 @@ const params = new URLSearchParams(location.search);
 const mode = params.get("mode") ?? "workspace";
 const lang = params.get("lang") === "en" ? "en" : "zh-CN";
 setLanguage(lang);
-const remote = mode === "transfers";
+const remote = mode === "transfers" || params.get("remote") === "1";
 const session: Session = {
   id: "preview-session", title: "Terminal 1", customTitle: "Tunara", dir: "/work/tunara",
   agent: "CC", agentActivity: "waiting_confirmation", runState: "idle", updatedAt: 1,
@@ -56,6 +61,11 @@ function Preview() {
   const activeId = useSessionsStore((s) => s.activeSessionId);
   const active = sessions.find((s) => s.id === activeId) ?? session;
   const reader = useUIStore((s) => s.readers[active.id]?.current);
+  const readerVisible = useUIStore((s) => splitLayoutLeafIds(s.split).includes(`reader:${active.id}`));
+  const focused = useUIStore((s) => s.focusedPaneId);
+  const [restored, setRestored] = useState(mode === "restored");
+  const terminalRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => registerTerminalActions(active.id, { terminal: { focus: () => terminalRef.current?.focus() } as unknown as Terminal, openSearch: () => {} }), [active.id]);
   const overlay = useUIStore((s) => s.overlay);
   const newTerminal = () => useSessionsStore.getState().newTerminalInDir("/work/tunara");
   return (
@@ -67,11 +77,12 @@ function Preview() {
       {mode === "empty" && sessions.length === 0 ? <WorkspaceEmptyState onNewTerminal={newTerminal} onNewTerminalInDirectory={newTerminal} onOpenSsh={() => useUIStore.getState().openSshConnect()} /> : (
         <main style={{ flex: 1, minHeight: 0, display: "flex" }}>
           <aside className="tunara-sidebar" style={{ width: 250, flexShrink: 0 }}><Sidebar sessions={sessions} activeSessionId={active.id} onSelectSession={(id) => useSessionsStore.getState().setActive(id)} onNewTerminal={newTerminal} onNewTerminalInDirectory={newTerminal} /></aside>
-          <section style={{ flex: 1, minWidth: 160, display: "flex", flexDirection: "column", padding: 18, fontFamily: "var(--font-mono)", color: "var(--c-text-3)", background: "var(--terminal-canvas-bg)" }}>
+          <section style={{ position: "relative", flex: 1, minWidth: 160, display: "flex", flexDirection: "column", padding: 18, fontFamily: "var(--font-mono)", color: "var(--c-text-3)", background: "var(--terminal-canvas-bg)" }}>
             <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{"$ claude\n\nChanges are ready for review.\n\nThis preview does not run commands."}</pre>
-            <textarea aria-label="Terminal focus target" className="xterm" style={{ resize: "none", color: "var(--c-text-primary)", background: "transparent", border: "none", outline: "none" }} defaultValue="$ " />
+            <textarea ref={terminalRef} aria-label="Terminal focus target" className="xterm" style={{ resize: "none", color: "var(--c-text-primary)", background: "transparent", border: "none", outline: "none" }} defaultValue="$ " />
+            {restored && <RestoredHistoryNotice remote={remote} onDismiss={() => setRestored(false)} />}
           </section>
-          {reader && <section style={{ flex: 1, minWidth: 240, display: "flex" }}><ReaderPane session={active} active /></section>}
+          {reader && readerVisible && <section style={{ flex: 1, minWidth: 240, display: "flex" }}><ReaderPane session={active} active={focused === `reader:${active.id}`} /></section>}
           <aside className="tunara-panel" style={{ width: Number(params.get("width") ?? 320), display: "flex", flexShrink: 0 }}><InspectorPanel session={active} /></aside>
         </main>
       )}
