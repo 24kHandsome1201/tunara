@@ -66,6 +66,7 @@ export function KeyboardInteractivePromptDialog() {
         tabIndex={0}
         className="overlay-sheet"
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
           if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
             event.preventDefault();
             void decide(responses);

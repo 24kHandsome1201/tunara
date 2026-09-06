@@ -637,7 +637,18 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
-    resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language })),
+    resetAppearance: () => set({
+      theme: DEFAULT_SETTINGS.theme,
+      accent: DEFAULT_SETTINGS.accent,
+      cursorStyle: DEFAULT_SETTINGS.cursorStyle,
+      cursorBlink: DEFAULT_SETTINGS.cursorBlink,
+      fontSize: DEFAULT_SETTINGS.fontSize,
+      fontFamily: DEFAULT_SETTINGS.fontFamily,
+      fontLigatures: DEFAULT_SETTINGS.fontLigatures,
+      nerdFontFallback: DEFAULT_SETTINGS.nerdFontFallback,
+      sidebarWidth: DEFAULT_SETTINGS.sidebarWidth,
+      panelWidth: DEFAULT_SETTINGS.panelWidth,
+    }),
     setLanguage: (language) => {
       const next = isLanguage(language) ? language : DEFAULT_SETTINGS.language;
       applyLanguage(next);

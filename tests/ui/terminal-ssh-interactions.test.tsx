@@ -863,6 +863,11 @@ test.each([
     : await screen.findByRole("button", { name: safeName });
   await waitFor(() => expect(document.activeElement).toBe(safe));
   const last = screen.getByRole("button", { name: lastName });
+  if (safeName === "Password") {
+    fireEvent.keyDown(safe, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(safe, { key: "Enter", keyCode: 229 });
+    expect(calls.some((call) => call.command === commandName)).toBe(false);
+  }
   last.focus();
   fireEvent.keyDown(document, { key: "Tab" });
   expect(document.activeElement).toBe(safe);

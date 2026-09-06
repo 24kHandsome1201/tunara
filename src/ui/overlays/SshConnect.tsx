@@ -284,7 +284,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
     setSelectedProfile({ id: profileId, source });
     setRouteResolution(resolution);
+    setPassword("");
+    setKeyPassphrase("");
+    setJumpPassword("");
+    setJumpKeyPassphrase("");
     setJumpProfileId("");
+    setHighlight(-1);
     if (resolution.status === "rejected") {
       setAdvancedOpen(true);
       return;
@@ -295,10 +300,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setAuthMethod(profile.authMethod ?? "auto");
     setIdentityFile(profile.authMethod === "password" ? "" : profile.identityFile);
     setCertificateFile(profile.authMethod === "password" ? "" : profile.certificateFile ?? "");
-    setPassword("");
-    setKeyPassphrase("");
-    setJumpPassword("");
-    setJumpKeyPassphrase("");
     setJumpProfileId(jump?.id ?? "");
     setJumpAuthMethod(jump?.authMethod ?? "auto");
     setJumpIdentityFile(jump?.authMethod === "password" ? "" : jump?.identityFile ?? "");
@@ -409,43 +410,19 @@ export function SshConnect({ onClose }: SshConnectProps) {
     && (portText.length === 0 || parseSshPort(portText) !== null)
     && methodReady && jumpReady && !routeError && !loadingConfig && !connecting;
 
-  const connect = async (fromSuggestion?: { id: string; source: SshProfileSourceV1 }) => {
+  const connect = async () => {
     if (connectInFlightRef.current || loadingConfig) return;
-    if (fromSuggestion) fillFrom(fromSuggestion.id, fromSuggestion.source);
-    const sourceProfiles = fromSuggestion
-      ? (fromSuggestion.source === "saved" ? hosts : configHosts)
-      : [];
-    const suggestion = fromSuggestion
-      ? sourceProfiles.find((item) => item.id === fromSuggestion.id)
-      : undefined;
-    const suggestionResolution = suggestion
-      ? resolveSshProfileRoute(suggestion.id, fromSuggestion!.source, panelModel)
-      : null;
-    const snapshot = suggestionResolution?.status === "ready" ? suggestionResolution.route : undefined;
-    const nextTarget = suggestion
-      ? formatSshTarget(snapshot?.target.user ?? suggestion.user, snapshot?.target.host ?? suggestion.host, snapshot?.target.port ?? suggestion.port)
-      : target;
-    const parsed = parseSshTarget(nextTarget);
-    const match = suggestion ?? exactSshProfileMatch(allProfiles, nextTarget);
-    const nextHost = snapshot?.target.host || parsed?.host || match?.host || "";
-    const nextUser = snapshot?.target.user || parsed?.user || match?.user || "";
-    const nextAuth = snapshot?.target.authMethod
-      ?? (suggestion ? match?.authMethod : undefined)
-      ?? authMethod
-      ?? "auto";
-    const nextIdentity = (snapshot?.target.identityFile
-      ?? (suggestion ? match?.identityFile : undefined)
-      ?? identityFile) ?? "";
-    const nextCertificate = snapshot?.target.certificateFile
-      ?? (suggestion ? match?.certificateFile : undefined)
-      ?? certificateFile;
-    const nextJump = snapshot?.jump ?? jumpProfile;
-    const nextJumpAuth = snapshot?.jump?.authMethod ?? jumpAuthMethod;
-    const nextJumpIdentity = snapshot?.jump?.identityFile ?? jumpIdentityFile;
-    const nextJumpCertificate = snapshot?.jump?.certificateFile ?? jumpCertificateFile;
-    const nextRouteError = suggestionResolution?.status === "rejected"
-      ? t(`ssh.route.${suggestionResolution.code}`)
-      : routeError;
+    const parsed = parseSshTarget(target);
+    const match = exactSshProfileMatch(allProfiles, target);
+    const nextHost = parsed?.host || match?.host || "";
+    const nextUser = parsed?.user || match?.user || "";
+    const nextAuth = authMethod ?? "auto";
+    const nextIdentity = identityFile ?? "";
+    const nextCertificate = certificateFile;
+    const nextJump = jumpProfile;
+    const nextJumpAuth = jumpAuthMethod;
+    const nextJumpIdentity = jumpIdentityFile;
+    const nextJumpCertificate = jumpCertificateFile;
     const nextMethodReady = nextAuth === "key"
       ? nextIdentity.trim().length > 0
       : nextAuth === "password"
@@ -458,11 +435,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
           ? jumpPassword.length > 0
           : true
     );
-    if (!nextHost || !nextUser || !nextMethodReady || !nextJumpReady || nextRouteError) return;
+    if (!nextHost || !nextUser || !nextMethodReady || !nextJumpReady || routeError) return;
     connectInFlightRef.current = true;
     const attempt = ++connectAttemptRef.current;
     setConnecting(true);
-    const safePort = snapshot?.target.port ?? parsed?.port ?? match?.port ?? normalizeSshPort(port);
+    const safePort = parsed?.port ?? match?.port ?? normalizeSshPort(port);
     // pty-bridge only forwards IdentityFile for `key`. Auto with a known path
     // therefore opens as key so ssh-config / saved IdentityFile still reaches russh.
     const usesKeyMaterial = nextAuth === "key" || (nextAuth === "auto" && nextIdentity.trim().length > 0);
@@ -624,6 +601,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         className="ssh-connect-dialog overlay-sheet"
         tabIndex={0}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
@@ -648,7 +626,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           if (event.key === "Enter" && !excludesSubmit) {
             event.preventDefault();
             if (targetEl === targetRef.current && highlight >= 0 && suggestions[highlight]) {
-              void connect({ id: suggestions[highlight].profile.id, source: suggestions[highlight].source });
+              fillFrom(suggestions[highlight].profile.id, suggestions[highlight].source);
               return;
             }
             if (canConnect) void connect();
@@ -693,7 +671,15 @@ export function SshConnect({ onClose }: SshConnectProps) {
             placeholder={t("ssh.target_placeholder")}
             aria-invalid={portInvalid}
             aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined}
-            onChange={(event) => { setTarget(event.target.value); setHighlight(-1); setSelectedProfile(null); }}
+            onChange={(event) => {
+              setTarget(event.target.value);
+              setHighlight(-1);
+              setSelectedProfile(null);
+              setPassword("");
+              setKeyPassphrase("");
+              setJumpPassword("");
+              setJumpKeyPassphrase("");
+            }}
             spellCheck={false}
             autoCapitalize="off"
             autoComplete="off"
@@ -730,7 +716,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <div className="ssh-connect-form" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
               <div>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => setPort(event.target.value)} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => { setPort(event.target.value); setPassword(""); setKeyPassphrase(""); }} />
               </div>
               <fieldset style={{ margin: 0, padding: 0, border: "none" }}>
                 <legend style={labelStyle}>{t("ssh.auth.method")}</legend>

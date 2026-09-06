@@ -125,6 +125,10 @@ export function useKeybindings() {
     };
 
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      // Dialogs own their keys (including Escape/cancellation). This also
+      // covers confirmation dialogs that are not represented by ui.overlay.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (e.key === "Escape") {
         const ui = useUIStore.getState();
         const compactLayout = resolveAppShellLayout({
@@ -152,6 +156,8 @@ export function useKeybindings() {
         }
       }
       const ui = useUIStore.getState();
+      // Keep the workspace isolated while an overlay is still lazy-loading.
+      if (ui.overlay) return;
       if (
         ui.focusedPaneId
         && isReaderPaneId(ui.focusedPaneId)
@@ -177,6 +183,7 @@ export function useKeybindings() {
         if (isTerminalKeybindingAction(action)) continue;
         if (!matchesKeybinding(e, bindings[action], isMac)) continue;
         e.preventDefault();
+        if (action === "closeSession" && e.repeat) return;
         advanceTerminalFocusEpoch();
         runAction(action);
         return;

@@ -650,9 +650,13 @@ describe("FilePreview editor behavior", () => {
 
   test("freezes an SSH draft across disconnect and never falls back to local file IPC", async () => {
     const calls: string[] = [];
-    mockIPC((command) => {
+    const readBindings: unknown[] = [];
+    mockIPC((command, payload) => {
       calls.push(command);
-      if (command === "ssh_fs_read_if_changed_v1") return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      if (command === "ssh_fs_read_if_changed_v1") {
+        readBindings.push((payload as { binding: unknown }).binding);
+        return { status: "changed", observation: { kind: "file", size: 7, mode: 0o644, modifiedAt: 1 }, value: original };
+      }
       throw new Error(`unexpected command: ${command}`);
     });
 
@@ -677,7 +681,12 @@ describe("FilePreview editor behavior", () => {
     );
     const restored = await screen.findByRole("textbox", { name: "Edit notes.txt" }) as HTMLTextAreaElement;
     expect(restored.value).toBe("preserved remote draft\n");
-    expect(calls.filter((command) => command === "ssh_fs_read_if_changed_v1")).toHaveLength(2);
+    // Background refreshes may add reads; every read must remain bound to SSH.
+    const expectedBindings = [41, 84].map((ptyId) => sshResource(ptyId, "/srv/notes.txt").binding);
+    expect(readBindings).toEqual(expect.arrayContaining(expectedBindings));
+    for (const binding of readBindings) expect(expectedBindings).toContainEqual(binding);
+    expect(calls).not.toContain("fs_read_file");
+    expect(calls).not.toContain("fs_write_text_file");
   });
 
   test("offers a 1000-line bounded local view without using download", async () => {

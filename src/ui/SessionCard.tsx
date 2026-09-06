@@ -398,6 +398,10 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) {
+                    e.stopPropagation();
+                    return;
+                  }
                   if (e.key === "Enter") commitRename();
                   if (e.key === "Escape") {
                     setEditValue(session.customTitle ?? primary);

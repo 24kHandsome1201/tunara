@@ -929,7 +929,7 @@ test("remote file downloads are reachable from the explorer", () => {
   const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
 
   assert.match(explorer, /saveDialog\(\{/);
-  assert.match(explorer, /sshDownload\(remotePtyId, remotePath, localPath\)/);
+  assert.match(explorer, /useTransferStore\.getState\(\)\.enqueue\(\{/);
   assert.match(explorer, /id: "file:download"/);
   assert.match(bridge, /export \{ sshCancelUpload, sshDownload, sshUpload \} from "\.\/transfer-bridge\.ts"/);
   assert.match(transferBridge, /invoke<number>\("ssh_fs_download"/);
@@ -1201,8 +1201,6 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
   assert.match(settings, /tauriConfirmDialog\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
-  assert.match(ui, /resetAppearance: \(\) => set\(\(s\) => \(\{ \.\.\.DEFAULT_SETTINGS, keybindings: s\.keybindings, language: s\.language \}\)\)/);
-  assert.doesNotMatch(ui, /resetAppearance: \(\) => set\(\{ \.\.\.DEFAULT_SETTINGS, keybindings: \{ \.\.\.DEFAULT_KEYBINDINGS \} \}\)/);
 });
 
 test("follow-up review fixes keep agent registry and batch close behavior centralized", () => {

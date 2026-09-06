@@ -151,6 +151,26 @@ test("SSH connecting phase is visible on the card and not in the attention bar",
   expect(screen.queryByText("Needs attention")).toBeNull();
 });
 
+test("session rename does not commit on an IME Enter keydown", () => {
+  const session = localSession("rename-ime", "/tmp", { customTitle: "Original" });
+  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+  render(
+    <Sidebar
+      sessions={[session]}
+      activeSessionId={session.id}
+      onSelectSession={vi.fn()}
+    />,
+  );
+
+  fireEvent.doubleClick(screen.getByRole("button", { name: /Original/ }));
+  const input = screen.getByDisplayValue("Original");
+  fireEvent.change(input, { target: { value: "Composing" } });
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 229, isComposing: true });
+
+  expect(screen.getByDisplayValue("Composing")).toBeTruthy();
+  expect(useSessionsStore.getState().sessions[0].customTitle).toBe("Original");
+});
+
 test("saved hosts collapse when sessions exist and focus a live session on click", async () => {
   mockIPC((command) => {
     if (command === "ssh_hosts_load") {

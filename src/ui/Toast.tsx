@@ -18,6 +18,8 @@ function ToastItem({ toast }: { toast: Toast }) {
   const [paused, setPaused] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const copyRequestRef = useRef(0);
+  const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const duration = toast.durationMs ?? (toast.variant === "error" ? ERROR_TOAST_DURATION : DEFAULT_TOAST_DURATION);
   const remainRef = useRef(duration);
@@ -33,20 +35,36 @@ function ToastItem({ toast }: { toast: Toast }) {
   dismissRef.current = dismiss;
 
   useEffect(() => {
+    mountedRef.current = true;
     startRef.current = Date.now();
     timerRef.current = setTimeout(() => dismissRef.current(), duration);
     return () => {
+      mountedRef.current = false;
+      copyRequestRef.current += 1;
       clearTimeout(timerRef.current);
       clearTimeout(copiedTimerRef.current);
     };
   }, [duration]);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const text = toast.subtitle ? `${toast.title}\n${toast.subtitle}` : toast.title;
-    void copyText(text);
+    const request = ++copyRequestRef.current;
+    const ok = await copyText(text);
+    if (!mountedRef.current || request !== copyRequestRef.current) return;
+    if (!ok) {
+      setCopied(false);
+      useUIStore.getState().addToast({
+        title: t("clipboard.copy_failed"),
+        subtitle: t("diff.toast.clipboard_unavailable"),
+        variant: "error",
+      });
+      return;
+    }
     setCopied(true);
     clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setCopied(false), 1200);
+    copiedTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setCopied(false);
+    }, 1200);
   };
 
   const pausedRef = useRef(false);
@@ -195,7 +213,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 
       {toast.variant === "error" && (
         <button
-          onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+          onClick={(e) => { e.stopPropagation(); void handleCopy(); }}
           title={t(copied ? "toast.copied" : "toast.copy_error")}
           aria-label={t(copied ? "toast.copied" : "toast.copy_error")}
           style={{

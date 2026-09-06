@@ -1,9 +1,10 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { setLanguage } from "@/modules/i18n";
 import { useTheme } from "@/app/useTheme";
-import { useUIStore } from "@/state/ui";
+import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { Settings } from "@/ui/overlays/Settings";
 import { terminalThemePreviewColors } from "@/ui/overlays/settings/controls";
 import { DARK_THEME, LIGHT_THEME } from "@/styles/terminalTheme";
@@ -53,6 +54,23 @@ beforeEach(() => {
 afterEach(() => {
   document.documentElement.classList.remove("dark");
   document.documentElement.removeAttribute("style");
+});
+
+test("appearance reset confirms and preserves terminal, accessibility and shortcut settings", async () => {
+  const preserved = {
+    language: "en" as const, externalEditor: "zed" as const, bellNotification: false,
+    terminalClipboardWrite: true, terminalScreenReaderMode: true, terminalHostModifier: "alt" as const,
+    globalShortcut: "Ctrl+Alt+Y", keybindings: { ...DEFAULT_SETTINGS.keybindings, closeSession: "Alt+Q" },
+  };
+  useUIStore.setState({ ...preserved, fontFamily: "Custom Mono", fontSize: 20 });
+  vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  render(<Settings onClose={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+  await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+  expect(useUIStore.getState().fontFamily).toBe("Custom Mono");
+  fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+  await waitFor(() => expect(useUIStore.getState().fontFamily).toBe(DEFAULT_SETTINGS.fontFamily));
+  expect(useUIStore.getState()).toMatchObject({ ...preserved, fontSize: DEFAULT_SETTINGS.fontSize, theme: DEFAULT_SETTINGS.theme });
 });
 
 test("System, Light, and Dark are one mutually exclusive synchronized choice", async () => {

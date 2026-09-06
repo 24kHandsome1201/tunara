@@ -11,6 +11,7 @@ import { PanelLoadingState } from "./shared";
 import { FileIcon } from "./file-explorer/icons";
 import { fileKindTint } from "./file-explorer/file-kind";
 import type { Session } from "./types";
+import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 
 const FilePreview = lazy(() => import("./FilePreview").then((module) => ({ default: module.FilePreview })));
 
@@ -93,15 +94,26 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
 
   const openOverflowMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
+    const menuBinding = readyBindingForSession(session);
     const items: MenuEntry[] = session.remote
       ? [{
           id: "external-remote",
           label: t("preview.editor.external_remote"),
+          disabled: !menuBinding,
           action: () => {
-            const binding = session.ptyId !== undefined && session.transportGeneration
-              ? { logicalSessionId: session.id, physicalPtyId: session.ptyId, transportGeneration: session.transportGeneration }
-              : null;
-            if (!binding) return;
+            const liveSession = useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id);
+            const binding = readyBindingForSession(liveSession);
+            if (!menuBinding || !binding
+              || binding.physicalPtyId !== menuBinding.physicalPtyId
+              || binding.transportGeneration !== menuBinding.transportGeneration) {
+              useUIStore.getState().addToast({
+                sessionId: session.id,
+                title: t("preview.editor.external_remote"),
+                subtitle: t("preview.editor.external_remote_open_failed"),
+                variant: "error",
+              });
+              return;
+            }
             void openRemoteInExternalEditor({
               sessionId: session.id,
               binding,

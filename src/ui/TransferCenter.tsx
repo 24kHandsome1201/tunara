@@ -10,6 +10,17 @@ import { openResource, resourceRefForSession } from "@/modules/resources/resourc
 import { useSessionsStore } from "@/state/sessions";
 import type { MutableRefObject, ReactNode } from "react";
 
+/** Keep backend detail useful while removing common credential forms and hostile controls. */
+export function safeTransferErrorDetail(error: string): string {
+  return error
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@")
+    .replace(/\b(password|passwd|token|secret|private[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
 function TransferCard({ id, children }: { id: string; children: (item: TransferItem) => ReactNode }) {
   const item = useTransferStore((state) => state.itemsById.get(id));
   return item ? children(item) : null;
@@ -141,7 +152,9 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
           {visibleIds.length > 0 && (
             <ul className="transfer-list">
               {visibleIds.map((id) => (
-                <TransferCard key={id} id={id}>{(item) => (
+                <TransferCard key={id} id={id}>{(item) => {
+                  const error = item.error ?? (item.outcome && "message" in item.outcome ? item.outcome.message : undefined);
+                  return (
                 <li key={`${item.transferId}-${item.attempt}`} className="transfer-card" data-status={item.status}>
                   <div className="transfer-card-heading">
                     <strong title={item.source}>{item.source.split(/[\\/]/).pop() || item.source}</strong>
@@ -175,10 +188,11 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     )}
                     {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") announceRef.current(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
                   </div>
+                  {(item.status === "failed" || item.status === "needsReconcile") && error && <div role="alert" className="transfer-warning">{t("transfer.error_detail", { error: safeTransferErrorDetail(error) })}</div>}
                   {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" className="transfer-warning">{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
                   {item.event?.totalBytes != null && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
                 </li>
-                )}</TransferCard>
+                ); }}</TransferCard>
               ))}
             </ul>
           )}

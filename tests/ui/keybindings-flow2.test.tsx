@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import {
   analyzeTerminalKeybindingRisk,
   analyzeTerminalScopedKeybindingRisk,
@@ -13,9 +13,53 @@ import {
 } from "@/modules/config/keybindings";
 import { useKeybindings } from "@/app/useKeybindings";
 import { useUIStore } from "@/state/ui";
+import { useSessionsStore } from "@/state/sessions";
+import { Modal } from "@/ui/overlays/Modal";
 import { isMac } from "@/ui/lib/platform";
 
+function KeyboardHarness() {
+  useKeybindings();
+  return null;
+}
+
 describe("flow 2 keybindings", () => {
+  it("requires a fresh key press to confirm closing a running session", () => {
+    useSessionsStore.setState({
+      sessions: [{ id: "busy", title: "Busy", dir: "/tmp", branch: "main", runState: "running", updatedAt: 1 }],
+      activeSessionId: "busy", closeConfirmations: {},
+    });
+    useUIStore.setState({ keybindings: { ...defaultKeybindingsForPlatform("linux"), closeSession: "Ctrl+Shift+W" } });
+    render(<KeyboardHarness />);
+    fireEvent.keyDown(window, { key: "w", ctrlKey: true, shiftKey: true });
+    expect(useSessionsStore.getState().sessions).toHaveLength(1);
+    for (let i = 0; i < 3; i++) fireEvent.keyDown(window, { key: "w", ctrlKey: true, shiftKey: true, repeat: true });
+    expect(useSessionsStore.getState().sessions).toHaveLength(1);
+    fireEvent.keyDown(window, { key: "w", ctrlKey: true, shiftKey: true });
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
+  it.each(["settings", "ssh"] as const)("isolates workspace shortcuts while %s is loading", (overlay) => {
+    useUIStore.setState({ overlay, keybindings: defaultKeybindingsForPlatform("linux") });
+    const before = useSessionsStore.getState();
+    render(<KeyboardHarness />);
+    for (const key of ["w", "t", "k"]) fireEvent.keyDown(window, { key, ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "1", ctrlKey: true });
+    expect(useUIStore.getState().overlay).toBe(overlay);
+    expect(useSessionsStore.getState().sessions).toBe(before.sessions);
+    expect(useSessionsStore.getState().activeSessionId).toBe(before.activeSessionId);
+  });
+
+  it("leaves modal Escape to its owner and ignores IME Escape", () => {
+    const onClose = vi.fn();
+    render(<><KeyboardHarness /><Modal labelledBy="modal-label" onRequestClose={onClose}>
+      <h2 id="modal-label">Confirm</h2><input aria-label="draft" />
+    </Modal></>);
+    fireEvent.keyDown(screen.getByLabelText("draft"), { key: "Escape", isComposing: true });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByLabelText("draft"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledExactlyOnceWith("escape");
+  });
+
   it("uses mac conventions and terminal-safe Windows/Linux alternatives", () => {
     const mac = defaultKeybindingsForPlatform("macos");
     expect([mac.terminalMenu, mac.copySelection, mac.safePaste]).toEqual(["", "Mod+C", "Mod+V"]);

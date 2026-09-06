@@ -72,6 +72,7 @@ export function useModalBehavior(
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (activeModalStack[activeModalStack.length - 1] !== modalToken) return;
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === "Escape" && closeRef.current) {
         event.preventDefault();
         event.stopPropagation();

@@ -115,6 +115,7 @@ export function CliSettings({ resolvedClis, cliError, preflights, loadCliStatus,
                       value={overrideDraft}
                       onChange={(e) => setOverrideDraft(e.target.value)}
                       onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                         if (e.key === "Enter") { e.preventDefault(); saveOverride(code, cliBin, overrideDraft); }
                         else if (e.key === "Escape") { e.preventDefault(); setEditingOverride(null); }
                       }}

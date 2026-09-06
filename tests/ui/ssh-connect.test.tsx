@@ -138,6 +138,23 @@ describe("SSH connection sheet", () => {
     expect(saves[0]).not.toHaveProperty("password");
   });
 
+  test.each(["host", "port"])("clears a password when the target %s is manually changed", async (field) => {
+    mockEmptySources();
+    render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
+    fireEvent.click(screen.getByRole("radio", { name: /^Password/ }));
+    fireEvent.change(hostInput(), { target: { value: "deploy@alpha.example" } });
+    const password = document.getElementById("ssh-connect-password") as HTMLInputElement;
+    fireEvent.change(password, { target: { value: "alpha-only-secret" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.change(field === "host" ? hostInput() : document.getElementById("ssh-connect-port")!, { target: { value: field === "host" ? "deploy@beta.example" : "2222" } });
+    expect(password.value).toBe("");
+    expect(connect.disabled).toBe(true);
+    fireEvent.keyDown(hostInput(), { key: "Enter" });
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
   test("locks a submitted connection so repeated activation creates only one session", async () => {
     mockEmptySources();
     const onClose = vi.fn();
@@ -169,6 +186,70 @@ describe("SSH connection sheet", () => {
     fireEvent.change(host, { target: { value: "nobody" } });
     host.focus();
     fireEvent.keyDown(host, { key: "Enter" });
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
+  test("keyboard suggestion selection clears another profile's password and requires a second Enter", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "a", label: "Alpha", host: "alpha.example", port: 22, user: "ops", auth_method: "password", identity_file: "" },
+        { id: "b", label: "Beta", host: "beta.example", port: 2222, user: "deploy", auth_method: "password", identity_file: "" },
+      ];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      if (command === "ssh_hosts_save") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Alpha/i }));
+    const alphaSecret = "alpha-only-secret";
+    fireEvent.change(document.getElementById("ssh-connect-password") as HTMLInputElement, { target: { value: alphaSecret } });
+    fireEvent.change(hostInput(), { target: { value: "Beta" } });
+    fireEvent.keyDown(hostInput(), { key: "ArrowDown" });
+    fireEvent.keyDown(hostInput(), { key: "Enter" });
+
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+    expect(hostInput().value).toBe("deploy@beta.example:2222");
+    expect((document.getElementById("ssh-connect-password") as HTMLInputElement).value).toBe("");
+
+    const betaSecret = "beta-only-secret";
+    fireEvent.change(document.getElementById("ssh-connect-password") as HTMLInputElement, { target: { value: betaSecret } });
+    fireEvent.keyDown(hostInput(), { key: "Enter" });
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.remote).toMatchObject({ host: "beta.example", port: 2222, user: "deploy", authMethod: "password" });
+    const credentials = takeSshCredentials(session.id);
+    expect(credentials?.password).toBe(betaSecret);
+    expect(credentials?.password).not.toBe(alphaSecret);
+  });
+
+  test("mouse suggestion selection also only populates and clears existing secrets", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "a", label: "Alpha", host: "alpha.example", port: 22, user: "ops", auth_method: "password", identity_file: "" },
+        { id: "b", label: "Beta", host: "beta.example", port: 2222, user: "deploy", auth_method: "password", identity_file: "" },
+      ];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Alpha/i }));
+    fireEvent.change(document.getElementById("ssh-connect-password") as HTMLInputElement, { target: { value: "alpha-only-secret" } });
+    fireEvent.change(hostInput(), { target: { value: "Beta" } });
+    fireEvent.click(screen.getByRole("button", { name: /Beta/i }));
+
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+    expect(hostInput().value).toBe("deploy@beta.example:2222");
+    expect((document.getElementById("ssh-connect-password") as HTMLInputElement).value).toBe("");
+  });
+
+  test("does not submit the SSH form while an IME composition is active", async () => {
+    mockEmptySources();
+    render(<SshConnect onClose={vi.fn()} />);
+    fireEvent.change(hostInput(), { target: { value: "deploy@ime.example" } });
+    await waitFor(() => expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.keyDown(hostInput(), { key: "Enter", keyCode: 229, isComposing: true });
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });
 

@@ -448,4 +448,17 @@ describe("Transfer Center announcements", () => {
       fileName: "notes.json",
     }));
   });
+
+  it.each(["exception", "outcome"])("shows useful %s failure detail without exposing credentials", (kind) => {
+    const message = "connection to ssh://alice:hunter2@example.test failed; token=abc123";
+    useTransferStore.getState().replaceItemsForTest([{
+      ...request(1), transferId: "failed", attempt: 1, status: "failed", cancelRequested: false,
+      ...(kind === "exception" ? { error: message } : { outcome: { status: "failed" as const, code: "transferFailed" as const, message, bytesTransferred: 0, residuePath: null } }),
+    }]);
+    render(<TransferCenter />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("connection to ssh://[redacted]@example.test failed");
+    expect(alert.textContent).not.toContain("hunter2");
+    expect(alert.textContent).not.toContain("abc123");
+  });
 });

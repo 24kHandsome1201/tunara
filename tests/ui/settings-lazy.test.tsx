@@ -72,6 +72,9 @@ test("CLI settings renders the registry and preserves override identifiers", () 
   fireEvent.click(buttons[AGENT_REGISTRY.findIndex(({ code }) => code === "CR")]);
   expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("/usr/bin/cursor-agent");
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "/opt/cursor-agent" } });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", isComposing: true });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter", keyCode: 229 });
+  expect(applyOverride).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
   expect(applyOverride).toHaveBeenCalledWith("CR", "cursor-agent", "/opt/cursor-agent");
   expect(screen.queryByRole("textbox")).toBeNull();

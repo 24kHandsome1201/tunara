@@ -5,13 +5,11 @@ import { computeVirtualSlice } from "./lib/diff-virtual";
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
-const MAX_REMOTE_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
 import {
   invalidateRemoteSearchCache,
-  sshDownload,
   sshHome,
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
@@ -88,10 +86,6 @@ interface FileExplorerProps {
   remoteHost?: string;
 }
 
-interface DownloadTransfer {
-  disposed: boolean;
-}
-
 export function FileExplorer({
   sessionId,
   rootDir,
@@ -112,8 +106,7 @@ export function FileExplorer({
   const followTerminalCwd = isRemote && hostPrefs.followTerminalCwd;
   const directUpload = useDirectUpload({ sessionId, remotePtyId, t, onUploaded: () => refresh() });
   const { upload, transferAnnouncement } = directUpload;
-  const [download, setDownload] = useState<{ fileName: string } | null>(null);
-  const downloadTransferRef = useRef<DownloadTransfer | null>(null);
+  const downloadChooserPendingRef = useRef<object | null>(null);
   const [selectedDownloads, setSelectedDownloads] = useState<Map<string, BatchDownloadSource>>(() => new Map());
   const [batchDownloadPreparing, setBatchDownloadPreparing] = useState(false);
   const selectionAnchorRef = useRef<string | null>(null);
@@ -128,36 +121,31 @@ export function FileExplorer({
   };
 
   const downloadRemoteFile = async (remotePath: string, fileName: string) => {
-    if (remotePtyId === undefined || downloadTransferRef.current) return;
-    const transfer: DownloadTransfer = { disposed: false };
-    downloadTransferRef.current = transfer;
+    if (!binding || downloadChooserPendingRef.current) return;
+    const chooser = {};
+    downloadChooserPendingRef.current = chooser;
     try {
       const localPath = await saveDialog({
         title: t("explorer.download.choose_destination"),
         defaultPath: fileName,
       });
-      if (!localPath || transfer.disposed) return;
-      setDownload({ fileName });
-      const bytes = await sshDownload(remotePtyId, remotePath, localPath);
-      if (transfer.disposed) return;
-      useUIStore.getState().addToast({
-        sessionId,
-        title: t("explorer.download.complete"),
-        subtitle: `${fileName} · ${formatSize(bytes)}`,
-        variant: "success",
+      if (!localPath || downloadChooserPendingRef.current !== chooser) return;
+      useTransferStore.getState().enqueue({
+        binding,
+        direction: "download",
+        source: remotePath,
+        destination: localPath,
+        conflict: "replace",
       });
     } catch (error) {
-      if (!transfer.disposed) {
-        useUIStore.getState().addToast({
-          sessionId,
-          title: t("explorer.download.failed"),
-          subtitle: t(downloadFailureKey(error)),
-          variant: "error",
-        });
-      }
+      useUIStore.getState().addToast({
+        sessionId,
+        title: t("explorer.download.failed"),
+        subtitle: t(downloadFailureKey(error)),
+        variant: "error",
+      });
     } finally {
-      if (downloadTransferRef.current === transfer) downloadTransferRef.current = null;
-      if (!transfer.disposed) setDownload(null);
+      if (downloadChooserPendingRef.current === chooser) downloadChooserPendingRef.current = null;
     }
   };
 
@@ -318,6 +306,7 @@ export function FileExplorer({
     && transportGeneration
     ? { logicalSessionId: sessionId, physicalPtyId: remotePtyId, transportGeneration }
     : null, [isRemote, remotePtyId, sessionId, transportGeneration]);
+  useEffect(() => () => { downloadChooserPendingRef.current = null; }, [binding]);
   const activeTransferNotice = useTransferStore((s) =>
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
@@ -340,15 +329,6 @@ export function FileExplorer({
     setDropMessage(t("explorer.drop.queued", { files: result.files, directories: result.directories }));
     return true;
   }, [binding, remoteHost, t]);
-
-  useEffect(() => () => {
-    const downloadTransfer = downloadTransferRef.current;
-    if (downloadTransfer) {
-      downloadTransfer.disposed = true;
-      if (downloadTransferRef.current === downloadTransfer) downloadTransferRef.current = null;
-      setDownload(null);
-    }
-  }, [remotePtyId, sessionId]);
 
   useEffect(() => {
     if (!binding) return;
@@ -814,7 +794,7 @@ export function FileExplorer({
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
           { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
           { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
-          { id: "file:download", label: node.entry.size > MAX_REMOTE_DOWNLOAD_BYTES ? t("explorer.download.too_large") : t("explorer.download"), icon: "download", disabled: node.entry.size > MAX_REMOTE_DOWNLOAD_BYTES || download !== null, action: () => { void downloadRemoteFile(node.path, node.entry.name); } },
+          { id: "file:download", label: node.entry.size > downloadLimits.maxFileBytes ? t("explorer.download.too_large", { limit: formatSize(downloadLimits.maxFileBytes) }) : t("explorer.download"), icon: "download", disabled: node.entry.size > downloadLimits.maxFileBytes || !binding || !!downloadChooserPendingRef.current, action: () => { void downloadRemoteFile(node.path, node.entry.name); } },
           { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
         ]
       : [
@@ -829,29 +809,32 @@ export function FileExplorer({
   function toggleDownloadSelection(node: ExplorerTreeNode, range: boolean) {
     if (!binding || node.entry.kind !== "file" || node.entry.size > downloadLimits.maxFileBytes) return;
     const nextSource = { path: node.path, name: node.entry.name, size: node.entry.size };
-    setSelectedDownloads((current) => {
-      const next = new Map(current);
-      let totalBytes = [...next.values()].reduce((total, source) => total + source.size, 0);
-      if (range && selectionAnchorRef.current) {
-        const anchor = selectableDownloadNodes.findIndex(({ path }) => path === selectionAnchorRef.current);
-        const target = selectableDownloadNodes.findIndex(({ path }) => path === node.path);
-        if (anchor >= 0 && target >= 0) {
-          for (const candidate of selectableDownloadNodes.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
-            if (next.has(candidate.path)) continue;
-            if (next.size >= downloadLimits.maxFiles
-              || totalBytes + candidate.entry.size > downloadLimits.maxTotalBytes) break;
-            next.set(candidate.path, { path: candidate.path, name: candidate.entry.name, size: candidate.entry.size });
-            totalBytes += candidate.entry.size;
-          }
+    let rejected: "files" | "total" | null = null;
+    const next = new Map(selectedDownloads);
+    let totalBytes = [...next.values()].reduce((total, source) => total + source.size, 0);
+    if (range && selectionAnchorRef.current) {
+      const anchor = selectableDownloadNodes.findIndex(({ path }) => path === selectionAnchorRef.current);
+      const target = selectableDownloadNodes.findIndex(({ path }) => path === node.path);
+      if (anchor >= 0 && target >= 0) {
+        for (const candidate of selectableDownloadNodes.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)) {
+          if (next.has(candidate.path)) continue;
+          if (next.size >= downloadLimits.maxFiles) { rejected = "files"; break; }
+          if (totalBytes + candidate.entry.size > downloadLimits.maxTotalBytes) { rejected = "total"; break; }
+          next.set(candidate.path, { path: candidate.path, name: candidate.entry.name, size: candidate.entry.size });
+          totalBytes += candidate.entry.size;
         }
-      } else if (next.has(node.path)) {
-        next.delete(node.path);
-      } else if (next.size < downloadLimits.maxFiles
-        && totalBytes + node.entry.size <= downloadLimits.maxTotalBytes) {
-        next.set(node.path, nextSource);
       }
-      return next;
-    });
+    } else if (next.has(node.path)) {
+      next.delete(node.path);
+    } else if (next.size >= downloadLimits.maxFiles) {
+      rejected = "files";
+    } else if (totalBytes + node.entry.size > downloadLimits.maxTotalBytes) {
+      rejected = "total";
+    } else {
+      next.set(node.path, nextSource);
+    }
+    setSelectedDownloads(next);
+    if (rejected) showSelectionLimit(rejected);
     selectionAnchorRef.current = node.path;
   }
 
@@ -868,12 +851,26 @@ export function FileExplorer({
     }
     const next = new Map<string, BatchDownloadSource>();
     let total = 0;
+    let rejected: "files" | "total" | null = null;
     for (const node of selectableDownloadNodes) {
-      if (next.size >= downloadLimits.maxFiles || total + node.entry.size > downloadLimits.maxTotalBytes) break;
+      if (next.size >= downloadLimits.maxFiles) { rejected = "files"; break; }
+      if (total + node.entry.size > downloadLimits.maxTotalBytes) { rejected = "total"; break; }
       next.set(node.path, { path: node.path, name: node.entry.name, size: node.entry.size });
       total += node.entry.size;
     }
     setSelectedDownloads(next);
+    if (rejected) showSelectionLimit(rejected);
+  }
+
+  function showSelectionLimit(kind: "files" | "total") {
+    useUIStore.getState().addToast({
+      sessionId,
+      title: t("explorer.download.selection_limit_title"),
+      subtitle: kind === "files"
+        ? t("explorer.download.selection_file_limit", { limit: downloadLimits.maxFiles })
+        : t("explorer.download.selection_size_limit", { limit: formatSize(downloadLimits.maxTotalBytes) }),
+      variant: "warning",
+    });
   }
 
   async function downloadSelectedFiles() {
@@ -1283,13 +1280,6 @@ export function FileExplorer({
       <div aria-live="polite" aria-atomic="true" className="sr-only" data-transfer-announcement>
         {transferAnnouncement}
       </div>
-      {download && (
-        <div className="explorer-transfer-status" role="status" aria-live="polite" aria-busy="true" title={download.fileName}>
-          {t("explorer.download.progress", { file: download.fileName })}
-          <progress className="ui-progress" aria-label={t("explorer.download.progress_label")} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
-        </div>
-      )}
-
       <div
         key={contentKey}
         ref={resultsListRef}
@@ -1510,7 +1500,10 @@ export function FileExplorer({
                 autoFocus
                 value={mutationComposer.value}
                 onChange={(event) => setMutationComposer((current) => current ? { ...current, value: event.target.value, error: undefined } : current)}
-                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void prepareNamedMutation(); } }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                  if (event.key === "Enter") { event.preventDefault(); void prepareNamedMutation(); }
+                }}
               />
             </label>
             {mutationComposer.error && (

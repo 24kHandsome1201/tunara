@@ -130,6 +130,17 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const runtimeStatus = runtimeState?.status ?? null;
   const displayStatus = source.state === "stale" ? "stale" : runtimeStatus ?? "closed";
   const isOpen = runtimeState !== null;
+  const externalUrl = (() => {
+    if (isRemote && !tunnelState?.localEndpoint) return null;
+    const currentUrl = runtimeState?.currentUrl ?? (isRemote ? tunnelState!.localEndpoint! : source.sourceUrl);
+    const candidate = previewAddressForRuntime(source, effectiveSource, currentUrl);
+    try {
+      const parsed = new URL(candidate);
+      return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : null;
+    } catch {
+      return null;
+    }
+  })();
   const currentProvenance = session.previewCommandProvenance;
   const sourceProvenance = source.restartProvenance;
   const provenanceMatches = !!currentProvenance && !!sourceProvenance
@@ -202,7 +213,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         ) : <button className="preview-action-primary" disabled={busy || !!blocked} onClick={() => void run(() => previewOpen(effectiveSource), "opening")}>{isOpen ? t("inspector.preview.focus") : t("inspector.preview.open")}</button>}
         <button disabled={busy || !!blocked || !isOpen || runtimeStatus === "opening" || runtimeStatus === "loading"} onClick={() => void run(() => previewRefresh(effectiveSource), "loading")}>{t("inspector.preview.refresh")}</button>
         <button data-preview-action={isRemote ? "close-tunnel" : "close-preview"} disabled={busy || (!isOpen && !tunnelState)} onClick={() => void run(isRemote ? closeTunnelAndPreview : () => previewClose(effectiveSource), undefined, !isRemote)}>{isRemote ? t("inspector.preview.tunnel.close") : t("inspector.preview.close")}</button>
-        <button disabled={busy || (isRemote && !tunnelState?.localEndpoint)} onClick={() => void run(() => openUrl(isRemote ? tunnelState?.localEndpoint ?? "" : source.sourceUrl))}>{t("inspector.preview.external")}</button>
+        <button disabled={busy || !externalUrl} onClick={() => { if (externalUrl) void run(() => openUrl(externalUrl)); }}>{t("inspector.preview.external")}</button>
       </div>
       {displayStatus === "failed" && runtimeState && <section aria-label={t("inspector.preview.restart.title")} style={{ borderTop: "1px solid var(--c-border-1)", paddingTop: 7, display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

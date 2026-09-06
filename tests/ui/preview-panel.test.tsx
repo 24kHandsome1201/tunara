@@ -104,6 +104,7 @@ test("opens an SSH Preview only after an explicit source-bound tunnel action", a
     tunnelId: "a".repeat(64),
   };
   let tunnel: PreviewTunnelState | null = null;
+  let remoteCurrentUrl = forwarded.sourceUrl;
   mockIPC((command, payload) => {
     calls.push({ command, payload });
     if (command === "preview_tunnel_status") return tunnel;
@@ -112,8 +113,12 @@ test("opens an SSH Preview only after an explicit source-bound tunnel action", a
       return tunnel;
     }
     if (command === "preview_open") return "preview-forwarded";
-    if (command === "preview_status") return (payload as { source: PreviewSource }).source.permission === "forwarded" ? runtime({ currentUrl: forwarded.sourceUrl }) : null;
-    if (command === "preview_navigate") return undefined;
+    if (command === "preview_status") return (payload as { source: PreviewSource }).source.permission === "forwarded" ? runtime({ currentUrl: remoteCurrentUrl }) : null;
+    if (command === "preview_navigate") {
+      remoteCurrentUrl = (payload as { address: string }).address;
+      return undefined;
+    }
+    if (command === "plugin:opener|open_url") return undefined;
     throw new Error(`unexpected command: ${command}`);
   });
   render(<PreviewPanel session={session([remote])} />);
@@ -132,6 +137,11 @@ test("opens an SSH Preview only after an explicit source-bound tunnel action", a
   await waitFor(() => expect(calls).toContainEqual({
     command: "preview_navigate",
     payload: { source: forwarded, address: "http://127.0.0.1:53124/next?q=1#two" },
+  }));
+  fireEvent.click(external);
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "plugin:opener|open_url",
+    payload: { url: "http://127.0.0.1:53124/next?q=1#two" },
   }));
   expect(screen.getByText("Tunnel ready")).toBeTruthy();
   expect(calls.some((call) => call.command === "pty_write")).toBe(false);
@@ -222,4 +232,38 @@ test("uses Rust-reported history state and submits addresses through the trusted
   fireEvent.change(address, { target: { value: "/b?q=1#two" } });
   fireEvent.submit(screen.getByRole("form", { name: "Preview navigation" }));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_navigate", payload: { source: eligible, address: "/b?q=1#two" } }));
+});
+
+test("keeps external opening available before the native preview is opened", async () => {
+  const calls: unknown[] = [];
+  mockIPC((command, payload) => {
+    if (command === "preview_status") return null;
+    if (command === "plugin:opener|open_url") { calls.push(payload); return; }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([source()])} />);
+  fireEvent.click(screen.getByRole("button", { name: "Open externally" }));
+  await waitFor(() => expect(calls).toContainEqual({ url: source().sourceUrl }));
+});
+
+test("opens the confirmed current local URL externally, never the address draft", async () => {
+  const calls: Array<{ command: string; payload: unknown }> = [];
+  const eligible = source();
+  mockIPC((command, payload) => {
+    calls.push({ command, payload });
+    if (command === "preview_status") return runtime({ currentUrl: "http://127.0.0.1:41731/confirmed?q=1" });
+    if (command === "plugin:opener|open_url") return undefined;
+    throw new Error(`unexpected command: ${command}`);
+  });
+  render(<PreviewPanel session={session([eligible])} />);
+
+  const address = await screen.findByRole("textbox", { name: "Preview address" });
+  fireEvent.focus(address);
+  fireEvent.change(address, { target: { value: "http://example.invalid/unsubmitted" } });
+  fireEvent.click(screen.getByRole("button", { name: "Open externally" }));
+
+  await waitFor(() => expect(calls).toContainEqual({
+    command: "plugin:opener|open_url",
+    payload: { url: "http://127.0.0.1:41731/confirmed?q=1" },
+  }));
 });
