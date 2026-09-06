@@ -5,6 +5,9 @@ import type { FitAddon } from "@xterm/addon-fit";
 import { beforeEach, expect, test, vi } from "vitest";
 import { useTerminalWebgl, type TerminalWebglRenderer } from "@/ui/useTerminalWebgl";
 
+const platform = vi.hoisted(() => ({ isMac: false }));
+vi.mock("@/ui/lib/platform", () => platform);
+
 const webglInstances = vi.hoisted(() => [] as Array<{
   dispose: ReturnType<typeof vi.fn>;
 }>);
@@ -55,6 +58,31 @@ function terminalStub(): Terminal {
 
 beforeEach(() => {
   webglInstances.length = 0;
+  platform.isMac = false;
+});
+
+test("macOS stays on DOM through activation, transparency changes and remount", () => {
+  platform.isMac = true;
+  const terminal = terminalStub();
+  const view = render(
+    <WebglHarness terminal={terminal} sessionId="mac" active allowTransparency={false} />,
+  );
+  view.rerender(
+    <WebglHarness terminal={terminal} sessionId="mac" active={false} allowTransparency={false} />,
+  );
+  view.rerender(
+    <WebglHarness terminal={terminal} sessionId="mac" active allowTransparency />,
+  );
+  expect(webglInstances).toHaveLength(0);
+  expect(terminal.loadAddon).not.toHaveBeenCalled();
+  view.unmount();
+
+  const replacement = terminalStub();
+  render(
+    <WebglHarness terminal={replacement} sessionId="mac" active allowTransparency={false} />,
+  );
+  expect(webglInstances).toHaveLength(0);
+  expect(replacement.loadAddon).not.toHaveBeenCalled();
 });
 
 test("WebGL renderer is recreated for both transparency directions but not repeated values", () => {
