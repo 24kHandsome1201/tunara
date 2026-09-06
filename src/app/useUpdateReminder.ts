@@ -28,7 +28,7 @@ export function useUpdateReminder(ready: boolean): void {
             durationMs: 10_000,
             action: {
               kind: "open-settings",
-              tab: "app",
+              tab: "about",
               label: t("update.reminder.action"),
             },
           });

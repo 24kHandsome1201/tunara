@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { type OverlayType, type ThemeType, type SshConnectPrefill } from "@/ui/types";
 import { loadTunaraConfig, saveTunaraConfig, type RawTunaraConfig } from "@/modules/config/config-bridge";
-import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, TERMINAL_KEYBINDING_ACTIONS, type KeybindingAction, type KeybindingConfig } from "@/modules/config/keybindings";
+import { DEFAULT_KEYBINDINGS, keybindingsToConfigKeys, sanitizeKeybindings, type KeybindingConfig } from "@/modules/config/keybindings";
 import { isLanguage, setLanguage as applyLanguage, t, type Language } from "@/modules/i18n";
 import { toggleTrueRecordKey } from "@/state/record-keys";
 import { persistBootAppearance } from "@/styles/shell-tint-boot";
@@ -362,30 +362,11 @@ interface UIState extends AppearanceSettings {
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
-  resetTerminalInteractions: () => void;
-  setGlobalShortcut: (shortcut: string) => void;
-  setKeybinding: (action: KeybindingAction, binding: string) => void;
-  resetKeybindings: () => void;
   resetAppearance: () => void;
   setLanguage: (lang: Language) => void;
 }
 
-const SETTINGS_SECTION_ALIASES: Record<string, string> = {
-  general: "appearance",
-  appearance: "appearance",
-  shortcuts: "terminal",
-  terminal: "terminal",
-  ssh: "ssh",
-  app: "about",
-  about: "about",
-};
-
 let pendingSettingsSection: string | null = null;
-
-function normalizeSettingsSection(section: unknown): string | null {
-  if (typeof section !== "string" || !section) return null;
-  return SETTINGS_SECTION_ALIASES[section] ?? section;
-}
 
 export function consumePendingSettingsSection(): string | null {
   const section = pendingSettingsSection;
@@ -564,7 +545,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setFocusedPaneId: (focusedPaneId) => set({ focusedPaneId }),
     activateTerminal: () => set({ mainSurface: "terminal" }),
     openSettings: (section) => {
-      pendingSettingsSection = normalizeSettingsSection(section);
+      pendingSettingsSection = section || null;
       set({ overlay: "settings", sshPrefill: null });
     },
     setTheme: (theme) => set({ theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme }),
@@ -656,18 +637,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
-    resetTerminalInteractions: () => set((state) => {
-      const keybindings = { ...state.keybindings };
-      for (const action of TERMINAL_KEYBINDING_ACTIONS) keybindings[action] = DEFAULT_KEYBINDINGS[action];
-      return {
-        terminalHostModifier: DEFAULT_SETTINGS.terminalHostModifier,
-        keybindings,
-      };
-    }),
-    setGlobalShortcut: (globalShortcut) => set({ globalShortcut: typeof globalShortcut === "string" ? globalShortcut : DEFAULT_SETTINGS.globalShortcut }),
-    setKeybinding: (action, binding) =>
-      set((s) => ({ keybindings: { ...s.keybindings, [action]: binding } })),
-    resetKeybindings: () => set({ keybindings: { ...DEFAULT_KEYBINDINGS } }),
     resetAppearance: () => set((s) => ({ ...DEFAULT_SETTINGS, keybindings: s.keybindings, language: s.language })),
     setLanguage: (language) => {
       const next = isLanguage(language) ? language : DEFAULT_SETTINGS.language;

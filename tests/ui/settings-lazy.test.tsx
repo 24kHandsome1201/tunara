@@ -9,6 +9,7 @@ import { consumePendingSettingsSection, useUIStore } from "@/state/ui";
 import { PanelLoadingState } from "@/ui/shared";
 import { isMac } from "@/ui/lib/platform";
 import { CliSettings } from "@/ui/overlays/settings/CliSettings";
+import { ToastContainer } from "@/ui/Toast";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
@@ -45,6 +46,7 @@ beforeEach(() => {
   useUIStore.setState({
     configLoaded: false,
     overlay: null,
+    toasts: [],
     keybindings: defaultKeybindingsForPlatform("linux"),
   });
 });
@@ -98,15 +100,20 @@ test("⌘, opens the lazy Settings overlay", async () => {
   expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
 });
 
-test("pending settings section survives lazy load and scrolls into view", async () => {
+test("update toast opens About and preserves its target through lazy loading", async () => {
   const scrollIntoView = vi.fn();
   const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
   HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
   try {
-    useUIStore.getState().openSettings("app");
+    useUIStore.getState().addToast({
+      title: "Update available", subtitle: "", variant: "warning",
+      action: { kind: "open-settings", tab: "about", label: "Review update" },
+    });
+    render(<><ToastContainer /><LazySettingsShell /></>);
+    fireEvent.click(screen.getByText("Review update", { selector: "button" }));
     expect(useUIStore.getState().overlay).toBe("settings");
-    render(<LazySettingsShell />);
+    expect(useUIStore.getState().toasts).toHaveLength(0);
     expect(await screen.findByRole("heading", { name: "About" })).toBeTruthy();
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     const scrolled = scrollIntoView.mock.instances[0] as HTMLElement | undefined;

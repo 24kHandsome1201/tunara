@@ -24,9 +24,8 @@ test("update reminders route directly to the About settings section", () => {
   const settings = read("src/ui/overlays/Settings.tsx");
   const appUpdate = read("src/ui/overlays/useAppUpdate.ts");
   assert.match(hook, /kind: "open-settings"/);
-  assert.match(hook, /tab: "app"/);
+  assert.match(hook, /tab: "about"/);
   assert.match(ui, /openSettings: \(section\?: string\)/);
-  assert.match(ui, /app: "about"/);
   assert.match(toast, /openSettings\(toast\.action\.tab\)/);
   assert.match(settings, /useAppUpdate\(\)/);
   assert.match(appUpdate, /if \(checkStartedRef\.current\) return/);

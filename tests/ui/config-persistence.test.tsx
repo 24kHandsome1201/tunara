@@ -96,8 +96,8 @@ test("host-modifier bindings hydrate and persist without replacing legacy keybin
       return {
         path: "/tmp/tunara-config.toml",
         config: {
-          appearance: { terminal_host_modifier: "alt" },
-          keybindings: { terminal_menu: "", copy_selection: "Ctrl+Shift+X", close_session: "Alt+Q" },
+          appearance: { terminal_host_modifier: "alt", global_shortcut: "Ctrl+Shift+Y" },
+          keybindings: { terminal_menu: "", copy_selection: "Ctrl+Shift+X", safe_paste: "", close_session: "Alt+Q" },
           terminal_interactions: { version: 1, secondary_click: "disabled" },
         },
         error: null,
@@ -114,16 +114,18 @@ test("host-modifier bindings hydrate and persist without replacing legacy keybin
   await loadUserConfig();
   expect(useUIStore.getState()).toMatchObject({
     terminalHostModifier: "alt",
+    globalShortcut: "Ctrl+Shift+Y",
     keybindings: expect.objectContaining({
       terminalMenu: "",
       copySelection: "Ctrl+Shift+X",
+      safePaste: "",
       closeSession: "Alt+Q",
     }),
   });
 
-  useUIStore.getState().setKeybinding("safePaste", "");
+  useUIStore.getState().setTerminalHostModifier("shift");
   await waitFor(() => expect(saved).toMatchObject({
-    appearance: { terminal_host_modifier: "alt" },
+    appearance: { terminal_host_modifier: "shift", global_shortcut: "Ctrl+Shift+Y" },
     terminal_interactions: { version: 1, secondary_click: "smart" },
     keybindings: {
       terminal_menu: "",
