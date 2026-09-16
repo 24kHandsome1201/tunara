@@ -10,6 +10,12 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-09-16
+
+### 修复
+- 所有平台使用 DOM 终端渲染，避免 WebGL 字形图集合并导致中文、英文和 ANSI 彩色文字缺失、重叠或错位。
+- 禁用终端 CJK 标点压缩，保持隐藏字符宽度测量与可见文本一致，修复中英混排和多窗格中的列对齐。
+
 ## [3.0.2] - 2026-09-03
 
 ### 产品与体验
