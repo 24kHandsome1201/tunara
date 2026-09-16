@@ -5,10 +5,14 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { fallbackTerminalContextIfCurrent } from "@/modules/terminal/lib/terminal-webgl-fallback";
 import { registerTerminalBenchmarkRendererControl, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
-import { isMac } from "@/ui/lib/platform";
 
 export type TerminalWebglRenderer = WebglAddon;
 
+// addon-webgl 0.19 corrupts glyph UVs/texture bindings when atlas pages merge,
+// even with a separate atlas per pane. This is not macOS-specific. Keep DOM
+// rendering on every platform until a stable release includes xterm.js
+// #5883, #6042 and #6055; periodic atlas clears cannot prevent bad frames.
+const WEBGL_RENDERING_ENABLED = false;
 const MAX_WEBGL_CONTEXTS = 8;
 
 interface ContextEntry {
@@ -90,11 +94,7 @@ export function useTerminalWebgl(
     const term = termRef.current;
     if (!term) return;
 
-    // Keep the built-in DOM renderer on macOS. addon-webgl 0.19 can retain
-    // stale glyph UVs/textures after atlas merges (xterm.js #5816 / #5883),
-    // producing overlapping text until resize rebuilds the model. Periodic
-    // atlas clears only mitigate this; revisit when a stable addon fixes it.
-    if (isMac) return;
+    if (!WEBGL_RENDERING_ENABLED) return;
 
     // Reuse existing context for this session (e.g. after tab switch back).
     const existing = contextMap.get(sessionId);

@@ -78,6 +78,14 @@ html[data-chrome="borderless"] {
 .window-resize-sw,
 .window-resize-nw { width: 10px; height: 10px; }
 
+/* Fixed terminal cells must not compress adjacent CJK punctuation. xterm 6.0
+   measures 32 repeated characters in its hidden DOM width cache; contextual
+   trimming makes that advance differ from the visible row's advance. Apply
+   to the root so both the measuring elements and rendered rows inherit it. */
+.xterm {
+  text-spacing-trim: space-all;
+}
+
 /* xterm.js scrollbar — thin overlay style */
 .xterm .xterm-viewport,
 .xterm-viewport {

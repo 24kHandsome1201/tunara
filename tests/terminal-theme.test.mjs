@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -12,6 +13,13 @@ import {
 // NOTE: isDarkTheme("system") reads window.matchMedia, which does not exist in
 // the node test runner. These tests only exercise the explicit dark/light
 // paths, which never touch `window`.
+
+test("terminal rows and hidden width measurement share untrimmed CJK punctuation", () => {
+  const css = readFileSync(new URL("../src/styles/globals.css", import.meta.url), "utf8");
+  // Putting this only on .xterm-rows leaves the hidden 32-character width
+  // measurement compressed and gives punctuation the wrong letter-spacing.
+  assert.match(css, /(?:^|\n)\.xterm\s*\{[^}]*text-spacing-trim:\s*space-all\s*;/);
+});
 
 test("isDarkTheme follows the explicit app theme", () => {
   assert.equal(isDarkTheme("dark"), true);
