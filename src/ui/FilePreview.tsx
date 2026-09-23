@@ -968,6 +968,7 @@ function EditorSurface({
   // textarea 后面的可见内容落后于输入。行号列同样保持实时。
   const debouncedContent = useDebouncedValue(content, 200);
   const debouncedFindQuery = useDebouncedValue(findQuery, 150);
+  const byteLength = useMemo(() => new TextEncoder().encode(debouncedContent).length, [debouncedContent]);
   const highlightedLines = useHighlightedLines(fileName, content);
   const tabularPreview = useMemo(
     () => (tabularKindFromName(fileName) ? parseTabularPreview(fileName, debouncedContent) : null),
@@ -1041,10 +1042,19 @@ function EditorSurface({
     setUnknownOutcome(snapshot.unknownOutcome);
     setUnknownAttemptContent(snapshot.unknownAttemptContent);
     setSaveAttemptId(snapshot.saveAttemptId);
-    if (snapshot.saveState === "saved") {
-      window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
-    }
   }), [draftKey]);
+
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const timer = window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
+    return () => window.clearTimeout(timer);
+  }, [saveState]);
+
+  useEffect(() => {
+    if (draftCopyState !== "copied") return;
+    const timer = window.setTimeout(() => setDraftCopyState("idle"), 1600);
+    return () => window.clearTimeout(timer);
+  }, [draftCopyState]);
 
   const contentRef = useRef(content);
   contentRef.current = content;
@@ -1251,7 +1261,6 @@ function EditorSurface({
   const copyDraft = async () => {
     const copied = await copyText(content);
     setDraftCopyState(copied ? "copied" : "failed");
-    if (copied) window.setTimeout(() => setDraftCopyState("idle"), 1600);
   };
 
   const switchMode = (nextMode: "edit" | "preview", focusTab = false) => {
@@ -1487,7 +1496,7 @@ function EditorSurface({
       <div className="file-editor-footer">
         <span className="file-editor-status" data-state={saveState}>{statusLabel}</span>
         <span>{t("preview.editor.lines", { count: lines.length })}</span>
-        <span>{formatSize(new TextEncoder().encode(content).length)}</span>
+        <span>{formatSize(byteLength)}</span>
         <div className="file-editor-footer-actions">
           {isRemote ? (
             <button

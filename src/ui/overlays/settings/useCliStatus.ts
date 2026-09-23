@@ -25,8 +25,10 @@ export function useCliStatus() {
   const [overrideError, setOverrideError] = useState(false);
   const [preflights, setPreflights] = useState<Record<string, Preflight>>({});
   const cliLoadStartedRef = useRef(false);
+  // Refreshes can overlap; only the latest resolve (and its preflights) may commit.
+  const loadGenerationRef = useRef(0);
 
-  const loadPreflights = useCallback((items: ResolvedCommand[]) => {
+  const loadPreflights = useCallback((items: ResolvedCommand[], generation: number) => {
     // Only check login state for CLIs that are actually installed — an auth
     // probe on a missing binary is pointless and slow. Each call is cached
     // 30 min backend-side, so refreshing is cheap.
@@ -34,21 +36,26 @@ export function useCliStatus() {
     setPreflights({});
     installed.forEach((cli) => {
       invoke<Preflight>("agent_preflight", { agent: cli.name })
-        .then((pf) => setPreflights((prev) => ({ ...prev, [cli.name]: pf })))
+        .then((pf) => {
+          if (loadGenerationRef.current === generation) setPreflights((prev) => ({ ...prev, [cli.name]: pf }));
+        })
         .catch(() => {});
     });
   }, []);
 
   const loadCliStatus = useCallback(() => {
+    const generation = ++loadGenerationRef.current;
     setResolvedClis(null);
     setCliError(false);
     invoke<ResolvedCommand[]>("resolve_all_bins")
       .then((items) => {
+        if (loadGenerationRef.current !== generation) return;
         setResolvedClis(items);
         setCliError(false);
-        loadPreflights(items);
+        loadPreflights(items, generation);
       })
       .catch(() => {
+        if (loadGenerationRef.current !== generation) return;
         setResolvedClis([]);
         setCliError(true);
       });
