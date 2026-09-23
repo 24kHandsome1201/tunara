@@ -162,10 +162,6 @@ html[data-chrome="borderless"] {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
-@keyframes sheetIn {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-}
 @keyframes paletteIn {
   from { opacity: 0; transform: translateX(-50%) scale(0.98); }
   to { opacity: 1; transform: translateX(-50%) scale(1); }
