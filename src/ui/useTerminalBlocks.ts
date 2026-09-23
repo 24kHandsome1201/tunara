@@ -1,13 +1,11 @@
-import { useCallback, useRef, useState, type RefObject } from "react";
+import { useCallback, useRef, type RefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { matchesKeybinding } from "../modules/config/keybindings.ts";
-import { hasTrueRecordKey, toggleTrueRecordKey } from "@/state/record-keys";
 import { copyText } from "./lib/clipboard";
 
 import {
   findCommandBlockAtRow,
   findNavigableCommandBlock,
-  findStickyCommandBlock,
   formatTerminalBlockCommandAndOutput,
   normalizeBlockCommand,
   retainNavigableTerminalBlocks,
@@ -74,31 +72,19 @@ function readBlockOutputText(term: Terminal, block: TerminalCommandBlock): strin
 }
 
 export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
-  const [blocks, setBlocks] = useState<TerminalCommandBlock[]>([]);
-  const [collapsedBlockIds, setCollapsedBlockIds] = useState<Record<string, true>>({});
-  const [stickyBlock, setStickyBlock] = useState<TerminalCommandBlock | null>(null);
+  // Blocks back menus and keyboard navigation only; nothing renders them, so
+  // they live in refs to keep streaming output from re-rendering the pane.
   const activeBlockRef = useRef<TerminalCommandBlock | null>(null);
   const blocksRef = useRef<TerminalCommandBlock[]>([]);
 
-  const refreshStickyBlock = useCallback((term: Terminal) => {
-    const buffer = term.buffer.active;
-    const next = findStickyCommandBlock(blocksRef.current, buffer.viewportY, term.rows, buffer.baseY);
-    setStickyBlock((current) => {
-      if (current?.id === next?.id && current?.endRow === next?.endRow && current?.exitCode === next?.exitCode) return current;
-      return next;
-    });
-  }, []);
-
   const updateBlocks = useCallback((updater: (blocks: TerminalCommandBlock[]) => TerminalCommandBlock[]) => {
-    setBlocks((current) => {
-      const next = retainNavigableTerminalBlocks(updater(current));
-      const retained = new Set(next.map((item) => item.id));
-      for (const item of current) {
-        if (!retained.has(item.id)) disposeBlockMarkers(item);
-      }
-      blocksRef.current = next;
-      return next;
-    });
+    const current = blocksRef.current;
+    const next = retainNavigableTerminalBlocks(updater(current));
+    const retained = new Set(next.map((item) => item.id));
+    for (const item of current) {
+      if (!retained.has(item.id)) disposeBlockMarkers(item);
+    }
+    blocksRef.current = next;
   }, []);
 
   const beginBlock = useCallback((command: string, startRow: number) => {
@@ -133,7 +119,6 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     };
     const completed = term ? withEndMarker(term, completedBase, endRow) : completedBase;
     activeBlockRef.current = null;
-    setStickyBlock((current) => current?.id === active.id ? completed : current);
     updateBlocks((items) => items.map((item) => item.id === active.id ? completed : item));
   }, [termRef, updateBlocks]);
 
@@ -149,7 +134,6 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     const next = term ? withEndMarker(term, nextBase, nextEnd) : nextBase;
     activeBlockRef.current = next;
     blocksRef.current = blocksRef.current.map((item) => item.id === active.id ? next : item);
-    setStickyBlock((current) => current?.id === active.id ? next : current);
   }, [termRef]);
 
   const readBlockOutput = useCallback((id: string): string | null => {
@@ -178,20 +162,6 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     const output = readBlockOutputText(term, block);
     if (output === null) return false;
     return copyText(formatTerminalBlockCommandAndOutput(block.command, output));
-  }, [termRef]);
-
-  const toggleBlock = useCallback((id: string) => {
-    const term = termRef.current;
-    const block = blocksRef.current.find((item) => item.id === id);
-    if (!term || !block) return;
-    setCollapsedBlockIds((current) => {
-      if (hasTrueRecordKey(current, id)) {
-        term.scrollToLine(block.startRow);
-        return toggleTrueRecordKey(current, id);
-      }
-      term.scrollToLine(block.endRow);
-      return toggleTrueRecordKey(current, id);
-    });
   }, [termRef]);
 
   const revealBlock = useCallback((id: string) => {
@@ -250,16 +220,7 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     return true;
   }, [navigateBlock]);
 
-  const registerScrollTracking = useCallback((term: Terminal) => {
-    const scrollDisposable = term.onScroll(() => refreshStickyBlock(term));
-    refreshStickyBlock(term);
-    return () => scrollDisposable.dispose();
-  }, [refreshStickyBlock]);
-
   return {
-    blocks,
-    collapsedBlockIds,
-    stickyBlock,
     blockAtPixel,
     beginBlock,
     finishBlock,
@@ -268,10 +229,8 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     copyBlockCommandAndOutput,
     copyBlockOutput,
     readBlockOutput,
-    toggleBlock,
     revealBlock,
     revealFailedCommand,
     handleCustomKeyEvent,
-    registerScrollTracking,
   };
 }
