@@ -160,7 +160,7 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
   const establishTunnelAndOpen = async () => {
     const tunnel = await previewTunnelOpen(source, previewActionNonce());
     setTunnelState(tunnel);
-    if (!tunnel.previewSource) throw new Error("SSH tunnel did not return a forwarded Preview source");
+    if (!tunnel.previewSource) throw new Error(t("inspector.preview.tunnel.no_source"));
     await previewOpen(tunnel.previewSource);
     const status = await previewStatus(tunnel.previewSource);
     setRuntimeState(status);
