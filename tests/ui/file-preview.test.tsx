@@ -906,3 +906,76 @@ describe("FilePreview editor behavior", () => {
     await waitFor(() => expect(document.querySelector('[data-syntax="log-error"]')).toBeTruthy());
   });
 });
+
+describe("FilePreview navigation targets and inert views", () => {
+  beforeEach(() => {
+    useSessionsStore.setState({ sessions: [], activeSessionId: null });
+  });
+
+  test("places the caret at the requested line and column", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { kind: "text", content: "one\ntwo\nthree\n", size: 14, fingerprint: "d".repeat(64) };
+      if (command === "fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FilePreview filePath="/tmp/n.txt" fileName="n.txt" fill onClose={() => {}}
+      resource={{ transport: "local", logicalSessionId: "local-preview", path: "/tmp/n.txt", line: 3, column: 2 }} />);
+    const textarea = await screen.findByRole("textbox", { name: "Edit n.txt" }) as HTMLTextAreaElement;
+    expect(textarea.selectionStart).toBe(9);
+    expect(textarea.selectionEnd).toBe(9);
+  });
+
+  test("keeps the truncation notice out of the previewed document", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { kind: "text", content: "a,b\n1,2", size: 20_000_000, truncated: true };
+      if (command === "fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    renderLocal("data.csv");
+    expect((await screen.findByRole("status")).textContent).toContain("truncated");
+    const cells = Array.from(document.querySelectorAll("td")).map((cell) => cell.textContent);
+    expect(cells).toEqual(["1", "2"]);
+  });
+
+  test("inert find highlights and counts matches in the visible text", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { kind: "text", content: "foo bar foo\nfoo", size: 20_000_000, truncated: true };
+      if (command === "fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FilePreview filePath="/tmp/big.txt" fileName="big.txt" fill findRequest={1} onClose={() => {}} />);
+    const input = await screen.findByRole("textbox", { name: "Find in file" });
+    fireEvent.change(input, { target: { value: "foo" } });
+    await waitFor(() => expect(document.querySelectorAll("mark.markdown-find-match")).toHaveLength(3));
+    expect(screen.getByText("1/3")).toBeTruthy();
+    expect(document.querySelector('mark[data-active="true"]')?.getAttribute("data-markdown-find-index")).toBe("0");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(document.querySelector('mark[data-active="true"]')?.getAttribute("data-markdown-find-index")).toBe("1"));
+  });
+
+  test("sibling shortcuts ignore arrow keys aimed at other surfaces", async () => {
+    useSessionsStore.setState({
+      activeSessionId: "local-preview",
+      sessions: [{ id: "local-preview", title: "local", dir: "/tmp", branch: "", runState: "idle", updatedAt: 1 }],
+    });
+    useUIStore.getState().openReader({ sessionId: "local-preview", filePath: "/tmp/b.txt", fileName: "b.txt" });
+    mockIPC((command) => {
+      if (command === "fs_read_dir") {
+        return [
+          { name: "a.txt", kind: "file", size: 1, mtime: 0 },
+          { name: "b.txt", kind: "file", size: 1, mtime: 0 },
+        ];
+      }
+      if (command === "fs_read_file") return { kind: "text", content: "b\n", size: 2, fingerprint: "e".repeat(64) };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<>
+      <div role="tree" tabIndex={0} aria-label="Files" />
+      <FilePreview sessionId="local-preview" filePath="/tmp/b.txt" fileName="b.txt" fill onClose={() => {}} />
+    </>);
+    await screen.findByRole("button", { name: "Previous file in this folder" });
+    fireEvent.keyDown(screen.getByRole("tree", { name: "Files" }), { key: "ArrowLeft" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(useUIStore.getState().readers["local-preview"]?.current?.filePath).toBe("/tmp/b.txt");
+  });
+});

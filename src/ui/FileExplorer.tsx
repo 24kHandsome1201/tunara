@@ -1149,10 +1149,10 @@ export function FileExplorer({
     setCurrentPath(path);
   }
 
-  function openFile(path: string) {
+  function openFile(path: string, line?: number) {
     const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
     if (!owner) return;
-    void openResource(resourceRefForSession(owner, path), "preview");
+    void openResource(resourceRefForSession(owner, path, line), "preview");
   }
 
   function reconnectRemote() {
@@ -1333,7 +1333,7 @@ export function FileExplorer({
                         // Content hits open the owning file tab. Keeping local
                         // and SSH results on the same workspace surface avoids
                         // sending remote paths to a local external editor.
-                        onClick={() => openFile(group.path)}
+                        onClick={() => openFile(group.path, ln.line)}
                         title={group.rel}
                         className="hover-bg"
                         style={{ width: "100%", padding: "2px var(--sp-2) 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}

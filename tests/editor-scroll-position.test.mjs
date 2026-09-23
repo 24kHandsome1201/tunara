@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   normalizedScrollPosition,
+  offsetForLineColumn,
   scrollTopForPosition,
 } from "../src/modules/editor/scroll-position.ts";
 
@@ -19,4 +20,16 @@ test("scroll context clamps degenerate and untrusted geometry", () => {
   assert.equal(normalizedScrollPosition(Number.NaN, 1000, 200), 0);
   assert.equal(scrollTopForPosition(2, 1000, 200), 800);
   assert.equal(scrollTopForPosition(Number.NaN, 1000, 200), 0);
+});
+
+test("line/column targets resolve to clamped text offsets", () => {
+  const content = "alpha\nbeta\ngamma";
+  assert.equal(offsetForLineColumn(content, 1), 0);
+  assert.equal(offsetForLineColumn(content, 2), 6);
+  assert.equal(offsetForLineColumn(content, 2, 3), 8);
+  assert.equal(offsetForLineColumn(content, 2, 99), 10);
+  assert.equal(offsetForLineColumn(content, 3, 2), 12);
+  assert.equal(offsetForLineColumn(content, 42), 11);
+  assert.equal(offsetForLineColumn(content, 0, -4), 0);
+  assert.equal(offsetForLineColumn("", 5, 5), 0);
 });

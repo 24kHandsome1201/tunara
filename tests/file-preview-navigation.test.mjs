@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("FileExplorer opens files in persistent workspace tabs", async () => {
   const source = await readFile(new URL("../src/ui/FileExplorer.tsx", import.meta.url), "utf8");
-  assert.match(source, /openResource\(resourceRefForSession\(owner, path\), "preview"\)/);
+  assert.match(source, /openResource\(resourceRefForSession\(owner, path, line\), "preview"\)/);
   assert.match(source, /else openFile\(node\.path\)/);
   assert.doesNotMatch(source, /expandedFile|setExpandedFile|runPreviewReplacingAction/);
 });
