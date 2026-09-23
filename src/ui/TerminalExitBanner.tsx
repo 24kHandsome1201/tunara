@@ -15,6 +15,16 @@ import { SessionRemediationNotice } from "./SessionRemediationNotice";
  * banner 挂载时：把焦点从死终端的 xterm textarea 挪到 banner 主操作按钮
  * （重启/重连），键盘用户不用 Tab 完整圈终端才能到达动作。
  */
+/** Spawn a fresh local terminal in the dead session's cwd and drop the dead
+ * one. The dead session is activated first so the replacement takes over its
+ * split pane instead of whichever pane happened to be active. */
+function restartLocalInPlace(session: Session) {
+  const store = useSessionsStore.getState();
+  store.setActive(session.id);
+  store.newTerminalInDir(session.dir);
+  store.closeSession(session.id);
+}
+
 function useFocusPrimaryActionOnMount() {
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -86,7 +96,6 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
   const rootRef = useFocusPrimaryActionOnMount();
 
   const restart = () => {
-    const store = useSessionsStore.getState();
     if (isRemote && session.remote) {
       // Keep the dead session and its snapshot until the replacement is
       // configured. Cancelling the dialog must not destroy split
@@ -94,9 +103,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
       useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
       return;
     }
-    // Local: spawn a fresh terminal in the same cwd, then drop the dead one.
-    store.newTerminalInDir(session.dir);
-    store.closeSession(session.id);
+    restartLocalInPlace(session);
   };
 
   const disconnected = isRemote && exitCode === SSH_DISCONNECTED_EXIT_CODE;
@@ -204,7 +211,6 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
 
   const retry = () => {
-    const store = useSessionsStore.getState();
     if (isRemote) {
       // Remote open failure: route back to the SSH dialog so the user can
       // re-enter credentials (one-shot, never persisted).
@@ -213,8 +219,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
       }
       return;
     }
-    store.newTerminalInDir(session.dir);
-    store.closeSession(session.id);
+    restartLocalInPlace(session);
   };
 
   return (
