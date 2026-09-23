@@ -53,6 +53,8 @@ interface ContextMenuProps {
   currentBindingKey?: string | null;
 }
 
+const MENU_VIEWPORT_MARGIN = 8;
+
 function MenuIcon({ name }: { name: MenuIconName }) {
   const glyph = {
     terminal: Terminal,
@@ -115,12 +117,16 @@ export function ContextMenu({
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    const maxX = window.innerWidth - rect.width - MENU_VIEWPORT_MARGIN;
+    const maxY = window.innerHeight - rect.height - MENU_VIEWPORT_MARGIN;
     let x = position.x;
     let y = position.y;
-    if (x + rect.width > window.innerWidth) x = Math.max(0, position.x - rect.width);
-    if (y + rect.height > window.innerHeight) y = Math.max(0, position.y - rect.height);
-    setPos({ x, y });
-  }, [position.x, position.y]);
+    if (x > maxX) x = position.x - rect.width;
+    if (y > maxY) y = position.y - rect.height;
+    x = Math.max(MENU_VIEWPORT_MARGIN, Math.min(x, maxX));
+    y = Math.max(MENU_VIEWPORT_MARGIN, Math.min(y, maxY));
+    setPos((current) => current.x === x && current.y === y ? current : { x, y });
+  }, [items, position.x, position.y]);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -190,6 +196,7 @@ export function ContextMenu({
       aria-activedescendant={`${menuId}-item-${activeIndex}`}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === "ArrowDown") {
           e.preventDefault();
           moveActive(1);

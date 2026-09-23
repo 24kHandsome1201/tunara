@@ -104,3 +104,16 @@ test("diff errors can be retried and copy failure is not reported as success", a
   fireEvent.click(screen.getByRole("button", { name: "Copy this hunk" }));
   await waitFor(() => expect(useUIStore.getState().toasts.slice(-1)[0]?.variant).toBe("error"));
 });
+
+test("diff search waits for committed IME text before filtering", async () => {
+  mockIPC((command) => command === "git_diff" ? patch("alpha") : null);
+  render(<ReaderDiff session={session} diffRef={diffRef} findRequest={0} />);
+  expect(await screen.findByText("+alpha")).toBeTruthy();
+  const input = screen.getByRole("textbox", { name: "Search in this file…" });
+  fireEvent.compositionStart(input);
+  fireEvent.change(input, { target: { value: "zzz" } });
+  expect((input as HTMLInputElement).value).toBe("zzz");
+  expect(screen.getByText("+alpha")).toBeTruthy();
+  fireEvent.compositionEnd(input, { target: { value: "zzz" } });
+  await waitFor(() => expect(screen.queryByText("+alpha")).toBeNull());
+});
