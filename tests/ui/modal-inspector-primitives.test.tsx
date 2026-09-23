@@ -170,3 +170,18 @@ test("panel primitives keep empty states compact and icon actions keyboard reach
   expect(screen.getByText("Choose another directory")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Refresh panel" }).getAttribute("type")).toBe("button");
 });
+
+test("modal leaves Escape to nested editors that own it", () => {
+  const onClose = vi.fn();
+  const onInlineEscape = vi.fn();
+  render(<Modal labelledBy="nested-title" onRequestClose={onClose}>
+    <h2 id="nested-title">Settings</h2>
+    <input aria-label="Override" data-modal-escape="local" onKeyDown={(event) => { if (event.key === "Escape") onInlineEscape(); }} />
+    <input aria-label="Plain" />
+  </Modal>);
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Override" }), { key: "Escape" });
+  expect(onInlineEscape).toHaveBeenCalledTimes(1);
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Plain" }), { key: "Escape" });
+  expect(onClose).toHaveBeenCalledWith("escape");
+});

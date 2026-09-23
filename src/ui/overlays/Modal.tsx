@@ -74,6 +74,11 @@ export function useModalBehavior(
       if (activeModalStack[activeModalStack.length - 1] !== modalToken) return;
       if (event.isComposing || event.keyCode === 229) return;
       if (event.key === "Escape" && closeRef.current) {
+        // Nested editors that own Escape (cancel an inline edit) opt out so the
+        // keypress does not also dismiss the whole dialog.
+        if (event.target instanceof Element
+          && container.contains(event.target)
+          && event.target.closest("[data-modal-escape='local']")) return;
         event.preventDefault();
         event.stopPropagation();
         closeRef.current("escape");
