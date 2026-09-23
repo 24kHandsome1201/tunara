@@ -6,7 +6,8 @@ import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./term
 interface TerminalFileLinkOptions {
   getCwd: (bufferLineNumber: number) => string | undefined;
   shouldActivate?: (event: MouseEvent) => boolean;
-  createResource: (path: string, line?: number, column?: number) => ResourceRef;
+  /** Returns null when the owning session is gone; the link is then ignored. */
+  createResource: (path: string, line?: number, column?: number) => ResourceRef | null;
 }
 
 export function registerTerminalFileLinkProvider(
@@ -39,7 +40,8 @@ export function registerTerminalFileLinkProvider(
           event.preventDefault();
           event.stopPropagation();
           const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
-          void openResource(options.createResource(path, match.line, match.column));
+          const resource = options.createResource(path, match.line, match.column);
+          if (resource) void openResource(resource).catch(() => {});
         },
       }));
       callback(links);

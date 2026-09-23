@@ -1150,7 +1150,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalFileLinks, /options\.getCwd\(bufferLineNumber\)/);
   assert.match(terminalLineCwd, /if \(!cwd\.trim\(\)\)/);
   assert.match(terminalLineCwd, /last\?\.cwd === cwd/);
-  assert.match(terminalFileLinks, /openResource\(options\.createResource\(path, match\.line, match\.column\)\)/);
+  assert.match(terminalFileLinks, /const resource = options\.createResource\(path, match\.line, match\.column\);\s*if \(resource\) void openResource\(resource\)/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
   assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
