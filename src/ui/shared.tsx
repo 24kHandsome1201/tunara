@@ -69,6 +69,7 @@ export function PanelIconButton({
     <button
       {...props}
       type={type}
+      aria-label={props["aria-label"] ?? (typeof props.title === "string" ? props.title : undefined)}
       className={["panel-icon-button", "hover-bg", className].filter(Boolean).join(" ")}
     />
   );

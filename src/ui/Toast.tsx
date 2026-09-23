@@ -213,6 +213,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 
       {toast.variant === "error" && (
         <button
+          type="button"
           onClick={(e) => { e.stopPropagation(); void handleCopy(); }}
           title={t(copied ? "toast.copied" : "toast.copy_error")}
           aria-label={t(copied ? "toast.copied" : "toast.copy_error")}

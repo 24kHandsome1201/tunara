@@ -147,6 +147,7 @@ export function ExplorerSearchRow({
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onInputKeyDown}
           placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
+          aria-label={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
         />
         {searchQuery && (
           <button

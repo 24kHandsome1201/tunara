@@ -262,6 +262,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           {isSplit ? (
             <button
+              type="button"
               onClick={() => {
                 const ui = useUIStore.getState();
                 const firstPaneId = splitLayoutSessionIds(ui.split)[0];
@@ -288,6 +289,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
                 title={`${t("split.horizontal")} ${formatShortcut(splitHorizontalShortcut)}`}
                 aria-label={t("split.horizontal")}
@@ -307,6 +309,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 <SplitIcon direction="columns" />
               </button>
               <button
+                type="button"
                 onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
                 title={`${t("split.vertical")} ${formatShortcut(splitVerticalShortcut)}`}
                 aria-label={t("split.vertical")}

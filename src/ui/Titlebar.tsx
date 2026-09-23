@@ -115,24 +115,30 @@ function WindowControls() {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
       <button
+        type="button"
         onClick={() => win.minimize()}
         title={t("titlebar.window.minimize")}
+        aria-label={t("titlebar.window.minimize")}
         className="hover-bg"
         style={btnBase}
       >
         <Icon icon={Minus} size={12} weight="bold" />
       </button>
       <button
+        type="button"
         onClick={() => win.toggleMaximize()}
         title={t("titlebar.window.maximize")}
+        aria-label={t("titlebar.window.maximize")}
         className="hover-bg"
         style={btnBase}
       >
         <Icon icon={Square} size={11} />
       </button>
       <button
+        type="button"
         onClick={() => win.close()}
         title={t("titlebar.window.close")}
+        aria-label={t("titlebar.window.close")}
         className="hover-close"
         style={btnBase}
       >

@@ -138,7 +138,9 @@ export function DirGroupHeader({
       onKeyDown={onKeyDown}
       role="group"
       aria-label={`${kind === "ssh" ? `${label}, ${t("workspace.ssh")}` : pathTitle}, ${t("workspace.group_counts", { sessions: String(count), agents: String(agentCount) })}`}
-      tabIndex={0}
+      // The collapse button is the tab stop when present; key events still
+      // bubble here for the keyboard context menu.
+      tabIndex={onToggleCollapse ? undefined : 0}
       style={{
         display: "flex",
         alignItems: "center",

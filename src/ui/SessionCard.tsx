@@ -87,7 +87,11 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
   const progressLabel = hasValue ? t("session.progress.value", { value: progress.value! }) : statusLabel;
   return (
     <div
+      role="progressbar"
       aria-label={progressLabel}
+      aria-valuemin={hasValue && !indeterminate ? 0 : undefined}
+      aria-valuemax={hasValue && !indeterminate ? 100 : undefined}
+      aria-valuenow={hasValue && !indeterminate ? progress.value : undefined}
       title={progressLabel}
       style={{
         position: "absolute",
@@ -96,7 +100,7 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
         bottom: 0,
         height: 2,
         overflow: "hidden",
-        borderRadius: 999,
+        borderRadius: "var(--r-pill)",
         background: "color-mix(in srgb, var(--c-text-primary) 8%, transparent)",
       }}
     >
@@ -106,7 +110,7 @@ function TerminalProgressBar({ progress }: { progress: TerminalProgress }) {
           width,
           minWidth: indeterminate ? undefined : 2,
           height: "100%",
-          borderRadius: 999,
+          borderRadius: "var(--r-pill)",
           background: color,
         }}
       />
@@ -332,6 +336,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 className="ui-native-control"
                 ref={inputRef}
                 value={editValue}
+                aria-label={t("sidebar.session.rename")}
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
@@ -482,7 +487,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
               style={{
                 marginTop: 4,
                 height: 2,
-                borderRadius: 999,
+                borderRadius: "var(--r-pill)",
                 overflow: "hidden",
                 background: "color-mix(in srgb, var(--c-error) 12%, transparent)",
               }}
@@ -492,7 +497,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                   display: "block",
                   width: `${closeCountdown.progress * 100}%`,
                   height: "100%",
-                  borderRadius: 999,
+                  borderRadius: "var(--r-pill)",
                   background: "var(--c-error)",
                   transition: "width var(--dur-fast) var(--ease-out)",
                 }}
