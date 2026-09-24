@@ -8,6 +8,8 @@ const C1_ST_TRAIL = 0x9c;
 const SEMICOLON = 0x3b;
 const CR = 0x0d;
 const LF = 0x0a;
+const TAB = 0x09;
+const SPACE = 0x20;
 
 export const TERMINAL_OSC_MAX_BYTES = 4 * 1024;
 export const TERMINAL_OSC_TIMEOUT_MS = 1_000;
@@ -146,7 +148,9 @@ export function createTerminalOscGuard({
           output.push(byte);
           continue;
         }
-        pending.push(byte);
+        // xterm's OSC parser drops C0 controls, so a tab between title words
+        // would glue them together ("herdr\tagent" -> "herdragent").
+        pending.push(byte === TAB && command !== "7" ? SPACE : byte);
         if (byte === BEL) {
           emitPending();
           resetSequence();

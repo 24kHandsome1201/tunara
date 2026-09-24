@@ -137,3 +137,12 @@ test("safe history UTF-8 tail limits do not split non-BMP code points", () => {
   assert.equal(history, "🙂🙂");
   assert.equal(new TextEncoder().encode(history).byteLength, 8);
 });
+
+test("OSC guard turns tabs in window titles into spaces before xterm drops them", () => {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const guard = createTerminalOscGuard();
+  assert.equal(decoder.decode(guard.push(encoder.encode("\x1b]2;foo\tbar\t\tbaz\x07"))), "\x1b]2;foo bar  baz\x07");
+  assert.equal(decoder.decode(guard.push(encoder.encode("\x1b]7;file:///a\tb\x07"))), "\x1b]7;file:///a\tb\x07");
+  assert.equal(decoder.decode(guard.push(encoder.encode("plain\ttext"))), "plain\ttext");
+});
