@@ -2,7 +2,8 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { hostProfileButtonLabel, sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
+import { hostProfileButtonLabel, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
+import { sshProfileEntries } from "@/modules/ssh/hosts-model";
 import { fsScanRecentRepos } from "@/modules/fs/fs-bridge";
 import {
   emptyStateRecentDirs,
@@ -55,10 +56,7 @@ export function WorkspaceEmptyState({
   const { panel } = useSshProfilesPanel();
   const recents = emptyStateRecentDirs(recentDirs, 3);
   const [nearby, setNearby] = useState<NearbyGitRepo[]>([]);
-  const hosts = [
-    ...panel.savedProfiles.map((profile) => ({ profile, source: "saved" as const })),
-    ...panel.configProfiles.map((profile) => ({ profile, source: "sshConfig" as const })),
-  ].slice(0, 3);
+  const hosts = sshProfileEntries(panel).slice(0, 3);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,18 +154,18 @@ export function WorkspaceEmptyState({
                   {t("sidebar.hosts.title")}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {hosts.map(({ profile, source }) => (
+                  {hosts.map((entry) => (
                     <button
-                      key={`${source}:${profile.id}:${profile.host}`}
+                      key={`${entry.key}:${entry.profile.host}`}
                       type="button"
                       className="hover-bg"
-                      title={`${profile.user}@${profile.host}${profile.port === 22 ? "" : `:${profile.port}`}`}
-                      aria-label={hostProfileButtonLabel(profile)}
-                      onClick={() => useUIStore.getState().openSshConnect(sshConnectPrefillFromProfile(profile, panel, source))}
+                      title={`${entry.profile.user}@${entry.profile.host}${entry.profile.port === 22 ? "" : `:${entry.profile.port}`}`}
+                      aria-label={hostProfileButtonLabel(entry.profile)}
+                      onClick={() => useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(entry, panel))}
                       style={cardButtonStyle}
                     >
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "var(--c-text-2)" }}>
-                        {hostProfileButtonLabel(profile)}
+                        {hostProfileButtonLabel(entry.profile)}
                       </span>
                     </button>
                   ))}

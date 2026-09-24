@@ -242,7 +242,7 @@ test("SSH connection state comes from backend phase evidence and remains ephemer
   const persisted = read("src/state/persist-snapshot.ts");
 
   assert.match(session, /ConnectionStatus \{\s*phase: String/);
-  for (const phase of ["connecting", "handshaking", "authenticating", "openingShell", "ready"]) {
+  for (const phase of ["resolving", "connecting", "handshaking", "authenticating", "openingShell", "ready"]) {
     assert.match(connection, new RegExp(`send_connection_status\\(&on_event, "${phase}"\\)`));
   }
   assert.match(bridge, /onConnectionStatus\?: \(phase: PtyConnectionStatusPhase, generation: string\)/);

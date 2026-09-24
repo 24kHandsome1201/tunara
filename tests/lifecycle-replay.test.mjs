@@ -231,6 +231,19 @@ test("SSH connection evidence replays backend phases without inferring readiness
   });
 });
 
+test("a DNS failure is attributed to the resolving phase, not connecting", () => {
+  let evidence = initialConnectionEvidence("ssh", "user", 10);
+  evidence = reduceConnectionEvidence(evidence, { type: "backendPhase", transport: "ssh", phase: "resolving" }, 20);
+  evidence = reduceConnectionEvidence(evidence, {
+    type: "failed",
+    transport: "ssh",
+    reason: "connect",
+    detail: "resolve qa-local:22 failed: failed to lookup address information",
+    source: "renderer",
+  }, 30);
+  assert.equal(evidence.failedAtPhase, "resolving");
+});
+
 test("connection failure evidence keeps the failed phase and produces bounded diagnostics", () => {
   let evidence = initialConnectionEvidence("ssh", "restore", 10);
   evidence = reduceConnectionEvidence(evidence, { type: "backendPhase", transport: "ssh", phase: "authenticating" }, 20);

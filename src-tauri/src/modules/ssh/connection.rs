@@ -721,10 +721,14 @@ async fn connect_direct_authenticated(
     ),
     String,
 > {
+    // Name resolution is its own stage so a DNS failure is not reported as
+    // "connecting to host" in the failure bar and diagnostics.
+    send_connection_status(&on_event, "resolving");
+    let addrs = resolve_ssh_addrs(&params.host, params.port).await?;
     send_connection_status(&on_event, "connecting");
     let socket = tokio::time::timeout(
         SSH_TCP_CONNECT_TIMEOUT,
-        tokio::net::TcpStream::connect((params.host.as_str(), params.port)),
+        tokio::net::TcpStream::connect(addrs.as_slice()),
     )
     .await
     .map_err(|_| {
@@ -758,6 +762,28 @@ async fn connect_direct_authenticated(
         transport_abort,
         reverse_hub,
     ))
+}
+
+/// Resolve `host:port` before TCP connect. Errors are prefixed with `resolve`
+/// so the frontend can bucket them apart from refused/timed-out connects.
+async fn resolve_ssh_addrs(host: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
+    let addrs: Vec<_> = tokio::time::timeout(
+        SSH_TCP_CONNECT_TIMEOUT,
+        tokio::net::lookup_host((host, port)),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "resolve {host}:{port} timed out after {}s",
+            SSH_TCP_CONNECT_TIMEOUT.as_secs()
+        )
+    })?
+    .map_err(|e| format!("resolve {host}:{port} failed: {e}"))?
+    .collect();
+    if addrs.is_empty() {
+        return Err(format!("resolve {host}:{port} failed: no addresses"));
+    }
+    Ok(addrs)
 }
 
 async fn emit_output(
@@ -2716,6 +2742,20 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(ref e) if e.contains("test stage timed out")));
+    }
+
+    #[tokio::test]
+    async fn ssh_resolution_is_a_named_stage_before_tcp_connect() {
+        let addrs = resolve_ssh_addrs("127.0.0.1", 2222).await.unwrap();
+        assert_eq!(addrs, vec!["127.0.0.1:2222".parse().unwrap()]);
+        // `.invalid` never resolves (RFC 6761); the error must name resolution,
+        // not "connect", so the failure bar reports the right stage.
+        let err = resolve_ssh_addrs("qa-alias.invalid", 22).await.unwrap_err();
+        assert!(err.starts_with("resolve qa-alias.invalid:22 "), "{err}");
+        let source = include_str!("connection.rs");
+        let resolving = source.find("send_connection_status(&on_event, \"resolving\")");
+        let connecting = source.find("send_connection_status(&on_event, \"connecting\")");
+        assert!(resolving.unwrap() < connecting.unwrap());
     }
 
     #[tokio::test]

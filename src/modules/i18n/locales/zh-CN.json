@@ -135,6 +135,7 @@
   "ssh.keyboardInteractive.stale_detail": "SSH 主机或本次连接已更换，Tunara 未发送任何回答。",
   "connection.phase.pending": "等待启动",
   "connection.phase.opening": "正在启动终端",
+  "connection.phase.resolving": "正在解析主机",
   "connection.phase.connecting": "正在连接主机",
   "connection.phase.verifyingHostKey": "等待确认主机密钥",
   "connection.phase.handshaking": "正在协商 SSH",

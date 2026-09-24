@@ -808,4 +808,97 @@ describe("SSH connection sheet", () => {
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });
+  test("a typed ~/.ssh/config Host alias connects through its HostName, Port, User and IdentityFile", async () => {
+    mockIPC((command, payload) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") {
+        return {
+          imported: [{ id: "ssh-config-qa", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "~/.ssh/id_qa" }],
+          skipped: 0,
+        };
+      }
+      if (command === "ssh_hosts_save") return [(payload as { profile: Record<string, unknown> }).profile];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    await screen.findByRole("button", { name: /qa-local/ });
+    fireEvent.change(hostInput(), { target: { value: "qa-local" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.remote).toEqual({
+      host: "127.0.0.1",
+      port: 2222,
+      user: "qauser",
+      authMethod: "key",
+      identityFile: "~/.ssh/id_qa",
+      injectShellIntegration: true,
+    });
+    expect(session.pendingSavedHost?.label).toBe("qa-local");
+  });
+
+  test("a typed user@alias keeps the typed user but resolves the alias endpoint", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") {
+        return { imported: [{ id: "ssh-config-qa", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "" }], skipped: 0 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    await screen.findByRole("button", { name: /qa-local/ });
+    fireEvent.change(hostInput(), { target: { value: "root@qa-local" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "127.0.0.1", port: 2222, user: "root", authMethod: "auto" });
+  });
+
+  test("Reconnect never shows the no-match empty state before profiles load", async () => {
+    let resolveLoad: (value: unknown[]) => void = () => {};
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return new Promise((resolve) => { resolveLoad = resolve; });
+      if (command === "ssh_hosts_import_config") {
+        return { imported: [{ id: "ssh-config-qa", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "" }], skipped: 0 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    useUIStore.setState({
+      overlay: "ssh",
+      sshPrefill: { host: "127.0.0.1", port: 2222, user: "qauser", authMethod: "auto", reconnectSessionId: "gone" },
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    expect(screen.queryByText("No matching connections")).toBeNull();
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText("No matching connections")).toBeNull();
+    await act(async () => { resolveLoad([]); });
+    expect(await screen.findByRole("button", { name: /qa-local/ })).toBeTruthy();
+    expect(screen.queryByText("No matching connections")).toBeNull();
+  });
+
+  test("a saved profile for a config endpoint is one suggestion that still matches the alias", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [{ id: "saved-qa", label: "QA box", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "" }];
+      if (command === "ssh_hosts_import_config") {
+        return { imported: [{ id: "ssh-config-qa", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "~/.ssh/id_qa" }], skipped: 0 };
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    await screen.findByRole("button", { name: /QA box/ });
+    fireEvent.change(hostInput(), { target: { value: "qa-loc" } });
+    const options = within(document.getElementById("ssh-connect-suggestions") as HTMLElement).getAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0].getAttribute("data-source")).toBe("saved");
+    expect(options[0].textContent).toContain("~/.ssh/config");
+    fireEvent.click(within(options[0]).getByRole("button", { name: /QA box/ }));
+    expect((document.getElementById("ssh-connect-identity") as HTMLInputElement).value).toBe("~/.ssh/id_qa");
+  });
 });

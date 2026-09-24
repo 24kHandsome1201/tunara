@@ -34,6 +34,7 @@ export function classifySshFailure(error: string): SshFailureReason {
     return "hostKey";
   }
   if (
+    e.startsWith("resolve ") ||
     e.includes("connect") ||
     e.includes("refused") ||
     e.includes("timed out") ||

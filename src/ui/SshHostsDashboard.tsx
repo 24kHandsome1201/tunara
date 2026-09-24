@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/modules/i18n";
-import { loadSshProfilesPanel, type SshHostProfile, type SshProfileSourceV1, type SshProfilesPanelModelV1 } from "@/modules/ssh/hosts-bridge";
-import { hostProfileButtonLabel, sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
+import { loadSshProfilesPanel, sshProfileEntries, type SshProfileEntryV1, type SshProfilesPanelModelV1 } from "@/modules/ssh/hosts-bridge";
+import { hostProfileButtonLabel, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
 import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import { useSessionsStore } from "@/state/sessions";
@@ -12,11 +12,7 @@ import type { Session } from "./types";
 
 type HostFilter = "all" | "online" | "offline";
 
-interface DashboardHost {
-  key: string;
-  source: SshProfileSourceV1;
-  profile: SshHostProfile;
-}
+type DashboardHost = SshProfileEntryV1;
 
 const EMPTY_PANEL: SshProfilesPanelModelV1 = {
   schemaVersion: 1,
@@ -70,10 +66,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
     return () => { cancelled = true; };
   }, [loadNonce, sshProfilesEpoch]);
 
-  const hosts = useMemo<DashboardHost[]>(() => [
-    ...panel.savedProfiles.map((profile) => ({ key: `saved:${profile.id}`, source: "saved" as const, profile })),
-    ...panel.configProfiles.map((profile) => ({ key: `sshConfig:${profile.id}`, source: "sshConfig" as const, profile })),
-  ], [panel]);
+  const hosts = useMemo<DashboardHost[]>(() => sshProfileEntries(panel), [panel]);
 
   useEffect(() => {
     if (hosts.length === 0) {
@@ -92,13 +85,18 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
       if (filter === "offline" && online) return false;
       if (!normalized) return true;
       const profile = entry.profile;
-      return `${profile.label} ${profile.user} ${profile.host} ${profile.port}`.toLowerCase().includes(normalized);
+      const alias = entry.configProfile?.label ?? "";
+      return `${profile.label} ${alias} ${profile.user} ${profile.host} ${profile.port}`.toLowerCase().includes(normalized);
     });
   }, [filter, hosts, query, sessions]);
 
   const selected = hosts.find((host) => host.key === selectedKey) ?? null;
   const selectedLive = selected ? liveSessionsOnEndpoint(sessions, selected.profile) : [];
   const selectedConnection = connectionState(selectedLive);
+
+  const sourceLabel = (entry: DashboardHost) => entry.source === "saved"
+    ? entry.configProfile ? `${t("ssh.source.saved")} · ~/.ssh/config` : t("ssh.source.saved")
+    : "~/.ssh/config";
 
   const openConnection = (entry: DashboardHost) => {
     const live = liveSessionsOnEndpoint(useSessionsStore.getState().sessions, entry.profile);
@@ -108,7 +106,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
       useUIStore.getState().showTerminal();
       return;
     }
-    useUIStore.getState().openSshConnect(sshConnectPrefillFromProfile(entry.profile, panel, entry.source));
+    useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(entry, panel));
   };
 
   return (
@@ -187,7 +185,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
                   <span className="ssh-host-card-meta">
                     <span><small>{t("ssh.dashboard.address")}</small><b>{entry.profile.host}</b></span>
                     <span><small>{t("ssh.dashboard.port")}</small><b>{entry.profile.port}</b></span>
-                    <span><small>{t("ssh.dashboard.source")}</small><b>{entry.source === "saved" ? t("ssh.source.saved") : "~/.ssh/config"}</b></span>
+                    <span><small>{t("ssh.dashboard.source")}</small><b>{sourceLabel(entry)}</b></span>
                   </span>
                 </button>
               );
@@ -213,7 +211,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
               <button type="button" className="ui-button ui-button--primary" onClick={() => openConnection(selected)}>
                 {selectedConnection.kind === "online" ? t("ssh.dashboard.open_terminal") : t("ssh.connect")}
               </button>
-              <button type="button" className="ui-button" onClick={() => useUIStore.getState().openSshConnect(sshConnectPrefillFromProfile(selected.profile, panel, selected.source))}>
+              <button type="button" className="ui-button" onClick={() => useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(selected, panel))}>
                 {t("ssh.dashboard.edit")}
               </button>
             </div>
@@ -224,7 +222,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
                 <div><dt>{t("ssh.dashboard.address")}</dt><dd>{selected.profile.host}</dd></div>
                 <div><dt>{t("ssh.dashboard.port")}</dt><dd>{selected.profile.port}</dd></div>
                 <div><dt>{t("ssh.user")}</dt><dd>{selected.profile.user}</dd></div>
-                <div><dt>{t("ssh.dashboard.source")}</dt><dd>{selected.source === "saved" ? t("ssh.source.saved") : "~/.ssh/config"}</dd></div>
+                <div><dt>{t("ssh.dashboard.source")}</dt><dd>{sourceLabel(selected)}</dd></div>
                 <div><dt>{t("ssh.dashboard.sessions")}</dt><dd>{selectedLive.length}</dd></div>
               </dl>
             </section>

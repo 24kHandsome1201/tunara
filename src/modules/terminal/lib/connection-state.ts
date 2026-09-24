@@ -7,6 +7,7 @@ export type ConnectionTransport = "local" | "ssh";
 export type ConnectionPhase =
   | "pending"
   | "opening"
+  | "resolving"
   | "connecting"
   | "verifyingHostKey"
   | "handshaking"
@@ -20,6 +21,7 @@ export type ConnectionPhase =
   | "exited";
 
 export type BackendConnectionPhase =
+  | "resolving"
   | "connecting"
   | "handshaking"
   | "authenticating"

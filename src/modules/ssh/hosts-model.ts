@@ -224,3 +224,40 @@ export function resolveSshProfileRoute(
     route: { schemaVersion: 1, source, target, jump: jumps[0] },
   };
 }
+
+/** One host row. A saved profile shadows the ~/.ssh/config entry for the same endpoint. */
+export interface SshProfileEntryV1 {
+  key: string;
+  source: SshProfileSourceV1;
+  profile: SshHostProfile;
+  /** The config entry this saved row also stands for; kept so its alias and keys stay usable. */
+  configProfile?: SshHostProfile;
+}
+
+function sshProfileEndpointKey(profile: SshHostProfile): string {
+  return `${profile.user}@${profile.host.toLowerCase()}:${profile.port}>${profile.proxyJumpProfileId ?? ""}`;
+}
+
+/**
+ * Host rows for lists: saved first, then config entries no saved profile covers.
+ * Saving a connection picked from ~/.ssh/config otherwise showed the host twice.
+ * The panel model itself is untouched, so route/jump resolution still sees both.
+ */
+export function sshProfileEntries(model: SshProfilesPanelModelV1): SshProfileEntryV1[] {
+  const configByEndpoint = new Map<string, SshHostProfile>();
+  for (const profile of model.configProfiles) {
+    const key = sshProfileEndpointKey(profile);
+    if (!configByEndpoint.has(key)) configByEndpoint.set(key, profile);
+  }
+  const shadowed = new Set<SshHostProfile>();
+  const saved = model.savedProfiles.map((profile): SshProfileEntryV1 => {
+    const config = configByEndpoint.get(sshProfileEndpointKey(profile));
+    const configProfile = config && !shadowed.has(config) ? config : undefined;
+    if (configProfile) shadowed.add(configProfile);
+    return { key: `saved:${profile.id}`, source: "saved", profile, ...(configProfile ? { configProfile } : {}) };
+  });
+  const config = model.configProfiles
+    .filter((profile) => !shadowed.has(profile))
+    .map((profile): SshProfileEntryV1 => ({ key: `sshConfig:${profile.id}`, source: "sshConfig", profile }));
+  return [...saved, ...config];
+}

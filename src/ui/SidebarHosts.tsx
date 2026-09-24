@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
-import { hostProfileButtonLabel, sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
-import type { SshProfilesPanelModelV1, SshProfileSourceV1 } from "@/modules/ssh/hosts-model";
+import { hostProfileButtonLabel, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
+import { sshProfileEntries } from "@/modules/ssh/hosts-model";
 import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import type { Session } from "./types";
@@ -21,10 +21,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
   const { panel, loading } = useSshProfilesPanel();
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
 
-  const profiles: Array<{ profile: SshProfilesPanelModelV1["savedProfiles"][number]; source: SshProfileSourceV1 }> = [
-    ...panel.savedProfiles.map((profile) => ({ profile, source: "saved" as const })),
-    ...panel.configProfiles.map((profile) => ({ profile, source: "sshConfig" as const })),
-  ];
+  const profiles = sshProfileEntries(panel);
   const visibleProfiles = profiles.slice(0, 8);
 
   const expanded = expandedOverride ?? (sessions.length === 0 || mainSurface === "ssh-hosts");
@@ -83,14 +80,15 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
           </button>
           {loading && profiles.length === 0 && <span className="sidebar-hosts-state" role="status">{t("sidebar.hosts.loading")}</span>}
           {!loading && profiles.length === 0 && <span className="sidebar-hosts-state">{t("sidebar.hosts.empty")}</span>}
-          {visibleProfiles.map(({ profile, source }) => {
+          {visibleProfiles.map((entry) => {
+            const { profile, source } = entry;
             const live = liveSessionsOnEndpoint(sessions, profile);
             const latest = representativeSession(live, activeSessionId);
             const online = live.some((session) => readyBindingForSession(session));
             const connecting = !online && live.some((session) => session.connection && !["failed", "disconnected", "exited"].includes(session.connection.phase));
             return (
               <button
-                key={`${source}:${profile.id}:${profile.host}`}
+                key={`${entry.key}:${profile.host}`}
                 className="hover-bg sidebar-host-row"
                 data-status={online ? "online" : connecting ? "connecting" : "offline"}
                 aria-label={hostProfileButtonLabel(profile)}
@@ -100,13 +98,13 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
                     onSelectSession(latest.id);
                     return;
                   }
-                  useUIStore.getState().openSshConnect(sshConnectPrefillFromProfile(profile, panel, source));
+                  useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(entry, panel));
                 }}
               >
                 <span className="sidebar-host-status-dot" aria-hidden="true" />
                 <span className="sidebar-host-copy">
                   <strong>{hostProfileButtonLabel(profile)}</strong>
-                  <small>{profile.user}@{profile.host}{profile.port === 22 ? "" : `:${profile.port}`} · {source === "saved" ? t("ssh.source.saved") : t("ssh.source.config")}</small>
+                  <small>{profile.user}@{profile.host}{profile.port === 22 ? "" : `:${profile.port}`} · {source === "saved" ? t("ssh.source.saved") : t("ssh.source.config")}{entry.configProfile ? ` · ${t("ssh.source.config")}` : ""}</small>
                 </span>
               </button>
             );

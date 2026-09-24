@@ -1,4 +1,4 @@
-import { parseSshPort, type SshHostProfile } from "./hosts-model.ts";
+import { parseSshPort, type SshHostProfile, type SshProfileEntryV1 } from "./hosts-model.ts";
 
 /** One-box SSH target. User may be empty when the text is only a host or alias. */
 export interface ParsedSshTarget {
@@ -84,6 +84,26 @@ export function exactSshProfileMatch(profiles: SshHostProfile[], raw: string): S
   });
 }
 
+/**
+ * A typed `alias`, `user@alias` or `alias:port` whose alias equals a profile
+ * label (the `Host` name for ~/.ssh/config entries) must resolve like picking
+ * that profile: HostName / Port / User / IdentityFile come from the profile,
+ * and only an explicitly typed user or port overrides them (as `ssh` does).
+ * Without this the alias itself reached DNS as a literal hostname.
+ */
+export function sshAliasProfileMatch(profiles: SshHostProfile[], raw: string): SshHostProfile | undefined {
+  const parsed = parseSshTarget(raw);
+  if (!parsed) return undefined;
+  const alias = parsed.host.toLowerCase();
+  return profiles.find((profile) => profile.label.trim().toLowerCase() === alias);
+}
+
 export function filterSshProfiles(profiles: SshHostProfile[], query: string, limit = 12): SshHostProfile[] {
   return profiles.filter((profile) => profileMatchesTarget(profile, query)).slice(0, limit);
+}
+
+/** Like filterSshProfiles, but a deduped saved row also matches its config alias. */
+export function filterSshProfileEntries(entries: SshProfileEntryV1[], query: string, limit = 12): SshProfileEntryV1[] {
+  return entries.filter((entry) => profileMatchesTarget(entry.profile, query)
+    || Boolean(entry.configProfile && profileMatchesTarget(entry.configProfile, query))).slice(0, limit);
 }
