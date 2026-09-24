@@ -174,7 +174,7 @@ fn walk_root(
 }
 
 fn should_skip_dir_name(name: &str) -> bool {
-    SKIP_DIR_NAMES.iter().any(|skip| *skip == name)
+    SKIP_DIR_NAMES.contains(&name)
 }
 
 fn is_git_repo(path: &Path) -> bool {
