@@ -196,7 +196,6 @@ function TerminalViewImpl({
       term.loadAddon(searchAddon);
       const searchResultDisposable = search.registerSearchAddon(searchAddon);
       cleanups.push(() => searchResultDisposable.dispose());
-      cleanups.push(blocks.registerScrollTracking(term));
       // Terminal-scoped actions and workspace context-menu keys return false
       // before search/blocks so xterm neither consumes nor forwards them.
       term.attachCustomKeyEventHandler((e) => !(e.type === "keydown" && isFixedTerminalMenuEvent(e)) && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));

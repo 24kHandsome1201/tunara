@@ -43,7 +43,7 @@ import {
   subscribeEditorDraftCompletions,
   type EditorDraftSaveState,
 } from "@/modules/editor/editor-draft-registry";
-import { normalizedScrollPosition, scrollTopForPosition } from "@/modules/editor/scroll-position";
+import { normalizedScrollPosition, offsetForLineColumn, scrollTopForPosition } from "@/modules/editor/scroll-position";
 import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
 import { parseNotebook, type NotebookCell } from "@/modules/editor/notebook";
 import type { ResourceRef } from "@/modules/resources/resource-ref";
@@ -360,20 +360,31 @@ function TextPreview({
   fill = false,
   followTail = false,
   onUserScrollAway,
+  findQuery = "",
+  activeFindIndex = -1,
 }: {
   content: string;
   fileName?: string;
   fill?: boolean;
   followTail?: boolean;
   onUserScrollAway?: () => void;
+  findQuery?: string;
+  activeFindIndex?: number;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const highlightedLines = useHighlightedLines(fileName ?? "", content);
+  const finding = findQuery.length > 0;
   useEffect(() => {
     if (!followTail) return;
     const root = rootRef.current;
     if (root) root.scrollTop = root.scrollHeight;
   }, [content, followTail]);
+  useEffect(() => {
+    if (!finding || activeFindIndex < 0) return;
+    rootRef.current
+      ?.querySelector<HTMLElement>(`[data-markdown-find-index="${activeFindIndex}"]`)
+      ?.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [activeFindIndex, content, findQuery, finding]);
   return (
     <div
       ref={rootRef}
@@ -387,10 +398,12 @@ function TextPreview({
       className="no-scrollbar scroll-fade-y"
     >
       <pre
-        className={highlightedLines ? "file-preview-syntax syntax-tokens" : undefined}
+        className={highlightedLines && !finding ? "file-preview-syntax syntax-tokens" : undefined}
         style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}
       >
-        {highlightedLines ? renderSyntaxLines(highlightedLines) : content}
+        {finding
+          ? <HighlightedText text={content} query={findQuery} cursor={{ current: 0, active: activeFindIndex }} />
+          : highlightedLines ? renderSyntaxLines(highlightedLines) : content}
       </pre>
     </div>
   );
@@ -729,16 +742,22 @@ function InertTextOrTable({
   fill = false,
   followTail = false,
   onUserScrollAway,
+  findQuery = "",
+  activeFindIndex = -1,
 }: {
   fileName: string;
   content: string;
   fill?: boolean;
   followTail?: boolean;
   onUserScrollAway?: () => void;
+  findQuery?: string;
+  activeFindIndex?: number;
 }) {
-  const table = parseTabularPreview(fileName, content);
+  // Find counts raw source matches, so a search shows the source text where
+  // every counted match is visible instead of a table that hides quoting.
+  const table = findQuery ? null : parseTabularPreview(fileName, content);
   if (table) return <TabularTable table={table} />;
-  return <TextPreview content={content} fileName={fileName} fill={fill} followTail={followTail} onUserScrollAway={onUserScrollAway} />;
+  return <TextPreview content={content} fileName={fileName} fill={fill} followTail={followTail} onUserScrollAway={onUserScrollAway} findQuery={findQuery} activeFindIndex={activeFindIndex} />;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -768,6 +787,7 @@ function InertFindBar({
   onQueryChange,
   onIndexChange,
   onClose,
+  matchCount,
 }: {
   query: string;
   content: string;
@@ -775,10 +795,14 @@ function InertFindBar({
   onQueryChange: (value: string) => void;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  /** Rendered match count when the view does not show raw source (Markdown). */
+  matchCount?: number;
 }) {
   const t = useT();
-  const matches = collectMatchOffsets(content, query);
-  const total = matches.length;
+  const total = useMemo(
+    () => matchCount ?? collectMatchOffsets(content, query).length,
+    [content, matchCount, query],
+  );
   const current = total === 0 ? 0 : Math.min(Math.max(index, 0), total - 1);
   const go = (direction: 1 | -1) => {
     if (total === 0) return;
@@ -806,11 +830,22 @@ function InertFindBar({
   );
 }
 
-function SiblingNav({ sessionId, filePath, previous, next }: { sessionId?: string; filePath: string; previous: string | null; next: string | null }) {
+function isSiblingNavKeyTarget(target: EventTarget | null, root: Element | null | undefined): boolean {
+  if (!(target instanceof Node)) return true;
+  if (target === document.body || target === document.documentElement) return true;
+  return Boolean(root?.contains(target));
+}
+
+function SiblingNav({ sessionId, filePath, previous, next, active }: { sessionId?: string; filePath: string; previous: string | null; next: string | null; active: boolean }) {
   const t = useT();
+  const navRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (!active) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || isTypingTarget(event.target)) return;
+      // Arrow keys belong to whatever surface holds focus (file tree, tabs,
+      // inspector); only claim them when focus is inside this reader.
+      if (!isSiblingNavKeyTarget(event.target, navRef.current?.closest("[data-file-preview-root]"))) return;
       const goPrevious = event.key === "ArrowLeft" || event.key === "k" || event.key === "K";
       const goNext = event.key === "ArrowRight" || event.key === "j" || event.key === "J";
       if (goPrevious && previous) {
@@ -823,10 +858,10 @@ function SiblingNav({ sessionId, filePath, previous, next }: { sessionId?: strin
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [filePath, next, previous, sessionId]);
+  }, [active, filePath, next, previous, sessionId]);
   if (!previous && !next) return null;
   return (
-    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+    <div ref={navRef} style={{ display: "flex", gap: 4, flexShrink: 0 }}>
       <button type="button" className="ui-button" disabled={!previous} aria-label={t("preview.siblings.previous")} onClick={() => previous && openSiblingFile(sessionId, filePath, previous)}>←</button>
       <button type="button" className="ui-button" disabled={!next} aria-label={t("preview.siblings.next")} onClick={() => next && openSiblingFile(sessionId, filePath, next)}>→</button>
     </div>
@@ -1015,6 +1050,25 @@ function EditorSurface({
   contentRef.current = content;
   const fingerprintRef = useRef(fingerprint);
   fingerprintRef.current = fingerprint;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const targetLine = resource.line;
+  const targetColumn = resource.column;
+
+  useLayoutEffect(() => {
+    if (targetLine === undefined) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const offset = offsetForLineColumn(contentRef.current, targetLine, targetColumn);
+    const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight);
+    if (Number.isFinite(lineHeight) && lineHeight > 0) {
+      textarea.scrollTop = Math.max(0, (targetLine - 1) * lineHeight - textarea.clientHeight / 3);
+      if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = textarea.scrollTop;
+      if (syntaxRef.current) syntaxRef.current.scrollTop = textarea.scrollTop;
+    }
+    if (activeRef.current) textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(offset, offset);
+  }, [targetColumn, targetLine]);
   const refreshObservationRef = useRef<FileObservationV1 | undefined>(undefined);
   const refreshBlockedRef = useRef(false);
   refreshBlockedRef.current = dirty
@@ -1278,7 +1332,7 @@ function EditorSurface({
         : t("preview.editor.clean");
 
   return (
-    <div className="file-editor-surface" onKeyDown={(event) => {
+    <div className="file-editor-surface" data-file-preview-root onKeyDown={(event) => {
       if (event.key === "Escape" && guardedDraft) {
         event.stopPropagation();
         setCloseConfirm(true);
@@ -1309,7 +1363,7 @@ function EditorSurface({
               {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
             </div>
           )}
-          <SiblingNav sessionId={sessionId ?? undefined} filePath={filePath} previous={siblings.previous} next={siblings.next} />
+          <SiblingNav sessionId={sessionId ?? undefined} filePath={filePath} previous={siblings.previous} next={siblings.next} active={active} />
           {!embedded && (
           <button className="file-editor-icon-button" onClick={requestClose} title={t("common.close")} aria-label={t("common.close")}>
             <CloseIcon size={11} strokeWidth={2.5} />
@@ -1482,6 +1536,9 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
   const [inertFindOpen, setInertFindOpen] = useState(false);
   const [inertFindQuery, setInertFindQuery] = useState("");
   const [inertFindIndex, setInertFindIndex] = useState(0);
+  const [inertMarkdownMatchCount, setInertMarkdownMatchCount] = useState(0);
+  const debouncedInertFindQuery = useDebouncedValue(inertFindQuery, 150);
+  const inertFind = { query: inertFindOpen ? debouncedInertFindQuery : "", index: inertFindIndex };
   const activeHeadRequestRef = useRef<string | null>(null);
   const viewedWindowRef = useRef<FileViewWindow>("head");
   const readingRef = useRef(false);
@@ -1712,9 +1769,12 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
 
   const isMarkdown = /\.mdx?$/i.test(fileName);
   const isNotebook = /\.ipynb$/i.test(fileName);
-  const textContent = result?.kind === "text"
-    ? result.content + (result.truncated ? `\n${t("preview.truncated")}` : "")
-    : "";
+  const textContent = result?.kind === "text" ? result.content : "";
+  const truncatedNotice = result?.kind === "text" && result.truncated && !headResult ? (
+    <div role="status" style={{ padding: "7px 14px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>
+      {t("preview.truncated")}
+    </div>
+  ) : null;
   const canViewHead = result?.kind === "toolarge" || (result?.kind === "text" && Boolean(result.truncated));
   const previewResource: ResourceRef = resource ?? {
     transport: remote ? "ssh" : "local",
@@ -1749,6 +1809,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
 
   return (
     <div
+      data-file-preview-root
       style={{
         background: "var(--c-bg-white)",
         border: fill ? "none" : "1px solid var(--c-border-2)",
@@ -1767,7 +1828,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
           <Icon icon={FileGlyph} size={14} color="var(--c-text-5)" />
         )}
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-primary)", fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{fileName}</span>
-        <SiblingNav sessionId={sessionId} filePath={filePath} previous={siblings.previous} next={siblings.next} />
+        <SiblingNav sessionId={sessionId} filePath={filePath} previous={siblings.previous} next={siblings.next} active={active} />
         <button
           onClick={(e) => { e.stopPropagation(); onClose(); }}
           className="hover-bg"
@@ -1797,6 +1858,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
           onQueryChange={(value) => { setInertFindQuery(value); setInertFindIndex(0); }}
           onIndexChange={setInertFindIndex}
           onClose={() => setInertFindOpen(false)}
+          matchCount={isMarkdown && !isNotebook && headResult?.kind !== "text" ? inertMarkdownMatchCount : undefined}
         />
       ) : null}
 
@@ -1826,7 +1888,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
             {t("preview.head.result", { count: headResult.lineCount, limit: headResult.lineLimit })}
             {headResult.truncated ? ` · ${t("preview.head.bounded", { size: formatSize(headResult.byteLimit) })}` : ""}
           </div>
-          <InertTextOrTable fileName={fileName} content={headResult.content} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} />
+          <InertTextOrTable fileName={fileName} content={headResult.content} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} findQuery={inertFind.query} activeFindIndex={inertFind.index} />
         </>
       ) : result.kind === "binary" ? (
         <PreviewMessage icon="⊘" text={t("preview.binary", { size: formatSize(result.size) })} />
@@ -1840,11 +1902,11 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       ) : result.kind === "image" ? (
         <ImagePreview result={result} fileName={fileName} fill={fill} />
       ) : isNotebook ? (
-        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}<NotebookPreview content={textContent} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<NotebookPreview content={textContent} /></>
       ) : isMarkdown ? (
-        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}<MarkdownPreview content={textContent} fill={fill} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<MarkdownPreview content={textContent} fill={fill} findQuery={inertFind.query} activeFindIndex={inertFind.index} onMatchCountChange={setInertMarkdownMatchCount} /></>
       ) : (
-        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} findQuery={inertFind.query} activeFindIndex={inertFind.index} /></>
       )}
     </div>
   );

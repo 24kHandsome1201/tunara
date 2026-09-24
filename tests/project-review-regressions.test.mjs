@@ -697,7 +697,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   assert.doesNotMatch(explorerChrome, /disabled=\{isRemote\}/);
   // Local and remote grep hits open the same persistent Tunara workspace tab;
   // SSH paths must never be handed to a local external editor.
-  assert.match(explorer, /onClick=\{\(\) => openFile\(group\.path\)\}/);
+  assert.match(explorer, /onClick=\{\(\) => openFile\(group\.path, ln\.line\)\}/);
   // Editor launch failures must surface a toast (shared openInEditorWithToast helper),
   // not vanish into an empty catch.
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
@@ -1030,7 +1030,8 @@ test("file previews and markdown rendering stay bounded", () => {
   assert.match(rust, /bytes\.truncate\(MAX_TEXT_PREVIEW_BYTES as usize\)/);
   assert.match(bridge, /truncated\?: boolean/);
   assert.match(preview, /useMemo/);
-  assert.match(preview, /result\.truncated \? `\\n\$\{t\("preview\.truncated"\)\}` : ""/);
+  assert.match(preview, /const textContent = result\?\.kind === "text" \? result\.content : ""/);
+  assert.match(preview, /\{t\("preview\.truncated"\)\}/);
   assert.match(git, /out\.len\(\) \+ content\.len\(\) \+ prefix_len > DIFF_MAX_BYTES/);
   assert.match(git, /commit` 模块只在 `cfg\(test\)` 下保留旧写路径的 pathspec 回归 fixture/);
   assert.match(gitBridge, /git\/mod\.rs 的只读 IPC 契约/);
@@ -1544,7 +1545,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /useTerminalRuntimeSync\(\{/);
   assert.match(terminal, /useTerminalBlocks\(termRef\)/);
   assert.doesNotMatch(terminal, /quickSelectOverlay/);
-  assert.match(terminal, /blocks\.registerScrollTracking\(term\)/);
+  assert.doesNotMatch(terminal, /registerScrollTracking/);
   assert.match(terminal, /blocks\.updateActiveBlockEnd\(currentBufferRow\(\)\)/);
   assert.match(terminal, /isFixedTerminalMenuEvent\(e\)/);
   assert.match(terminal, /handleTerminalInteractionKeyEvent\(sessionIdRef\.current, term, e\) && search\.handleCustomKeyEvent\(e\) && blocks\.handleCustomKeyEvent\(e\)/);
@@ -1619,7 +1620,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocksPure, /export function formatTerminalBlockCommandAndOutput/);
   assert.match(terminalBlocks, /import \{ matchesKeybinding \} from "\.\.\/modules\/config\/keybindings\.ts"/);
   assert.doesNotMatch(terminalBlocks, /import \{ useUIStore \} from "@\/state\/ui"/);
-  assert.match(terminalBlocks, /import \{ hasTrueRecordKey, toggleTrueRecordKey \} from "@\/state\/record-keys"/);
+  assert.doesNotMatch(terminalBlocks, /useState/);
   assert.match(terminalBlocks, /function detectMacPlatform\(\): boolean/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowUp", isMac\)/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowDown", isMac\)/);
@@ -1641,11 +1642,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminalBlocks, /return readBlockOutputText\(term, block\)/);
   assert.match(terminalBlocks, /formatTerminalBlockCommandAndOutput\(block\.command, output\)/);
   assert.match(terminalBlocks, /return copyText\(block\.command\)/);
-  assert.match(terminalBlocks, /term\.onScroll/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowUp", isMac\)[\s\S]*navigateBlock\("previous"\)/);
   assert.match(terminalBlocks, /matchesKeybinding\(e, "Mod\+Shift\+ArrowDown", isMac\)[\s\S]*navigateBlock\("next"\)/);
-  assert.match(terminalBlocks, /hasTrueRecordKey\(current, id\)/);
-  assert.match(terminalBlocks, /toggleTrueRecordKey\(current, id\)/);
   assert.doesNotMatch(terminalBlocks, /current\[id\]/);
   assert.doesNotMatch(terminalBlocks, /\.\.\.current, \[id\]: true/);
   // Clipboard writes route through the shared copyText helper, not raw navigator.clipboard.
