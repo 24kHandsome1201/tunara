@@ -185,3 +185,12 @@ test("modal leaves Escape to nested editors that own it", () => {
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Plain" }), { key: "Escape" });
   expect(onClose).toHaveBeenCalledWith("escape");
 });
+
+test("icon-only panel buttons expose their title as the accessible name", () => {
+  render(<>
+    <PanelIconButton title="Refresh changes">↻</PanelIconButton>
+    <PanelIconButton title="Close" aria-label="Close changes panel">×</PanelIconButton>
+  </>);
+  expect(screen.getByRole("button", { name: "Refresh changes" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Close changes panel" })).toBeTruthy();
+});

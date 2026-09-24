@@ -106,7 +106,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
                 <span className="sidebar-host-status-dot" aria-hidden="true" />
                 <span className="sidebar-host-copy">
                   <strong>{hostProfileButtonLabel(profile)}</strong>
-                  <small>{profile.user}@{profile.host}{profile.port === 22 ? "" : `:${profile.port}`} · {source === "saved" ? t("ssh.source.saved") : "config"}</small>
+                  <small>{profile.user}@{profile.host}{profile.port === 22 ? "" : `:${profile.port}`} · {source === "saved" ? t("ssh.source.saved") : t("ssh.source.config")}</small>
                 </span>
               </button>
             );

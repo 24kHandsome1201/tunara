@@ -774,6 +774,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div
+        aria-hidden="true"
         onClick={onClose}
         className="overlay-backdrop"
         style={{

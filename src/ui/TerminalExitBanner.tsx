@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { t as staticT } from "@/modules/i18n";
 import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 import { reconnectPrefillFromSession, type Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
@@ -300,8 +299,9 @@ export function ConnectingOverlay({
   phase?: ConnectionPhase;
   onCancel?: () => void;
 }) {
-  const label = staticT(`connection.phase.${phase ?? "connecting"}`);
-  const cancelLabel = staticT("ssh.connecting.close_session");
+  const t = useT();
+  const label = t(`connection.phase.${phase ?? "connecting"}`);
+  const cancelLabel = t("ssh.connecting.close_session");
   return (
     <div
       role="status"
