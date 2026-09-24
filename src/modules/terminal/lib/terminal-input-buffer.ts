@@ -10,16 +10,43 @@ const STRING_TERMINATOR = "\\";
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 
+export interface TerminalInputScanState {
+  /** Between an OSC 133 A (prompt start) and C (command start). */
+  osc133Active: boolean;
+  /** The last A marker carried `;input-fallback`. */
+  inputFallbackRequested: boolean;
+  /** Any OSC 133 marker has been seen from this terminal. */
+  shellIntegrationSeen: boolean;
+  /** A foreground TUI owns the keyboard (alternate screen / mouse tracking). */
+  fullScreenApp: boolean;
+}
+
 /**
  * Native OSC 133 command markers are authoritative when available. Remote
  * Bash < 4.4 can emit prompt markers but has no non-invasive pre-exec hook, so
  * its A marker explicitly asks the frontend to keep scanning submitted input.
+ * Once integration is live, keystrokes outside a prompt (after C, before the
+ * next A) belong to the foreground program, not the shell. Full-screen TUIs
+ * are never a shell prompt, with or without integration.
  */
-export function shouldScanTerminalInput(
-  osc133Active: boolean,
-  inputFallbackRequested: boolean,
-): boolean {
-  return !osc133Active || inputFallbackRequested;
+export function shouldScanTerminalInput(state: TerminalInputScanState): boolean {
+  if (state.fullScreenApp) return false;
+  if (state.shellIntegrationSeen) return state.osc133Active && state.inputFallbackRequested;
+  return true;
+}
+
+export interface TerminalInputModeSource {
+  buffer: { active: { type: string } };
+  modes: { mouseTrackingMode: string };
+}
+
+/**
+ * Alternate screen or mouse tracking means a TUI (vim, htop, HerdR...) is
+ * reading keys. Application cursor mode is deliberately not used: zsh's ZLE
+ * and readline with keypad enabled turn it on at an ordinary prompt.
+ */
+export function isTerminalInFullScreenApp(term: TerminalInputModeSource): boolean {
+  return term.buffer.active.type === "alternate" || term.modes.mouseTrackingMode !== "none";
 }
 
 function skipOscSequence(data: string, index: number): number {

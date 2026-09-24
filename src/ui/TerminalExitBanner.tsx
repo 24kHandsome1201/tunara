@@ -86,7 +86,9 @@ function CloseSessionButton({ session }: { session: Session }) {
  * line and truncates (full text in `title`) so narrow panes never break short
  * CJK labels mid-word; the action group wraps as a unit to the next row. The
  * primary action must stay the last button: pane activation and attention
- * reveal focus the last button inside the `[role="alert"]` bar.
+ * reveal focus the last button inside the `[role="alert"]` bar. Like the
+ * restored-history notice it sits in the pane's flex column, so the terminal
+ * refits above it instead of hiding the final rows (e.g. `logout`).
  */
 function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
   rootRef: RefObject<HTMLDivElement | null>;
@@ -103,10 +105,9 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
       aria-atomic="true"
       data-pane-recovery-bar
       style={{
-        position: "absolute",
-        left: 8,
-        right: 8,
-        bottom: 8,
+        position: "relative",
+        flexShrink: 0,
+        margin: "0 8px 8px",
         background: "var(--c-bg-1)",
         border: "1px solid var(--c-border-1)",
         borderRadius: "var(--r-btn)",

@@ -33,7 +33,7 @@ import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal
 import { createWebglAtlasRebuilder, recordTerminalAtlasOutputPressure, registerTerminalAtlasRebuilder, registerTerminalAtlasRefresh, requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback, tracksAgentActivity } from "@/modules/terminal/lib/agent-lifecycle";
 import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
-import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
+import { isTerminalInFullScreenApp, scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history";
 import { createTerminalOscGuard } from "@/modules/terminal/lib/terminal-osc-guard";
@@ -204,6 +204,7 @@ function TerminalViewImpl({
       term.attachCustomKeyEventHandler((e) => !(e.type === "keydown" && isFixedTerminalMenuEvent(e)) && handleTerminalInteractionKeyEvent(sessionIdRef.current, term, e) && search.handleCustomKeyEvent(e) && blocks.handleCustomKeyEvent(e));
       let osc133Active = false;
       let osc133InputFallback = false;
+      let osc133Seen = false;
       let pendingSubmittedShellCommand: string | null = null;
       let promptEnd = { row: -1, column: 0 };
       let lastExitCode = 0;
@@ -298,6 +299,7 @@ function TerminalViewImpl({
       }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         if (data.charAt(0) === "A" || data.charAt(0) === "B" || data.charAt(0) === "C" || data.charAt(0) === "D") {
+          osc133Seen = true;
           useSessionsStore.getState().markShellIntegrationSeen(sessionIdRef.current);
         }
         const marker = data.charAt(0);
@@ -517,14 +519,22 @@ function TerminalViewImpl({
       const submitCommandBuffer = (submitted: string) => {
         const trimmed = cleanTerminalText(submitted).trim();
         const currentAgent = getCurrentSession()?.agent;
-        if (!currentAgent && trimmed) pendingSubmittedShellCommand = trimmed;
+        // Keys typed into a full-screen TUI are not shell commands; keep them
+        // out of recent commands and the C-marker fallback text.
+        const fullScreenApp = isTerminalInFullScreenApp(term);
+        if (!currentAgent && trimmed && !fullScreenApp) pendingSubmittedShellCommand = trimmed;
         // Submitted input is exact and already crossed Enter; detect here so a
         // later PS0/C screen read cannot lose launch provenance.
         if (!currentAgent) {
           const agent = detectAgentCommand(submitted);
           if (agent) markAgentDetected(agent, submitted);
         }
-        if (!shouldScanTerminalInput(osc133Active, osc133InputFallback)) return;
+        if (!shouldScanTerminalInput({
+          osc133Active,
+          inputFallbackRequested: osc133InputFallback,
+          shellIntegrationSeen: osc133Seen,
+          fullScreenApp,
+        })) return;
         if (!currentAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
         }

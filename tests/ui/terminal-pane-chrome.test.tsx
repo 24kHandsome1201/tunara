@@ -4,6 +4,7 @@ import { expect, test, vi } from "vitest";
 import { setLanguage } from "@/modules/i18n";
 import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
+import { reduceConnectionEvidence } from "@/modules/terminal/lib/connection-state";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { PtyErrorBanner, RestoredHistoryNotice, TerminalExitBanner } from "@/ui/TerminalExitBanner";
@@ -107,4 +108,36 @@ test("the exit notice is skipped when the view was torn down while draining", as
   useSessionsStore.setState({ sessions: [{ id: "exit-disposed", title: "", dir: "/", branch: "", runState: "running", updatedAt: 1 }] });
   await handleTerminalProcessExit(term, "exit-disposed", 0, false, Promise.resolve(), () => true);
   expect(write).not.toHaveBeenCalled();
+});
+
+test.each([["en", "Process exited", "SSH connection interrupted"], ["zh-CN", "进程已退出", "SSH 连接中断"]] as const)("a clean remote `exit` shows the normal exit bar, not an interrupted connection (%s)", (lang, exited, interrupted) => {
+  setLanguage(lang);
+  const loggedOut: Session = {
+    ...disconnected,
+    id: "ssh-logout",
+    runState: "idle",
+    connection: reduceConnectionEvidence(disconnected.connection, { type: "exit", transport: "ssh", code: 0, disconnected: false }),
+  };
+  expect(loggedOut.connection?.phase).toBe("exited");
+  useSessionsStore.setState({ sessions: [loggedOut], activeSessionId: loggedOut.id });
+  render(<TerminalExitBanner session={loggedOut} exitCode={0} />);
+
+  const bar = screen.getByRole("status");
+  expect(within(bar).getByTitle(exited)).toBeTruthy();
+  expect(bar.textContent).not.toContain(interrupted);
+  expect(bar.querySelector("[data-remediation-kind]")).toBeNull();
+  // The bar takes layout space so the terminal refits above the `logout` line.
+  expect(bar.style.position).not.toBe("absolute");
+  expect(bar.style.flexShrink).toBe("0");
+});
+
+test("the inline notice reports a remote exit code and keeps the interrupted text for transport loss", async () => {
+  setLanguage("en");
+  const writes: string[] = [];
+  const term = { options: {}, write: (data: string, callback?: () => void) => { writes.push(data); callback?.(); } } as unknown as Terminal;
+  useSessionsStore.setState({ sessions: [{ ...disconnected, id: "ssh-inline" }] });
+  await handleTerminalProcessExit(term, "ssh-inline", 0, true);
+  await handleTerminalProcessExit(term, "ssh-inline", SSH_DISCONNECTED_EXIT_CODE, true);
+  expect(writes[0]).toContain("[process exited: 0]");
+  expect(writes[1]).toContain("[SSH connection interrupted]");
 });

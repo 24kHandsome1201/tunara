@@ -1528,7 +1528,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /import \{ registerTerminalPasteProtection \} from "@\/modules\/terminal\/lib\/terminal-paste-protection"/);
   assert.match(terminal, /import \{ schedulePendingInput \} from "@\/modules\/terminal\/lib\/terminal-pending-input"/);
   assert.match(terminal, /import \{ observeTerminalResize \} from "@\/modules\/terminal\/lib\/terminal-resize"/);
-  assert.match(terminal, /import \{ scanTerminalInputBuffer, shouldScanTerminalInput \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
+  assert.match(terminal, /import \{ isTerminalInFullScreenApp, scanTerminalInputBuffer, shouldScanTerminalInput \} from "@\/modules\/terminal\/lib\/terminal-input-buffer"/);
   assert.match(terminal, /import \{ useTerminalWebgl, type TerminalWebglRenderer \} from "\.\/useTerminalWebgl"/);
   assert.match(terminal, /createTerminalInstance\(\{/);
   assert.match(terminal, /atlasIsolationKey: sessionId/);

@@ -12,7 +12,7 @@ import {
   sessionDisplayRunState,
   shouldUseStartupQuietReadyFallback,
 } from "../src/modules/terminal/lib/agent-lifecycle.ts";
-import { scanTerminalInputBuffer, shouldScanTerminalInput } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
+import { isTerminalInFullScreenApp, scanTerminalInputBuffer, shouldScanTerminalInput } from "../src/modules/terminal/lib/terminal-input-buffer.ts";
 import { getTerminalTailText } from "../src/modules/terminal/lib/terminal-buffer-read.ts";
 import {
   PROMPT_AGENT_STATE_CHECK_DELAY_MS,
@@ -367,9 +367,32 @@ test("terminal input buffer preserves bracketed-paste state across data events",
 });
 
 test("remote Bash 3.2 prompt markers keep submitted-input command detection enabled", () => {
-  assert.equal(shouldScanTerminalInput(false, false), true);
-  assert.equal(shouldScanTerminalInput(true, false), false);
-  assert.equal(shouldScanTerminalInput(true, true), true);
+  const scan = (osc133Active, inputFallbackRequested, shellIntegrationSeen = true, fullScreenApp = false) =>
+    shouldScanTerminalInput({ osc133Active, inputFallbackRequested, shellIntegrationSeen, fullScreenApp });
+  assert.equal(scan(false, false, false), true);
+  assert.equal(scan(true, false), false);
+  assert.equal(scan(true, true), true);
+});
+
+test("recent-command scanning ignores keys typed into running programs and full-screen TUIs", () => {
+  const scan = (state) => shouldScanTerminalInput({
+    osc133Active: false,
+    inputFallbackRequested: false,
+    shellIntegrationSeen: false,
+    fullScreenApp: false,
+    ...state,
+  });
+  // HerdR-style TUI without shell integration: alternate screen / mouse mode wins.
+  assert.equal(scan({ fullScreenApp: true }), false);
+  // Integrated shell after C (command running): OSC 133 C already recorded it.
+  assert.equal(scan({ shellIntegrationSeen: true }), false);
+  // Bash 3.2 fallback prompt, but a TUI took over the screen.
+  assert.equal(scan({ shellIntegrationSeen: true, osc133Active: true, inputFallbackRequested: true, fullScreenApp: true }), false);
+
+  const mode = (type, mouseTrackingMode) => ({ buffer: { active: { type } }, modes: { mouseTrackingMode } });
+  assert.equal(isTerminalInFullScreenApp(mode("normal", "none")), false);
+  assert.equal(isTerminalInFullScreenApp(mode("alternate", "none")), true);
+  assert.equal(isTerminalInFullScreenApp(mode("normal", "any")), true);
 });
 
 test("agent command detection maps conservative shell command heads and wrappers", () => {

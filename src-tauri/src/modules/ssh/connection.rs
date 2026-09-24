@@ -362,6 +362,10 @@ const AGENT_HOOK_HELPER: &str = include_str!("../agent/scripts/agent-hook.sh");
 const SSH_DISCONNECTED_EXIT_CODE: i32 = -2;
 const SSH_FINAL_OUTPUT_FLUSH_TIMEOUT: Duration = Duration::from_millis(250);
 const SSH_TRANSPORT_LOST_REASON: &str = "transportClosed";
+/// OpenSSH sends the shell's Eof before its exit-status request, and Close
+/// only after both. Wait this long past Eof for the status before treating
+/// the channel as ended without one.
+const SSH_EXIT_STATUS_AFTER_EOF_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PumpEnd {
@@ -1129,6 +1133,7 @@ impl SshSession {
             let mut confirmed_transport_lost = false;
             let mut connection_signal_open = true;
             let mut channel_ended = false;
+            let mut eof_deadline: Option<tokio::time::Instant> = None;
             'pump: loop {
                 tokio::select! {
                     biased;
@@ -1162,6 +1167,10 @@ impl SshSession {
                                 break;
                             }
                         }
+                    }
+                    _ = tokio::time::sleep_until(eof_deadline.unwrap_or_else(tokio::time::Instant::now)), if eof_deadline.is_some() => {
+                        channel_ended = true;
+                        break;
                     }
                     msg = channel.wait() => {
                         let Some(msg) = msg else { break };
@@ -1201,7 +1210,20 @@ impl SshSession {
                                 exit_code = Some(-1);
                                 accepting_input = false;
                             }
-                            ChannelMsg::Eof | ChannelMsg::Close => {
+                            // Eof only ends shell output; `exit` still owes
+                            // its exit-status. Breaking here made every clean
+                            // logout look like a dropped connection.
+                            ChannelMsg::Eof => {
+                                accepting_input = false;
+                                if exit_code.is_some() {
+                                    channel_ended = true;
+                                    break;
+                                }
+                                eof_deadline.get_or_insert_with(|| {
+                                    tokio::time::Instant::now() + SSH_EXIT_STATUS_AFTER_EOF_TIMEOUT
+                                });
+                            }
+                            ChannelMsg::Close => {
                                 channel_ended = true;
                                 break;
                             }
@@ -2606,6 +2628,116 @@ mod tests {
             let event: serde_json::Value = serde_json::from_str(&json).expect("valid event JSON");
             if event.get("type").and_then(serde_json::Value::as_str) == Some("exit") {
                 break;
+            }
+        }
+    }
+
+    /// Regression: `exit` at the remote prompt is a clean shell exit. The
+    /// server may send Eof before exit-status, so the pump must report the
+    /// real code and never TransportLost. Killing the server-side session
+    /// process must still be reported as an interrupted connection.
+    #[tokio::test]
+    #[ignore = "requires TUNARA_SSH_SMOKE_HOST and a working SSH agent"]
+    async fn real_ssh_remote_exit_reports_exit_status_not_transport_loss() {
+        let (session, mut rx) = open_real_ssh_shell("remote-exit-smoke").await;
+        session.write(b"exit 3\n").expect("write exit");
+        let (code, transport_lost) = next_real_ssh_exit(&mut rx).await;
+        assert!(
+            !transport_lost,
+            "a remote shell exit is not a transport loss"
+        );
+        assert_eq!(code, Some(3));
+        assert!(!session.transport_lost());
+
+        let (session, mut rx) = open_real_ssh_shell("remote-kill-smoke").await;
+        session.write(b"kill -9 $PPID\n").expect("write kill");
+        let (code, transport_lost) = next_real_ssh_exit(&mut rx).await;
+        assert!(
+            transport_lost,
+            "a killed sshd must stay an interrupted connection"
+        );
+        assert_eq!(code, Some(i64::from(SSH_DISCONNECTED_EXIT_CODE)));
+    }
+
+    async fn open_real_ssh_shell(
+        label: &str,
+    ) -> (
+        SshSession,
+        tokio::sync::mpsc::UnboundedReceiver<InvokeResponseBody>,
+    ) {
+        let host = std::env::var("TUNARA_SSH_SMOKE_HOST")
+            .expect("set TUNARA_SSH_SMOKE_HOST to an authorized test host");
+        let user = std::env::var("TUNARA_SSH_SMOKE_USER").unwrap_or_else(|_| "root".into());
+        let port = std::env::var("TUNARA_SSH_SMOKE_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(22);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let on_event = Channel::<PtyEvent>::new(move |body| {
+            let _ = tx.send(body);
+            Ok(())
+        });
+        let session = tokio::time::timeout(
+            Duration::from_secs(30),
+            SshSession::open(
+                ConnectParams {
+                    host,
+                    port,
+                    auth: AuthOptions {
+                        user,
+                        method: super::super::auth::AuthMethod::Agent,
+                        identity_file: None,
+                        certificate_file: None,
+                        key_passphrase: None,
+                        password: None,
+                    },
+                    policy: HostKeyPolicy::AcceptUnknown,
+                    cols: 80,
+                    rows: 24,
+                    initial_cwd: None,
+                    inject_shell_integration: true,
+                    session_id: label.into(),
+                    transport_generation: "smoke".into(),
+                    hop_role: "direct".into(),
+                    jump_endpoint: None,
+                },
+                on_event,
+            ),
+        )
+        .await
+        .expect("SSH open timeout")
+        .expect("SSH open");
+        (session, rx)
+    }
+
+    /// Drains events until Exit; returns its code and whether TransportLost
+    /// preceded it.
+    async fn next_real_ssh_exit(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<InvokeResponseBody>,
+    ) -> (Option<i64>, bool) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+        let mut transport_lost = false;
+        loop {
+            let remaining = deadline
+                .checked_duration_since(tokio::time::Instant::now())
+                .expect("Exit before deadline");
+            let body = tokio::time::timeout(remaining, rx.recv())
+                .await
+                .expect("Exit timeout")
+                .expect("event channel open");
+            let InvokeResponseBody::Json(json) = body else {
+                continue;
+            };
+            let event: serde_json::Value = serde_json::from_str(&json).expect("valid event JSON");
+            match event.get("type").and_then(serde_json::Value::as_str) {
+                Some("transportLost") => transport_lost = true,
+                Some("exit") => {
+                    return (
+                        event.get("code").and_then(serde_json::Value::as_i64),
+                        transport_lost,
+                    )
+                }
+                _ => {}
             }
         }
     }
