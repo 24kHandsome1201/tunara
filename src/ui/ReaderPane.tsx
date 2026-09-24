@@ -293,7 +293,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
             sessionId={session.id}
             filePath={current.filePath}
             fileName={current.fileName}
-            resource={resourceRefForSession(session, current.filePath, current.line, current.column)}
+            resource={{ ...resourceRefForSession(session, current.filePath, current.line, current.column), jumpRequestId: current.jumpRequestId }}
             remotePtyId={session.remote ? session.ptyId : undefined}
             remote={Boolean(session.remote)}
             onClose={closeReader}

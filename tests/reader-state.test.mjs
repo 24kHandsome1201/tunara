@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  consumeReaderJumpRequest,
   emptyReaderState,
+  nextReaderJumpRequestId,
   migrateFileTabsToReaders,
   openReaderFileInState,
   READER_HISTORY_LIMIT,
@@ -84,4 +86,26 @@ test("legacy file tabs become one current plus remaining history", () => {
   ], "s\0/a.txt", new Set(["s"]));
   assert.equal(readers.s.current.fileName, "a.txt");
   assert.deepEqual(readers.s.history.map((entry) => entry.fileName), ["b.txt", "a.txt"]);
+});
+
+test("jump requests live only on current and are consumed once", () => {
+  const first = nextReaderJumpRequestId();
+  let state = openReaderFileInState(emptyReaderState(), { filePath: "/tmp/a.txt", fileName: "a.txt", line: 4, jumpRequestId: first });
+  assert.equal(state.current.jumpRequestId, first);
+  assert.equal(state.history[0].jumpRequestId, undefined);
+
+  state = openReaderFileInState(state, { filePath: "/tmp/b.txt", fileName: "b.txt" });
+  state = readerHistoryBack(state);
+  assert.equal(state.current.line, 4);
+  assert.equal(state.current.jumpRequestId, undefined, "back/forward must not replay the jump");
+
+  const again = nextReaderJumpRequestId();
+  assert.notEqual(again, first);
+  state = openReaderFileInState(state, { filePath: "/tmp/a.txt", fileName: "a.txt", line: 4, jumpRequestId: again });
+  assert.equal(state.current.jumpRequestId, again, "re-clicking the same hit is a new request");
+  assert.equal(sanitizeSessionReaderState(state).current.jumpRequestId, undefined, "never persisted");
+
+  assert.equal(consumeReaderJumpRequest(again), true);
+  assert.equal(consumeReaderJumpRequest(again), false);
+  assert.equal(consumeReaderJumpRequest(undefined), false);
 });

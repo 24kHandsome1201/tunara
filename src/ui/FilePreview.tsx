@@ -47,6 +47,7 @@ import { normalizedScrollPosition, offsetForLineColumn, scrollTopForPosition } f
 import { classifyFileOperationError, type FileOperationErrorKind } from "@/modules/editor/file-operation-error";
 import { parseNotebook, type NotebookCell } from "@/modules/editor/notebook";
 import type { ResourceRef } from "@/modules/resources/resource-ref";
+import { consumeReaderJumpRequest } from "@/modules/session/reader-state";
 import {
   cancelFileHeadViewV1,
   createFileViewRequestId,
@@ -1064,11 +1065,15 @@ function EditorSurface({
   activeRef.current = active;
   const targetLine = resource.line;
   const targetColumn = resource.column;
+  const jumpRequestId = resource.jumpRequestId;
 
+  // Apply each navigation request once. Remounts (split changes, history
+  // back/forward) keep the user's caret and scroll; a fresh request for the
+  // same hit carries a new id and jumps again.
   useLayoutEffect(() => {
     if (targetLine === undefined) return;
     const textarea = textareaRef.current;
-    if (!textarea) return;
+    if (!textarea || !consumeReaderJumpRequest(jumpRequestId)) return;
     const offset = offsetForLineColumn(contentRef.current, targetLine, targetColumn);
     const lineHeight = Number.parseFloat(getComputedStyle(textarea).lineHeight);
     if (Number.isFinite(lineHeight) && lineHeight > 0) {
@@ -1078,7 +1083,7 @@ function EditorSurface({
     }
     if (activeRef.current) textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(offset, offset);
-  }, [targetColumn, targetLine]);
+  }, [jumpRequestId, targetColumn, targetLine]);
   const refreshObservationRef = useRef<FileObservationV1 | undefined>(undefined);
   const refreshBlockedRef = useRef(false);
   refreshBlockedRef.current = dirty
