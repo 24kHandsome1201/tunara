@@ -58,6 +58,9 @@ const GRAMMAR_DEPENDENCIES: Partial<Record<ShikiLanguage, ShikiLanguage[]>> = {
   jsx: ["javascript"],
 };
 
+const TOKENIZE_TIME_LIMIT_MS = 200;
+const TOKENIZE_RETRY_TIME_LIMIT_MS = 2_000;
+
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 const loadedLanguages = new Set<ShikiLanguage>();
 const loadingLanguages = new Map<ShikiLanguage, Promise<void>>();
@@ -113,13 +116,22 @@ function mergeSegments(segments: CodeSyntaxSegment[]): CodeSyntaxSegment[] {
 export async function highlightWithShiki(language: ShikiLanguage, content: string): Promise<CodeSyntaxSegment[][]> {
   await loadLanguage(language);
   const highlighter = await getHighlighter();
-  const result = highlighter.codeToTokens(content, {
+  const tokenize = (tokenizeTimeLimit: number) => highlighter.codeToTokens(content, {
     lang: language,
     theme: "tunara-scopes",
     includeExplanation: "scopeName",
     tokenizeMaxLineLength: 2_000,
-    tokenizeTimeLimit: 200,
+    tokenizeTimeLimit,
   });
+  let result: ReturnType<typeof tokenize>;
+  try {
+    result = tokenize(TOKENIZE_TIME_LIMIT_MS);
+  } catch {
+    // Shiki tokenizes each line twice when explaining scopes; if the time limit
+    // stops only the second pass (cold regexes, busy CPU) it throws instead of
+    // degrading. Retry once with a looser limit before leaving the file uncolored.
+    result = tokenize(TOKENIZE_RETRY_TIME_LIMIT_MS);
+  }
   return result.tokens.map((line) => {
     if (line.length === 0) return [{ kind: "text" as const, text: "" }];
     return mergeSegments(line.map((token) => ({
