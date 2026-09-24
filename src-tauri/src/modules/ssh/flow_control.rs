@@ -191,6 +191,16 @@ pub(super) const BOOTSTRAP_PROMPT_HOLD: Duration = Duration::from_millis(1500);
 /// Upper bound on control bytes tolerated between two echoed characters, so a
 /// stray partial match cannot hold output back indefinitely.
 const ECHO_NOISE_MAX: usize = 512;
+/// Echoed bytes after which an interrupted echo is still treated as one: a
+/// tty may drop the tail of an early echo when the session resets it.
+const TRUNCATED_ECHO_MIN: usize = 20;
+/// Upper bound on the bytes a final (redrawn) echo may span.
+const FINAL_ECHO_SPAN_MAX: usize = 16 * 1024;
+/// Most lines a prompt (including a narrow-pane redraw) is assumed to span.
+const PROMPT_LINES_MAX: usize = 8;
+/// Sequences a line editor writes as it starts drawing a prompt: readline
+/// enables bracketed paste first, zle clears to the end of the screen.
+const PROMPT_START_SEQUENCES: [&[u8]; 2] = [b"\x1b[?2004h", b"\x1b[J"];
 
 /// Removes Tunara's own bootstrap input from the initial interactive-shell
 /// output. A tty may echo input once when it arrives and again when readline
@@ -201,11 +211,14 @@ const ECHO_NOISE_MAX: usize = 512;
 /// Readline wraps a redraw that does not fit the pane (a freshly split pane may
 /// start only a few columns wide) with `\r\n\r`, cursor moves and forced-wrap
 /// spaces between the echoed characters, so echoes are matched while skipping
-/// terminal control noise. The prompt line that carried the final echo, and
-/// the Enter newline after it, are dropped together with the echo: the shell
-/// draws a fresh prompt once the bootstrap finishes, so keeping the first one
-/// would leave an empty prompt line above it. A standalone early echo line
-/// (input typed before the shell took over the tty) is dropped whole too.
+/// terminal control noise; zle even re-prints characters around each wrap, so
+/// the final echo is located as the last in-order occurrence of the command
+/// before the marker. The prompt that carried the final echo (all its lines,
+/// when the line editor marked where it began drawing it), and the Enter
+/// newline after it, are dropped together with the echo: the shell draws a
+/// fresh prompt once the bootstrap finishes, so keeping the first one would
+/// leave an empty prompt above it. A standalone early echo line (input typed
+/// before the shell took over the tty) is dropped whole too.
 pub(super) struct SshBootstrapOutputFilter {
     typed_command: Vec<u8>,
     completion_marker: Vec<u8>,
@@ -295,15 +308,24 @@ impl SshBootstrapOutputFilter {
             let (start, end) = match find_echo(&self.pending[cursor..], &self.typed_command) {
                 EchoSearch::Full { start, end } => (cursor + start, cursor + end),
                 EchoSearch::Partial { start } => break self.hold_start(cursor, cursor + start),
-                EchoSearch::None if completed || !self.hold_prompt => {
-                    let keep = if completed {
-                        0
-                    } else {
-                        suffix_prefix_len(&self.pending[cursor..], &self.completion_marker)
-                    };
+                EchoSearch::None if completed => {
+                    // zle re-prints characters around each wrap, which the
+                    // in-order matcher cannot follow; the final echo still
+                    // shows every command character in order.
+                    if let Some(start) =
+                        final_echo_start(&self.pending[cursor..], &self.typed_command)
+                    {
+                        let prompt = self.prompt_start(cursor, cursor + start);
+                        visible.extend_from_slice(&self.pending[cursor..prompt]);
+                        cursor = self.pending.len();
+                    }
+                    break self.pending.len();
+                }
+                EchoSearch::None if !self.hold_prompt => {
+                    let keep = suffix_prefix_len(&self.pending[cursor..], &self.completion_marker);
                     break self.pending.len() - keep;
                 }
-                EchoSearch::None => break line_start(&self.pending, cursor, self.pending.len()),
+                EchoSearch::None => break self.prompt_start(cursor, self.pending.len()),
             };
             let line = line_start(&self.pending, cursor, start);
             let after = &self.pending[end..];
@@ -315,30 +337,29 @@ impl SshBootstrapOutputFilter {
                 if completed {
                     // The final echo: its prompt, any redraw fix-ups and the
                     // Enter newline all precede the completion marker.
-                    visible.extend_from_slice(&self.pending[cursor..line]);
+                    let prompt = self.prompt_start(cursor, start);
+                    visible.extend_from_slice(&self.pending[cursor..prompt]);
                     cursor = self.pending.len();
                     break cursor;
                 }
                 // Not yet known whether more output follows this echo.
                 break self.hold_start(cursor, start);
             }
-            // An earlier echo: drop it, and its whole line when nothing else
-            // was printed on it.
+            // An earlier echo: drop it with the typed line's leading space,
+            // and its whole line when nothing else was printed on it.
             let blank_line = self.pending[line..start]
                 .iter()
                 .all(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control());
-            let newline = if after.starts_with(b"\r\n") {
+            let newline = if !blank_line {
+                0
+            } else if after.starts_with(b"\r\n") {
                 2
             } else {
                 usize::from(after.starts_with(b"\n"))
             };
-            if blank_line && newline > 0 {
-                visible.extend_from_slice(&self.pending[cursor..line]);
-                cursor = end + newline;
-            } else {
-                visible.extend_from_slice(&self.pending[cursor..start]);
-                cursor = end;
-            }
+            let echo_line = if blank_line { line } else { start };
+            visible.extend_from_slice(&self.pending[cursor..echo_line]);
+            cursor = end + newline;
         };
         let emit_to = keep_from.max(cursor);
         visible.extend_from_slice(&self.pending[cursor..emit_to]);
@@ -348,16 +369,37 @@ impl SshBootstrapOutputFilter {
 
     fn hold_start(&self, cursor: usize, echo_start: usize) -> usize {
         if self.hold_prompt {
-            line_start(&self.pending, cursor, echo_start)
+            self.prompt_start(cursor, echo_start)
         } else {
             echo_start
         }
+    }
+
+    /// Start of the prompt drawn on the line containing `at`. A multi-line
+    /// prompt (starship, p10k, `PROMPT=$'...\n%# '`) begins on an earlier
+    /// line; it is only included when one of those lines carries the line
+    /// editor's own start-of-prompt sequence, so ordinary output is kept.
+    fn prompt_start(&self, cursor: usize, at: usize) -> usize {
+        let line = line_start(&self.pending, cursor, at);
+        let mut window = line;
+        for _ in 0..PROMPT_LINES_MAX - 1 {
+            if window == cursor {
+                break;
+            }
+            window = line_start(&self.pending, cursor, window - 1);
+        }
+        PROMPT_START_SEQUENCES
+            .iter()
+            .filter_map(|sequence| find_bytes(&self.pending[window..line], sequence))
+            .min()
+            .map_or(line, |offset| window + offset)
     }
 }
 
 /// Finds the first occurrence of `command` echoed with terminal control noise
 /// (C0 controls, escape sequences, forced-wrap spaces) between its characters,
-/// or else the earliest match cut short by the end of `data`.
+/// or else the earliest match cut short by the end of `data`. A long enough
+/// prefix interrupted by ordinary text counts as a (truncated) full echo.
 fn find_echo(data: &[u8], command: &[u8]) -> EchoSearch {
     let Some(&first) = command.first() else {
         return EchoSearch::None;
@@ -402,6 +444,9 @@ fn match_echo_at(data: &[u8], start: usize, command: &[u8]) -> EchoMatch {
             continue;
         }
         match echo_noise_len(&data[at..]) {
+            // An echo cut off by other output still counts once it carries
+            // the random staged path (the typed line is otherwise unique too).
+            Some(0) if matched >= TRUNCATED_ECHO_MIN => return EchoMatch::Full(at),
             Some(0) => return EchoMatch::Fail,
             Some(len) => {
                 at += len;
@@ -414,6 +459,23 @@ fn match_echo_at(data: &[u8], start: usize, command: &[u8]) -> EchoMatch {
         }
     }
     EchoMatch::Full(at)
+}
+
+/// Start of the last in-order occurrence of every `command` byte in `data`,
+/// taken greedily from the end so it lands inside the final echo. Bounded so
+/// output without an echo cannot pull in older lines.
+fn final_echo_start(data: &[u8], command: &[u8]) -> Option<usize> {
+    let floor = data.len().saturating_sub(FINAL_ECHO_SPAN_MAX);
+    let mut remaining = command.len();
+    for index in (floor..data.len()).rev() {
+        if remaining > 0 && data[index] == command[remaining - 1] {
+            remaining -= 1;
+            if remaining == 0 {
+                return (line_breaks(&data[index..]) <= PROMPT_LINES_MAX).then_some(index);
+            }
+        }
+    }
+    None
 }
 
 /// Length of the terminal control noise at the start of `data`: `Some(0)` for
@@ -645,6 +707,80 @@ mod tests {
             let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, &raw, size);
             assert_eq!(visible, expected, "chunk size {size}");
             assert_no_bootstrap_text(&visible);
+        }
+    }
+
+    /// Replays a zsh capture and checks that only the prompt drawn after the
+    /// completion marker stays visible. What may precede it is an invisible
+    /// PROMPT_SP remnant (`%`, padding, `\r`), never an earlier prompt line.
+    fn assert_zsh_capture_shows_only_the_restored_prompt(typed: &[u8], raw: &[u8]) {
+        let marker_at = find_bytes(raw, BOOTSTRAP_COMPLETION).expect("capture has marker");
+        let restored = &raw[marker_at + BOOTSTRAP_COMPLETION.len()..];
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, raw, size);
+            assert_no_bootstrap_text(&visible);
+            assert!(visible.ends_with(restored), "chunk size {size}");
+            let before = String::from_utf8_lossy(&visible[..visible.len() - restored.len()]);
+            assert!(!before.contains("qauser"), "chunk size {size}: {before:?}");
+            assert!(!before.contains('\n'), "chunk size {size}: {before:?}");
+        }
+    }
+
+    /// Captured from zsh 5.9 with `PROMPT=$'%n@%m %~\n%# '`, resized right
+    /// after start: zle redraws the two-line prompt, and at each wrap it
+    /// re-prints the next character after ` \r\e[K`, so the echo is not an
+    /// in-order copy of the command.
+    #[test]
+    fn bootstrap_output_filter_strips_a_zsh_two_line_prompt_and_wrapped_echo() {
+        let typed = b" . /tmp/.t-OyBy3TREP3;rm -f /tmp/.t-OyBy3TREP3\n";
+        let raw = b"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m \r \r\r\x1b[0m\x1b[27m\x1b[24m\x1b[Jqauser@e2b ~\r\n% \r\n\x1b[K\x1b[?1h\x1b=\x1b[?2004h\x1b[K\r\x1b[7A\x1b[0m\x1b[27m\x1b[24m\x1b[Jqauser@e2b ~\r\n%  \x08 . /t \r\x1b[Km\rmp/.t-O \r\x1b[Ky\ryBy3TRE \r\x1b[KP\rP3;rm - \r\x1b[Kf\rf /tmp/ \r\x1b[K.\r.t-OyBy \r\x1b[K3\r3TREP3\x1b[?1l\x1b>\x1b[?2004l\r\r\n\x1b]777;tunara-bootstrap;s1\x1b\\\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m      \r \r\r\x1b[0m\x1b[27m\x1b[24m\x1b[Jqauser@e2b ~/proj\r\n% \x1b[K\x1b[?1h\x1b=\x1b[?2004h\r\r\x1b[3A\x1b[0m\x1b[27m\x1b[24m\x1b[Jqauser@e2b ~/proj\r\n% ";
+        assert_zsh_capture_shows_only_the_restored_prompt(typed, raw);
+    }
+
+    /// Captured from zsh 5.9 with a colored single-line prompt, RPROMPT and
+    /// PROMPT_EOL_MARK in a two-column pane: every character is echoed alone.
+    #[test]
+    fn bootstrap_output_filter_strips_a_zsh_echo_in_a_two_column_pane() {
+        let typed = b" . /tmp/.t-5lhN9lGFzk;rm -f /tmp/.t-5lhN9lGFzk\n";
+        let raw = b"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m \r \r\r\x1b[0m\x1b[27m\x1b[24m\x1b[J\x1b[32mqauser@e2b\x1b[39m ~ % \x1b[K\x1b[?1h\x1b=\x1b[?2004h  \r\x1b[K.\r.  \r\x1b[K/\r/t \r\x1b[Km\rmp \r\x1b[K/\r/. \r\x1b[Kt\rt- \r\x1b[K5\r5l \r\x1b[Kh\rhN \r\x1b[K9\r9l \r\x1b[KG\rGF \r\x1b[Kz\rzk \r\x1b[K;\r;r \r\x1b[Km\rm  \r\x1b[K-\r-f \r\x1b[K \r / \r\x1b[Kt\rtm \r\x1b[Kp\rp/ \r\x1b[K.\r.t \r\x1b[K-\r-5 \r\x1b[Kl\rlh \r\x1b[KN\rN9 \r\x1b[Kl\rlG \r\x1b[KF\rFz \r\x1b[Kk\x1b[?1l\x1b>\x1b[?2004l\r\r\n\x1b]777;tunara-bootstrap;s1\x1b\\\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m \r \r\r\x1b[0m\x1b[27m\x1b[24m\x1b[J\x1b[32mqauser@e2b\x1b[39m ~/proj % \r\n\x1b[K\x1b[?1h\x1b=\x1b[?2004h\x1b[K";
+        assert_zsh_capture_shows_only_the_restored_prompt(typed, raw);
+    }
+
+    /// Captured from bash 5.2 with a two-line PS1 (MOTD abridged): the tty
+    /// echoed the early input twice, the second copy cut off by the MOTD, and
+    /// readline drew the prompt's first line after `\e[?2004h`.
+    #[test]
+    fn bootstrap_output_filter_strips_truncated_echo_and_bash_two_line_prompt() {
+        let typed = b" . /tmp/.t-uLSJ5W3mDz;rm -f /tmp/.t-uLSJ5W3mDz\n";
+        let raw = b" . /tmp/.t-uLSJ5W3mDz;rm -f /tmp/.t-uLSJ5W3mDz\r\n . /tmp/.t-uLSJ5W3mDz;rm -f /tmp/.t-uLSJ5W3mLinux e2b.local x86_64\r\n\r\nLast login: Thu Sep 24 22:45:54 2026 from 127.0.0.1\r\r\n\x1b[?2004h\x1b[32mqauser@e2b\x1b[0m ~\r\r\n$  \r . /tmp/.t-uLSJ5W3mDz;rm -f /tmp/.t-uLSJ5W3mDz \r\x1b[A\x1b[C\x1b[Kz\r\n\x1b[?2004l\r\x1b]777;tunara-bootstrap;s1\x1b\\\x1b[?2004h\x1b[32mqauser@e2b\x1b[0m ~/proj\r\r\n$  \r";
+
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, raw, size);
+            assert_eq!(
+                visible,
+                b"Linux e2b.local x86_64\r\n\r\nLast login: Thu Sep 24 22:45:54 2026 from 127.0.0.1\r\r\n\x1b[?2004h\x1b[32mqauser@e2b\x1b[0m ~/proj\r\r\n$  \r",
+                "chunk size {size}"
+            );
+        }
+    }
+
+    #[test]
+    fn bootstrap_output_filter_keeps_output_above_a_prompt_without_start_sequence() {
+        // A two-line prompt is only swallowed whole when its first line holds
+        // a line-editor start sequence; plain output lines stay visible.
+        let typed = b" . /tmp/.t-AbCd012345;rm -f /tmp/.t-AbCd012345\n";
+        let mut raw = b"rc output\r\nuser@host ~\r\n$ ".to_vec();
+        raw.extend_from_slice(&typed[..typed.len() - 1]);
+        raw.extend_from_slice(b"\r\n");
+        raw.extend_from_slice(BOOTSTRAP_COMPLETION);
+        raw.extend_from_slice(b"user@host /srv\r\n$ ");
+
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, &raw, size);
+            assert_eq!(
+                visible, b"rc output\r\nuser@host ~\r\nuser@host /srv\r\n$ ",
+                "chunk size {size}"
+            );
         }
     }
 
