@@ -45,7 +45,7 @@ import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome
 import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
-import { allocateTerminalInstanceEpoch, createDeferredTerminalFocus, issueFocusReturnToken, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { allocateTerminalInstanceEpoch, createDeferredTerminalFocus, issueFocusReturnToken, isTypingOutsidePane, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 import { RestoredHistoryNotice } from "./TerminalExitBanner";
 interface TerminalViewProps {
   sessionId: string;
@@ -576,7 +576,7 @@ function TerminalViewImpl({
       // visibility regain (see terminal-atlas-refresh for the root cause).
       cleanups.push(registerTerminalAtlasRefresh(rebuildWebglAtlas));
       cleanups.push(resetAgentObservers);
-      if (activeRef.current) {
+      if (activeRef.current && !isTypingOutsidePane(term.element)) {
         const focusToken = issueFocusReturnToken(sessionIdRef.current);
         if (focusToken) returnTerminalFocus(focusToken);
       }

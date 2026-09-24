@@ -1695,3 +1695,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);
 });
+
+test("terminal open completion does not take focus from a text field elsewhere", () => {
+  const terminal = read("src/ui/TerminalView.tsx");
+  assert.match(terminal, /if \(activeRef\.current && !isTypingOutsidePane\(term\.element\)\) \{\s*const focusToken = issueFocusReturnToken/);
+});

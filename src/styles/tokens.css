@@ -128,6 +128,10 @@
   --fs-reader-h3: 12px;
   /* Ornament / kicker only. Status and scope chrome uses --fs-meta. */
   --fs-badge: 10px;
+  /* Editor rows: a whole-pixel line box shared by the textarea, syntax overlay
+     and line-number gutter. WebKit snaps textarea lines to whole pixels, so a
+     fractional height (12.5px × 1.7 = 21.25px) lets the gutter drift. */
+  --lh-editor-row: 21px;
 
   /* ── 行高：界面信息保持紧凑，说明文字仍可舒适换行 ── */
   --lh-tight: 1.25;
