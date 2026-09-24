@@ -1144,6 +1144,18 @@ impl SshSession {
                         }
                     }
                     _ = flush_tick.tick() => {
+                        // A shell that has not run the bootstrap yet must not
+                        // keep its first prompt hidden behind the echo filter.
+                        let released = bootstrap_output_filter
+                            .as_mut()
+                            .map(|filter| filter.expire_prompt_hold(std::time::Instant::now()))
+                            .unwrap_or_default();
+                        for bytes in output.push(&released) {
+                            if !emit_output(&pump_output_flow, &on_event, bytes).await {
+                                local_close = true;
+                                break 'pump;
+                            }
+                        }
                         if let Some(bytes) = output.flush() {
                             if !emit_output(&pump_output_flow, &on_event, bytes).await {
                                 local_close = true;
@@ -2268,9 +2280,10 @@ fn integration_stage_command(encoded: &str) -> String {
 /// then remove it. The path is unquoted only because `is_safe_remote_path`
 /// restricts it to a shell-inert ASCII charset. Leading space keeps it out of
 /// ignorespace-style history. Must stay far below 1024 bytes, the smallest
-/// (BSD) canonical-mode tty line buffer. The output pump suppresses the exact
-/// generated command until its completion marker arrives, including
-/// both the tty's initial echo and any later readline redraw.
+/// (BSD) canonical-mode tty line buffer. The output pump suppresses the
+/// generated command until its completion marker arrives, including both the
+/// tty's initial echo and any later (possibly line-wrapped) readline redraw,
+/// together with the prompt line that carried it.
 fn integration_source_line(path: &str) -> String {
     format!(" . {path};rm -f {path}\n")
 }

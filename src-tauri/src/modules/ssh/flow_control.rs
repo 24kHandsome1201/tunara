@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::{watch, Notify};
 
@@ -183,16 +183,42 @@ impl SshOutputBatch {
     }
 }
 
+/// How long the filter may hold back the trailing partial line (normally the
+/// first prompt) while waiting for the bootstrap echo. Past this the shell is
+/// evidently not reading the bootstrap yet (slow rc files, an rc prompt), so
+/// its output must not stay invisible; echo stripping itself continues.
+pub(super) const BOOTSTRAP_PROMPT_HOLD: Duration = Duration::from_millis(1500);
+/// Upper bound on control bytes tolerated between two echoed characters, so a
+/// stray partial match cannot hold output back indefinitely.
+const ECHO_NOISE_MAX: usize = 512;
+
 /// Removes Tunara's own bootstrap input from the initial interactive-shell
 /// output. A tty may echo input once when it arrives and again when readline
 /// redraws the pending canonical buffer, so suppression continues until the
 /// bootstrap command emits its private completion marker. Both patterns may span
 /// arbitrary SSH data frames.
+///
+/// Readline wraps a redraw that does not fit the pane (a freshly split pane may
+/// start only a few columns wide) with `\r\n\r`, cursor moves and forced-wrap
+/// spaces between the echoed characters, so echoes are matched while skipping
+/// terminal control noise. The prompt line that carried the final echo, and
+/// the Enter newline after it, are dropped together with the echo: the shell
+/// draws a fresh prompt once the bootstrap finishes, so keeping the first one
+/// would leave an empty prompt line above it. A standalone early echo line
+/// (input typed before the shell took over the tty) is dropped whole too.
 pub(super) struct SshBootstrapOutputFilter {
     typed_command: Vec<u8>,
     completion_marker: Vec<u8>,
     pending: Vec<u8>,
     complete: bool,
+    hold_prompt: bool,
+    created_at: Instant,
+}
+
+enum EchoSearch {
+    Full { start: usize, end: usize },
+    Partial { start: usize },
+    None,
 }
 
 impl SshBootstrapOutputFilter {
@@ -212,6 +238,8 @@ impl SshBootstrapOutputFilter {
             typed_command,
             completion_marker: completion_marker.to_vec(),
             pending: Vec::new(),
+            hold_prompt: true,
+            created_at: Instant::now(),
         }
     }
 
@@ -221,39 +249,28 @@ impl SshBootstrapOutputFilter {
         }
 
         self.pending.extend_from_slice(data);
-        let mut visible = Vec::new();
-        loop {
-            let command_at = find_bytes(&self.pending, &self.typed_command);
-            let completion_at = find_bytes(&self.pending, &self.completion_marker);
-            match (command_at, completion_at) {
-                (Some(command_at), Some(completion_at)) if command_at < completion_at => {
-                    visible.extend_from_slice(&self.pending[..command_at]);
-                    self.pending.drain(..command_at + self.typed_command.len());
-                }
-                (_, Some(completion_at)) => {
-                    visible.extend_from_slice(&self.pending[..completion_at]);
-                    visible.extend_from_slice(
-                        &self.pending[completion_at + self.completion_marker.len()..],
-                    );
-                    self.pending.clear();
-                    self.complete = true;
-                    break;
-                }
-                (Some(command_at), None) => {
-                    visible.extend_from_slice(&self.pending[..command_at]);
-                    self.pending.drain(..command_at + self.typed_command.len());
-                }
-                (None, None) => {
-                    let keep = suffix_prefix_len(&self.pending, &self.typed_command)
-                        .max(suffix_prefix_len(&self.pending, &self.completion_marker));
-                    let emit = self.pending.len() - keep;
-                    visible.extend_from_slice(&self.pending[..emit]);
-                    self.pending.drain(..emit);
-                    break;
-                }
-            }
+        if let Some(at) = find_bytes(&self.pending, &self.completion_marker) {
+            let tail = self.pending.split_off(at + self.completion_marker.len());
+            self.pending.truncate(at);
+            let mut visible = self.strip_echoes(true);
+            visible.extend_from_slice(&tail);
+            self.complete = true;
+            return visible;
         }
-        visible
+        self.strip_echoes(false)
+    }
+
+    /// Stop holding the trailing partial line once `BOOTSTRAP_PROMPT_HOLD`
+    /// has elapsed, returning whatever becomes visible.
+    pub(super) fn expire_prompt_hold(&mut self, now: Instant) -> Vec<u8> {
+        if self.complete
+            || !self.hold_prompt
+            || now.saturating_duration_since(self.created_at) < BOOTSTRAP_PROMPT_HOLD
+        {
+            return Vec::new();
+        }
+        self.hold_prompt = false;
+        self.strip_echoes(false)
     }
 
     pub(super) fn is_complete(&self) -> bool {
@@ -261,8 +278,179 @@ impl SshBootstrapOutputFilter {
     }
 
     pub(super) fn finish(mut self) -> Vec<u8> {
-        std::mem::take(&mut self.pending)
+        self.hold_prompt = false;
+        let mut visible = self.strip_echoes(false);
+        visible.append(&mut self.pending);
+        visible
     }
+
+    /// Emits the resolved prefix of `pending`, dropping complete echoes, and
+    /// keeps only what may still belong to an echo or to the final echo's
+    /// prompt line. With `completed`, `pending` ends at the completion marker
+    /// and is consumed entirely.
+    fn strip_echoes(&mut self, completed: bool) -> Vec<u8> {
+        let mut visible = Vec::new();
+        let mut cursor = 0;
+        let keep_from = loop {
+            let (start, end) = match find_echo(&self.pending[cursor..], &self.typed_command) {
+                EchoSearch::Full { start, end } => (cursor + start, cursor + end),
+                EchoSearch::Partial { start } => break self.hold_start(cursor, cursor + start),
+                EchoSearch::None if completed || !self.hold_prompt => {
+                    let keep = if completed {
+                        0
+                    } else {
+                        suffix_prefix_len(&self.pending[cursor..], &self.completion_marker)
+                    };
+                    break self.pending.len() - keep;
+                }
+                EchoSearch::None => break line_start(&self.pending, cursor, self.pending.len()),
+            };
+            let line = line_start(&self.pending, cursor, start);
+            let after = &self.pending[end..];
+            let followed_by_echo = matches!(
+                find_echo(after, &self.typed_command),
+                EchoSearch::Full { .. }
+            );
+            if !followed_by_echo && line_breaks(after) <= 1 {
+                if completed {
+                    // The final echo: its prompt, any redraw fix-ups and the
+                    // Enter newline all precede the completion marker.
+                    visible.extend_from_slice(&self.pending[cursor..line]);
+                    cursor = self.pending.len();
+                    break cursor;
+                }
+                // Not yet known whether more output follows this echo.
+                break self.hold_start(cursor, start);
+            }
+            // An earlier echo: drop it, and its whole line when nothing else
+            // was printed on it.
+            let blank_line = self.pending[line..start]
+                .iter()
+                .all(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control());
+            let newline = if after.starts_with(b"\r\n") {
+                2
+            } else {
+                usize::from(after.starts_with(b"\n"))
+            };
+            if blank_line && newline > 0 {
+                visible.extend_from_slice(&self.pending[cursor..line]);
+                cursor = end + newline;
+            } else {
+                visible.extend_from_slice(&self.pending[cursor..start]);
+                cursor = end;
+            }
+        };
+        let emit_to = keep_from.max(cursor);
+        visible.extend_from_slice(&self.pending[cursor..emit_to]);
+        self.pending.drain(..emit_to);
+        visible
+    }
+
+    fn hold_start(&self, cursor: usize, echo_start: usize) -> usize {
+        if self.hold_prompt {
+            line_start(&self.pending, cursor, echo_start)
+        } else {
+            echo_start
+        }
+    }
+}
+
+/// Finds the first occurrence of `command` echoed with terminal control noise
+/// (C0 controls, escape sequences, forced-wrap spaces) between its characters,
+/// or else the earliest match cut short by the end of `data`.
+fn find_echo(data: &[u8], command: &[u8]) -> EchoSearch {
+    let Some(&first) = command.first() else {
+        return EchoSearch::None;
+    };
+    let mut partial = None;
+    for start in 0..data.len() {
+        if data[start] != first {
+            continue;
+        }
+        match match_echo_at(data, start, command) {
+            EchoMatch::Full(end) => return EchoSearch::Full { start, end },
+            EchoMatch::Partial => {
+                partial.get_or_insert(start);
+            }
+            EchoMatch::Fail => {}
+        }
+    }
+    match partial {
+        Some(start) => EchoSearch::Partial { start },
+        None => EchoSearch::None,
+    }
+}
+
+enum EchoMatch {
+    Full(usize),
+    Partial,
+    Fail,
+}
+
+fn match_echo_at(data: &[u8], start: usize, command: &[u8]) -> EchoMatch {
+    let mut at = start;
+    let mut matched = 0;
+    let mut noise = 0;
+    while matched < command.len() {
+        let Some(&byte) = data.get(at) else {
+            return EchoMatch::Partial;
+        };
+        if byte == command[matched] {
+            at += 1;
+            matched += 1;
+            noise = 0;
+            continue;
+        }
+        match echo_noise_len(&data[at..]) {
+            Some(0) => return EchoMatch::Fail,
+            Some(len) => {
+                at += len;
+                noise += len;
+            }
+            None => return EchoMatch::Partial,
+        }
+        if noise > ECHO_NOISE_MAX {
+            return EchoMatch::Fail;
+        }
+    }
+    EchoMatch::Full(at)
+}
+
+/// Length of the terminal control noise at the start of `data`: `Some(0)` for
+/// ordinary text, `None` when more bytes are needed to decide.
+fn echo_noise_len(data: &[u8]) -> Option<usize> {
+    match data {
+        [] | [0x1b] | [b' '] => None,
+        [0x1b, b'[', rest @ ..] => {
+            let end = rest.iter().position(|byte| (0x40..=0x7e).contains(byte))?;
+            Some(2 + end + 1)
+        }
+        [0x1b, _, ..] => Some(2),
+        [byte, ..] if byte.is_ascii_control() => Some(1),
+        [b' ', b'\r' | b'\x08', ..] => Some(1),
+        _ => Some(0),
+    }
+}
+
+/// Start of the visual line containing `at`. Readline continues a wrapped
+/// line with `\n\r`, so only a newline followed by anything else starts a new
+/// one; a trailing newline stays undecided until its next byte arrives.
+fn line_start(data: &[u8], floor: usize, at: usize) -> usize {
+    (floor..at)
+        .rev()
+        .find(|&index| is_line_break(data, index))
+        .map(|index| index + 1)
+        .unwrap_or(floor)
+}
+
+fn line_breaks(data: &[u8]) -> usize {
+    (0..data.len())
+        .filter(|&index| is_line_break(data, index))
+        .count()
+}
+
+fn is_line_break(data: &[u8], index: usize) -> bool {
+    data[index] == b'\n' && data.get(index + 1).is_some_and(|next| *next != b'\r')
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -375,23 +563,129 @@ mod tests {
         raw.extend_from_slice(completion);
         raw.extend_from_slice(b"\x1b]7;file://localhost/srv/app\x1b\\REMOTE> ");
 
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, completion, &raw, size);
+            // Neither the standalone early echo line nor the prompt line that
+            // carried the final echo survives: only the shell's fresh prompt.
+            assert_eq!(
+                visible,
+                b"This system has been minimized\r\nshell startup output\r\n\x1b]7;file://localhost/srv/app\x1b\\REMOTE> ",
+                "chunk size {size}"
+            );
+            assert!(!visible
+                .windows(completion.len())
+                .any(|window| window == completion));
+        }
+    }
+
+    const BOOTSTRAP_COMPLETION: &[u8] = b"\x1b]777;tunara-bootstrap;s1\x1b\\";
+    const BASH_PROMPT: &[u8] =
+        b"\x1b[?2004h\x1b]0;qauser@e2b: ~\x07\x1b[01;32mqauser@e2b\x1b[00m:\x1b[01;34m~\x1b[00m$ ";
+    const RESTORED_PROMPT: &[u8] = b"\x1b[?2004h\x1b]0;qauser@e2b: ~/proj\x07\x1b[01;32mqauser@e2b\x1b[00m:\x1b[01;34m~/proj\x1b[00m$ ";
+
+    fn filter_in_chunks(typed: &[u8], completion: &[u8], raw: &[u8], size: usize) -> Vec<u8> {
         let mut filter = SshBootstrapOutputFilter::new(typed, completion);
         let mut visible = Vec::new();
-        for chunk in raw.chunks(17) {
+        for chunk in raw.chunks(size) {
             visible.extend(filter.push(chunk));
         }
+        assert!(filter.is_complete());
         visible.extend(filter.finish());
+        visible
+    }
 
-        assert_eq!(
-            visible,
-            b"This system has been minimized\r\n \r\nshell startup output\r\nREMOTE>  \r\n\x1b]7;file://localhost/srv/app\x1b\\REMOTE> "
+    fn assert_no_bootstrap_text(visible: &[u8]) {
+        let text = String::from_utf8_lossy(visible);
+        for leaked in ["/tmp/.t-", "rm -f", "tunara-bootstrap", "\\033"] {
+            assert!(!text.contains(leaked), "{leaked:?} leaked into {text:?}");
+        }
+    }
+
+    /// Captured from bash 5.2 over OpenSSH: a split pane that starts two
+    /// columns wide makes readline wrap the prompt AND the echoed bootstrap
+    /// with `\r\n\r`, then re-print the last character as a wrap fix-up.
+    #[test]
+    fn bootstrap_output_filter_strips_a_readline_wrapped_echo_in_a_narrow_pane() {
+        let typed = b" . /tmp/.t-5tmkutksQI;rm -f /tmp/.t-5tmkutksQI\n";
+        let mut raw = b"Last login: Thu Sep 24 22:10:36 2026 from 127.0.0.1\r\r\n".to_vec();
+        raw.extend_from_slice(
+            b"\x1b[?2004h\x1b]0;qauser@e2b: ~\x07\x1b[01;32mqauser@e2b\x1b[00m\r\n\r:\x1b[01;34m~\x1b[00m\r\n\r$  \r .\r\n\r /tmp/.t-5tmkutksQI;rm -f /tmp/.t-5tmkutksQI \r\x1b[C\x1b[KI\r\n\x1b[?2004l\r",
         );
-        assert!(!visible
-            .windows(completion.len())
-            .any(|window| window == completion));
-        assert!(!visible
-            .windows(typed.len() - 2)
-            .any(|window| window == &typed[1..typed.len() - 1]));
+        raw.extend_from_slice(BOOTSTRAP_COMPLETION);
+        raw.extend_from_slice(RESTORED_PROMPT);
+
+        let mut expected = b"Last login: Thu Sep 24 22:10:36 2026 from 127.0.0.1\r\r\n".to_vec();
+        expected.extend_from_slice(RESTORED_PROMPT);
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, &raw, size);
+            assert_eq!(visible, expected, "chunk size {size}");
+            assert_no_bootstrap_text(&visible);
+        }
+    }
+
+    /// Captured: input typed before the shell starts is echoed by the tty
+    /// ahead of the MOTD, then readline redraws it after a resize (SIGWINCH)
+    /// with cursor-up / erase fix-ups trailing the echoed text.
+    #[test]
+    fn bootstrap_output_filter_strips_early_tty_echo_and_resize_redraw() {
+        let typed = b" . /tmp/.t-UFWBsb9RTk;rm -f /tmp/.t-UFWBsb9RTk\n";
+        let mut raw = b" . /tmp/.t-UFWBsb9RTk;rm -f /tmp/.t-UFWBsb9RTk\r\n".to_vec();
+        raw.extend_from_slice(b"Linux e2b.local x86_64\r\n\r\nLast login: from 127.0.0.1\r\r\n");
+        raw.extend_from_slice(BASH_PROMPT);
+        raw.extend_from_slice(b"\r\x1b[K\r");
+        raw.extend_from_slice(&BASH_PROMPT[b"\x1b[?2004h".len()..]);
+        raw.extend_from_slice(b" . /tmp/.t-UFWBsb9RTk;rm -f /tmp/.t-UFWBsb9RTk \r\x1b[A\x1b[C\x1b[C\x1b[C\x1b[Kk\r\n\x1b[?2004l\r");
+        raw.extend_from_slice(BOOTSTRAP_COMPLETION);
+        raw.extend_from_slice(RESTORED_PROMPT);
+
+        let mut expected =
+            b"Linux e2b.local x86_64\r\n\r\nLast login: from 127.0.0.1\r\r\n".to_vec();
+        expected.extend_from_slice(RESTORED_PROMPT);
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, &raw, size);
+            assert_eq!(visible, expected, "chunk size {size}");
+            assert_no_bootstrap_text(&visible);
+        }
+    }
+
+    #[test]
+    fn bootstrap_output_filter_strips_the_direct_cwd_fallback_echo() {
+        let typed = b" printf '\\033]777;tunara-bootstrap;s1\\033\\\\';cd '/srv/my app'\n";
+        let mut raw = BASH_PROMPT.to_vec();
+        raw.extend_from_slice(&typed[..typed.len() - 1]);
+        raw.extend_from_slice(b"\r\n\x1b[?2004l\r");
+        raw.extend_from_slice(BOOTSTRAP_COMPLETION);
+        raw.extend_from_slice(RESTORED_PROMPT);
+
+        for size in 1..=raw.len() {
+            let visible = filter_in_chunks(typed, BOOTSTRAP_COMPLETION, &raw, size);
+            assert_eq!(visible, RESTORED_PROMPT, "chunk size {size}");
+        }
+    }
+
+    #[test]
+    fn bootstrap_output_filter_releases_a_held_prompt_but_keeps_stripping() {
+        let typed = b" . /tmp/.t-AbCd012345;rm -f /tmp/.t-AbCd012345\n";
+        let mut filter = SshBootstrapOutputFilter::new(typed, BOOTSTRAP_COMPLETION);
+
+        assert_eq!(filter.push(b"motd\r\nrc> "), b"motd\r\n");
+        assert!(filter
+            .expire_prompt_hold(Instant::now() + BOOTSTRAP_PROMPT_HOLD / 2)
+            .is_empty());
+        assert_eq!(
+            filter.expire_prompt_hold(Instant::now() + BOOTSTRAP_PROMPT_HOLD),
+            b"rc> "
+        );
+
+        let mut visible = filter.push(b"\r\n");
+        visible.extend(filter.push(BASH_PROMPT));
+        visible.extend(filter.push(&typed[..typed.len() - 1]));
+        visible.extend(filter.push(b"\r\n\x1b[?2004l\r"));
+        visible.extend(filter.push(BOOTSTRAP_COMPLETION));
+        visible.extend(filter.push(RESTORED_PROMPT));
+        assert!(filter.is_complete());
+        assert_no_bootstrap_text(&visible);
+        assert!(visible.ends_with(RESTORED_PROMPT));
     }
 
     #[test]
