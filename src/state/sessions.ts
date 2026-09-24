@@ -269,6 +269,10 @@ function isSessionObserved(activeSessionId: string | null, sessionId: string): b
     && (typeof document === "undefined" || document.hasFocus());
 }
 
+// New session id -> the session whose split pane it took over. Closing the
+// newcomer puts the displaced session back instead of collapsing the layout.
+const displacedSplitPanes = new Map<string, string>();
+
 function ensureSessionVisibleInSplit(sessionId: string, previousActiveSessionId: string | null) {
   const ui = useUIStore.getState();
   const { split } = ui;
@@ -277,7 +281,29 @@ function ensureSessionVisibleInSplit(sessionId: string, previousActiveSessionId:
   const targetSessionId = previousActiveSessionId && splitLayoutHasSession(split, previousActiveSessionId)
     ? previousActiveSessionId
     : splitSessionIds[splitSessionIds.length - 1];
-  if (targetSessionId) ui.replaceSplitPane(targetSessionId, sessionId);
+  if (!targetSessionId) return;
+  ui.replaceSplitPane(targetSessionId, sessionId);
+  displacedSplitPanes.set(sessionId, targetSessionId);
+}
+
+/** Restore the pane `id` displaced, or remove `id` from the split. Returns the pane to focus. */
+function releaseSplitPane(id: string, remaining: Array<{ id: string }>): string | null {
+  const displaced = displacedSplitPanes.get(id);
+  displacedSplitPanes.delete(id);
+  for (const [newcomer, previous] of displacedSplitPanes) {
+    if (previous === id) displacedSplitPanes.delete(newcomer);
+  }
+  const ui = useUIStore.getState();
+  if (
+    displaced
+    && remaining.some((session) => session.id === displaced)
+    && splitLayoutHasSession(ui.split, id)
+    && !splitLayoutHasSession(ui.split, displaced)
+  ) {
+    ui.replaceSplitPane(id, displaced);
+    return displaced;
+  }
+  return ui.removeSplitPane(id);
 }
 
 function cancelCloseConfirmationTimer(id: string) {
@@ -357,7 +383,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     useUIStore.getState().closeReaderForSession(id);
     const wasActive = get().activeSessionId === id;
-    const splitFocusSessionId = useUIStore.getState().removeSplitPane(id);
+    const splitFocusSessionId = releaseSplitPane(id, get().sessions.filter((s) => s.id !== id));
     set((state) => {
       const removedIndex = state.sessions.findIndex((s) => s.id === id);
       const sessions = state.sessions.filter((s) => s.id !== id);
