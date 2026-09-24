@@ -6,7 +6,8 @@ import { AGENT_REGISTRY } from "@/modules/agent/registry";
 import { defaultKeybindingsForPlatform } from "@/modules/config/keybindings";
 import { useKeybindings } from "@/app/useKeybindings";
 import { consumePendingSettingsSection, useUIStore } from "@/state/ui";
-import { PanelLoadingState } from "@/ui/shared";
+import { OverlayLoadingFallback } from "@/ui/overlays/OverlayLoadingFallback";
+import { readFileSync } from "node:fs";
 import { isMac } from "@/ui/lib/platform";
 import { CliSettings } from "@/ui/overlays/settings/CliSettings";
 import { ToastContainer } from "@/ui/Toast";
@@ -34,7 +35,7 @@ function LazySettingsShell() {
   const setOverlay = useUIStore((s) => s.setOverlay);
   if (overlay !== "settings") return null;
   return (
-    <Suspense fallback={<PanelLoadingState label="Loading…" />}>
+    <Suspense fallback={<OverlayLoadingFallback label="Opening Settings…" />}>
       <Settings onClose={() => setOverlay(null)} />
     </Suspense>
   );
@@ -79,6 +80,19 @@ test("CLI settings renders the registry and preserves override identifiers", () 
   fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
   expect(applyOverride).toHaveBeenCalledWith("CR", "cursor-agent", "/opt/cursor-agent");
   expect(screen.queryByRole("textbox")).toBeNull();
+});
+
+test("lazy overlay fallback floats above the shell instead of joining its layout", () => {
+  render(<OverlayLoadingFallback label="Opening Settings…" />);
+  const fallback = screen.getByTestId("overlay-loading-fallback");
+  expect(fallback.style.position).toBe("fixed");
+  expect(fallback.style.pointerEvents).toBe("none");
+  expect(fallback.textContent).toContain("Opening Settings…");
+
+  const app = readFileSync("src/app/App.tsx", "utf8");
+  expect(app).toContain('<OverlayLoadingFallback label={staticT("settings.loading")} />');
+  expect(app).toContain('<OverlayLoadingFallback label={staticT("ssh.connect_loading")} />');
+  expect(app).not.toContain("diff.mini.loading");
 });
 
 test("⌘, opens the lazy Settings overlay", async () => {
