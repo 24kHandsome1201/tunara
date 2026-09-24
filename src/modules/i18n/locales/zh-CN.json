@@ -335,6 +335,7 @@
   "terminal.directory_picker.title": "选择终端工作目录",
   "terminal.directory_picker.failed": "无法选择目录",
   "terminal.directory_picker.failed_detail": "系统目录选择器未能打开，请稍后重试。",
+  "terminal.file_link.open_failed": "无法打开此文件",
   "titlebar.settings": "设置",
   "titlebar.panel.hide": "隐藏改动面板",
   "titlebar.panel.show": "显示改动面板",

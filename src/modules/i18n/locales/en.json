@@ -335,6 +335,7 @@
   "terminal.directory_picker.title": "Choose terminal working directory",
   "terminal.directory_picker.failed": "Could not choose a directory",
   "terminal.directory_picker.failed_detail": "The system directory picker could not be opened. Please try again.",
+  "terminal.file_link.open_failed": "Couldn't open this file",
   "titlebar.settings": "Settings",
   "titlebar.panel.hide": "Hide review panel",
   "titlebar.panel.show": "Show review panel",
