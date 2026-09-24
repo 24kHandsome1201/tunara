@@ -14,9 +14,9 @@ export const LIGHT_THEME = {
   cursorAccent: "#fffdfb",
   selectionBackground: "#c2683c44",
   black: "#3a332a", red: "#b3261e", green: "#2e7d32", yellow: "#8f6200",
-  blue: "#1a5fb4", magenta: "#8e3fa8", cyan: "#0a7c86", white: "#efe9e0",
+  blue: "#1a5fb4", magenta: "#8e3fa8", cyan: "#006b75", white: "#efe9e0",
   brightBlack: "#6f675b", brightRed: "#c5221f", brightGreen: "#188038", brightYellow: "#b06000",
-  brightBlue: "#1967d2", brightMagenta: "#a142f4", brightCyan: "#0e8a94", brightWhite: "#ffffff",
+  brightBlue: "#1967d2", brightMagenta: "#a142f4", brightCyan: "#0f9aa6", brightWhite: "#ffffff",
 };
 
 export const DARK_THEME = {
@@ -67,6 +67,17 @@ const SEARCH_DECORATIONS_LIGHT = {
 
 export function getSearchDecorations(appTheme: ThemeType) {
   return isDarkTheme(appTheme) ? SEARCH_DECORATIONS_DARK : SEARCH_DECORATIONS_LIGHT;
+}
+
+// xterm 按单元格实际背景提升前景对比度。亮底 TUI 常用「常规色底 + 亮色字」
+// 标记选中行（如 HerdR 的青底亮青字），没有下限时两者几乎同色不可读。
+// 3:1 保证这类组合可读，又不压暗亮色组在画布上的层次（亮色组 ≥ 3:1）。
+// 深色调色板刻意保留低对比的 black 槽位，不启用。
+const LIGHT_MINIMUM_CONTRAST_RATIO = 3;
+const DARK_MINIMUM_CONTRAST_RATIO = 1;
+
+export function getTerminalMinimumContrastRatio(appTheme: ThemeType): number {
+  return isDarkTheme(appTheme) ? DARK_MINIMUM_CONTRAST_RATIO : LIGHT_MINIMUM_CONTRAST_RATIO;
 }
 
 export function getTerminalTheme(appTheme: ThemeType, accent?: string) {

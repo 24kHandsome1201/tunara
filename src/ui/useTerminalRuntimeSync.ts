@@ -4,7 +4,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 import type { CursorStyle } from "@/state/ui";
 import type { ThemeType } from "./types";
-import { getTerminalTheme } from "@/styles/terminalTheme";
+import { getTerminalMinimumContrastRatio, getTerminalTheme } from "@/styles/terminalTheme";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
@@ -103,6 +103,7 @@ export function useTerminalRuntimeSync({
     term.options.screenReaderMode = screenReaderMode;
     const resolvedTheme = theme === "system" ? (systemIsDark ? "dark" : "light") : theme;
     term.options.theme = getTerminalTheme(resolvedTheme, accent);
+    term.options.minimumContrastRatio = getTerminalMinimumContrastRatio(resolvedTheme);
     try {
       fit?.fit();
       if (active && ptyRef.current) ptyRef.current.resize(term.cols, term.rows).catch(() => {});

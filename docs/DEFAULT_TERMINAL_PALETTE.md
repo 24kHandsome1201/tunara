@@ -22,7 +22,7 @@
 | yellow | `#8f6200` | 5.3:1 | 亮底上黄色必须偏棕才可读 |
 | blue | `#1a5fb4` | 6.2:1 | |
 | magenta | `#8e3fa8` | 6.0:1 | |
-| cyan | `#0a7c86` | 4.9:1 | |
+| cyan | `#006b75` | 6.2:1 | 加深，与 brightCyan 拉开 ≥ 1.5:1 |
 | white | `#efe9e0` | 1.2:1 | 预留给深色底的 TUI 程序 |
 | brightBlack | `#6f675b` | 5.5:1 | 注释/弱化文本，保持 AA |
 | brightRed | `#c5221f` | 5.7:1 | |
@@ -30,7 +30,7 @@
 | brightYellow | `#b06000` | 4.6:1 | |
 | brightBlue | `#1967d2` | 5.3:1 | |
 | brightMagenta | `#a142f4` | 4.5:1 | |
-| brightCyan | `#0e8a94` | 4.1:1 | 亮青在亮底上的可读性上限 |
+| brightCyan | `#0f9aa6` | 3.3:1 | 明显更亮，青底亮青字（如 HerdR 选中行）可辨 |
 | brightWhite | `#ffffff` | 1.0:1 | 预留给深色底的 TUI 程序 |
 
 ## 深色「暖墨」
@@ -66,6 +66,13 @@
   拦住漂移。
 - 常规 ANSI 色（red…cyan）对画布对比度不低于 4.4:1；brightBlack 不低于
   4.5:1；亮色组允许略低，但必须与对应常规色保持可区分。
+- 浅色主题给 xterm 设 `minimumContrastRatio: 3`
+  （`getTerminalMinimumContrastRatio`）：xterm 按单元格实际背景把前景提到
+  至少 3:1，TUI 用「常规色底 + 亮色字」标记选中行时不会糊成一片。亮色组
+  （brightRed…brightCyan）对画布保持 ≥ 3:1，否则会被自动压暗、失去与常规色
+  的层次。深色主题为 1（关闭），以保留低对比的 black 槽位。
+- 常规色与对应亮色不能几乎同色：cyan / brightCyan 之间对比度 ≥ 1.5:1，
+  `tests/terminal-theme.test.mjs` 有断言。
 - white / brightWhite 是 TUI 程序在反向底上使用的槽位，不以其在画布上的
   对比度评判。
 - 选区色不需要手工维护：`getTerminalTheme` 在运行时按用户强调色以
