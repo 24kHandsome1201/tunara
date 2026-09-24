@@ -12,7 +12,7 @@ import { useT } from "@/modules/i18n";
 import { t as staticT } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { PanelLoadingState } from "@/ui/shared";
+import { OverlayLoadingFallback } from "@/ui/overlays/OverlayLoadingFallback";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import {
@@ -485,13 +485,13 @@ export default function App() {
       </div>
 
       {overlay === "settings" && (
-        <Suspense fallback={<PanelLoadingState label={staticT("diff.mini.loading")} />}>
+        <Suspense fallback={<OverlayLoadingFallback label={staticT("settings.loading")} />}>
           <Settings onClose={() => setOverlay(null)} />
         </Suspense>
       )}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
       {overlay === "ssh" && (
-        <Suspense fallback={<PanelLoadingState label={staticT("diff.mini.loading")} />}>
+        <Suspense fallback={<OverlayLoadingFallback label={staticT("ssh.connect_loading")} />}>
           <SshConnect onClose={() => setOverlay(null)} />
         </Suspense>
       )}

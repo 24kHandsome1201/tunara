@@ -7,6 +7,7 @@ import {
   LIGHT_THEME,
   getSearchDecorations,
   isDarkTheme,
+  getTerminalMinimumContrastRatio,
   getTerminalTheme,
 } from "../src/styles/terminalTheme.ts";
 
@@ -80,5 +81,23 @@ test("default light/dark terminal palettes keep foreground AAA and ANSI hues nea
       contrastRatio(palette.brightBlack, palette.background) >= 4.5,
       `${name} brightBlack should stay AA on its background`,
     );
+  }
+});
+
+test("light palette keeps cyan distinct from bright cyan and floors cell contrast", async () => {
+  const { contrastRatio } = await import("../src/styles/shell-tint-contrast.ts");
+  // HerdR marks selected rows with cyan/bright-cyan pairs; near-identical
+  // slots made those rows unreadable on the light canvas.
+  assert.ok(contrastRatio(LIGHT_THEME.cyan, LIGHT_THEME.brightCyan) >= 1.5);
+  const minimum = getTerminalMinimumContrastRatio("light");
+  assert.ok(minimum >= 3, "light terminals need an xterm minimumContrastRatio floor");
+  assert.equal(getTerminalMinimumContrastRatio("dark"), 1);
+  for (const key of ["red", "green", "yellow", "blue", "magenta", "cyan"]) {
+    assert.ok(contrastRatio(LIGHT_THEME[key], LIGHT_THEME.background) >= 4.4, `${key} below 4.4:1`);
+  }
+  // Bright slots at or above the floor keep their own hue on the canvas
+  // instead of being darkened back toward the regular slot.
+  for (const key of ["brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan"]) {
+    assert.ok(contrastRatio(LIGHT_THEME[key], LIGHT_THEME.background) >= minimum, `${key} below the floor`);
   }
 });

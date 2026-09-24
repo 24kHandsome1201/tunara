@@ -1,7 +1,7 @@
 import { Terminal, type ILinkHandler } from "@xterm/xterm";
 import type { CursorStyle } from "@/state/ui";
 import type { ThemeType } from "@/ui/types";
-import { getTerminalTheme } from "@/styles/terminalTheme";
+import { getTerminalMinimumContrastRatio, getTerminalTheme } from "@/styles/terminalTheme";
 import { withAtlasIsolationFontFamily } from "./terminal-atlas-isolation.ts";
 import { buildTerminalFontFamily } from "./terminal-font.ts";
 
@@ -40,6 +40,7 @@ export function createTerminalInstance({
     fontSize,
     lineHeight: 1.05,
     theme: getTerminalTheme(theme, accent),
+    minimumContrastRatio: getTerminalMinimumContrastRatio(theme),
     cursorBlink,
     cursorStyle,
     cursorInactiveStyle: "outline",

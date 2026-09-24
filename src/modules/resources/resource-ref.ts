@@ -5,7 +5,7 @@ import { t } from "@/modules/i18n";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { readerRefIdentity, type ReaderDiffRef } from "@/modules/session/reader-state";
+import { nextReaderJumpRequestId, readerRefIdentity, type ReaderDiffRef } from "@/modules/session/reader-state";
 
 export type ResourceRef = {
   transport: "local" | "ssh";
@@ -15,6 +15,8 @@ export type ResourceRef = {
   line?: number;
   column?: number;
   diff?: ReaderDiffRef;
+  /** Set by openResource for a line target; see ReaderFileRef.jumpRequestId. */
+  jumpRequestId?: number;
 };
 
 export function resourceRefForSession(session: Session, path: string, line?: number, column?: number): ResourceRef {
@@ -46,6 +48,8 @@ export async function openResource(ref: ResourceRef, localDisposition: "editor" 
     throw new Error("stale SSH resource binding");
   }
   useSessionsStore.getState().setActive(ref.logicalSessionId);
+  // Each open is its own navigation request, even for an identical hit.
+  const jumpRequestId = ref.line !== undefined ? nextReaderJumpRequestId() : undefined;
   const apply = () => {
     const opened = useUIStore.getState().openReader({
       sessionId: ref.logicalSessionId,
@@ -54,6 +58,7 @@ export async function openResource(ref: ResourceRef, localDisposition: "editor" 
       line: ref.line,
       column: ref.column,
       diff: ref.diff,
+      jumpRequestId,
     });
     if (!opened) {
       useUIStore.getState().addToast({

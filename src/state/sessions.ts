@@ -8,6 +8,7 @@ import {
   resolveAgentResumeSourceCommand,
 } from "@/modules/terminal/lib/agent-resume";
 import { t } from "@/modules/i18n/core.ts";
+import { defaultSessionTitle, isDefaultTitleIndex, parseDefaultSessionTitle } from "@/modules/session/default-title.ts";
 import {
   agentBusyUpdate,
   agentDetectedUpdate,
@@ -166,6 +167,7 @@ const WORKSPACE_SESSION_FIELDS = [
   "dir",
   "branch",
   "customTitle",
+  "defaultTitleIndex",
   "remote",
   "pinned",
   "agentResume",
@@ -249,19 +251,24 @@ export function createRemoteSession(remote: RemoteInfo, title?: string): Session
 }
 
 function assignStableDefaultTitle(session: Session, sessions: Session[]): Session {
-  const defaultTitle = t("session.default_title");
   const remoteDefault = session.remote ? `${session.remote.user}@${session.remote.host}` : undefined;
-  if (session.customTitle || (session.title && session.title !== defaultTitle && session.title !== remoteDefault)) return session;
+  if (session.customTitle || isDefaultTitleIndex(session.defaultTitleIndex)) return session;
+  if (session.title && parseDefaultSessionTitle(session.title) !== 0 && session.title !== remoteDefault) return session;
 
+  // Store the number, not the localized label: display renders it from i18n.
   const groupKey = sidebarGroupKey(session);
-  const occupied = new Set(
-    sessions
-      .filter((candidate) => sidebarGroupKey(candidate) === groupKey)
-      .flatMap((candidate) => [candidate.title, candidate.customTitle]),
-  );
+  const occupied = new Set<number>();
+  for (const candidate of sessions) {
+    if (sidebarGroupKey(candidate) !== groupKey) continue;
+    if (isDefaultTitleIndex(candidate.defaultTitleIndex)) occupied.add(candidate.defaultTitleIndex);
+    for (const title of [candidate.title, candidate.customTitle]) {
+      const index = parseDefaultSessionTitle(title);
+      if (index) occupied.add(index);
+    }
+  }
   let number = 1;
-  while (occupied.has(`${defaultTitle} ${number}`)) number += 1;
-  return { ...session, title: `${defaultTitle} ${number}` };
+  while (occupied.has(number)) number += 1;
+  return { ...session, title: defaultSessionTitle(number), defaultTitleIndex: number };
 }
 
 function isSessionObserved(activeSessionId: string | null, sessionId: string): boolean {

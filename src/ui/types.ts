@@ -1,6 +1,7 @@
 // Tunara UI 共用类型定义
 import { AGENT_NAMES } from "../modules/agent/registry.ts";
 import { t } from "../modules/i18n/core.ts";
+import { defaultSessionTitle, isDefaultTitleIndex } from "../modules/session/default-title.ts";
 import type { ConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
 import type { WorkspaceContext } from "../modules/git/git-bridge.ts";
 import type { RemoteGitErrorV1, RemoteState } from "../modules/git/git-bridge.ts";
@@ -61,6 +62,11 @@ export interface Session {
 
   // ── 用户自定义标题（优先级最高） ──
   customTitle?: string;
+  /**
+   * Set while the session keeps its numbered default name. The label is
+   * rendered from i18n at display time; `title` only keeps a legacy snapshot.
+   */
+  defaultTitleIndex?: number;
   pinned?: boolean;
 
   // ── 动态标题源（Warp 风格瀑布推导） ──
@@ -226,6 +232,7 @@ export function deriveTitle(s: Session): { primary: string; subtitle: string; is
   // assigns a durable numbered title when a session is added; commands, OSC
   // titles, and agent lifecycle updates must not replace that identity.
   const primary = s.customTitle
+    || (isDefaultTitleIndex(s.defaultTitleIndex) ? defaultSessionTitle(s.defaultTitleIndex) : "")
     || (s.title && !isPromptLikeShellTitle(s.title) ? s.title : t("session.default_title"));
 
   const dirLabel = shortDir(s.dir);

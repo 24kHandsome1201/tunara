@@ -1,6 +1,9 @@
 import type { IBufferLine, IDisposable, ILink, Terminal } from "@xterm/xterm";
 import type { ResourceRef } from "@/modules/resources/resource-ref";
 import { openResource } from "@/modules/resources/resource-ref";
+import { t } from "@/modules/i18n";
+import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 
 interface TerminalFileLinkOptions {
@@ -8,6 +11,19 @@ interface TerminalFileLinkOptions {
   shouldActivate?: (event: MouseEvent) => boolean;
   /** Returns null when the owning session is gone; the link is then ignored. */
   createResource: (path: string, line?: number, column?: number) => ResourceRef | null;
+}
+
+/** A clicked link that cannot open (stale owner/binding, editor launch error) must say so. */
+export function reportTerminalFileLinkOpenFailure(resource: ResourceRef, error: unknown): void {
+  console.warn("[terminal-file-links] open failed", resource.path, error);
+  // A stale owner has no session to focus; keep the toast app-level then.
+  const ownerExists = useSessionsStore.getState().sessions.some((session) => session.id === resource.logicalSessionId);
+  useUIStore.getState().addToast({
+    ...(ownerExists ? { sessionId: resource.logicalSessionId } : {}),
+    title: t("terminal.file_link.open_failed"),
+    subtitle: resource.path,
+    variant: "error",
+  });
 }
 
 export function registerTerminalFileLinkProvider(
@@ -41,7 +57,7 @@ export function registerTerminalFileLinkProvider(
           event.stopPropagation();
           const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
           const resource = options.createResource(path, match.line, match.column);
-          if (resource) void openResource(resource).catch(() => {});
+          if (resource) void openResource(resource).catch((error) => reportTerminalFileLinkOpenFailure(resource, error));
         },
       }));
       callback(links);

@@ -7,7 +7,7 @@ const LISTING_ROW_HEIGHT = 32;
 const LISTING_TOP_INSET = 33;
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
+import { fsReadDir, fsResolveDir, type DirEntry } from "@/modules/fs/fs-bridge";
 import {
   invalidateRemoteSearchCache,
   sshHome,
@@ -489,7 +489,29 @@ export function FileExplorer({
 
   useEffect(() => {
     beginListingEpoch();
-    if (baseDir === null || !currentPath.startsWith("/")) return;
+    if (baseDir === null) return;
+    if (!isRemote && !currentPath.startsWith("/")) {
+      // A fresh local session reports `~` until OSC 7 arrives. Resolve it to
+      // the real home so breadcrumbs/parents work; Refresh retries on failure.
+      let cancelled = false;
+      setLoading(true);
+      setError(false);
+      fsResolveDir(currentPath)
+        .then((absolute) => {
+          if (cancelled) return;
+          setBaseDir((current) => (current?.startsWith("/") ? current : absolute));
+          setCurrentPath(absolute);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setEntries([]);
+          setCachedListingKey(null);
+          setError(true);
+          setLoading(false);
+        });
+      return () => { cancelled = true; };
+    }
+    if (!currentPath.startsWith("/")) return;
     if (remoteDisconnected) {
       setLoading(false);
       return;

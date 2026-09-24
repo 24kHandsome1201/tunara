@@ -6,6 +6,12 @@ export interface ReaderFileRef {
   line?: number;
   column?: number;
   diff?: ReaderDiffRef;
+  /**
+   * Runtime-only nonce for one jump-to-line navigation request. Only
+   * `current` carries it (never history or persistence), so re-clicking the
+   * same hit re-jumps while remounts and back/forward keep caret and scroll.
+   */
+  jumpRequestId?: number;
 }
 
 export interface ReaderDiffRef {
@@ -60,6 +66,23 @@ export function sanitizeReaderFileRef(raw: unknown): ReaderFileRef | null {
   };
 }
 
+let lastJumpRequestId = 0;
+const consumedJumpRequestIds = new Set<number>();
+
+export function nextReaderJumpRequestId(): number {
+  lastJumpRequestId += 1;
+  return lastJumpRequestId;
+}
+
+/** True the first time an editor applies `id`; later mounts must not re-jump. */
+export function consumeReaderJumpRequest(id: number | undefined): boolean {
+  if (id === undefined || consumedJumpRequestIds.has(id)) return false;
+  // One small integer per user navigation; never evicted, so a stale id left
+  // on an idle reader cannot re-jump after a much later remount.
+  consumedJumpRequestIds.add(id);
+  return true;
+}
+
 export function readerRefIdentity(file: ReaderFileRef | null | undefined): string | null {
   if (!file) return null;
   return file.diff
@@ -81,6 +104,13 @@ function withLocation(file: ReaderFileRef, location: Pick<ReaderFileRef, "line" 
   };
 }
 
+function withJumpRequest(file: ReaderFileRef, request: ReaderFileRef): ReaderFileRef {
+  const located = withLocation(file, request);
+  return request.line !== undefined && request.jumpRequestId !== undefined
+    ? { ...located, jumpRequestId: request.jumpRequestId }
+    : located;
+}
+
 function capHistory(history: ReaderFileRef[], historyIndex: number): { history: ReaderFileRef[]; historyIndex: number } {
   if (history.length <= READER_HISTORY_LIMIT) return { history, historyIndex };
   const overflow = history.length - READER_HISTORY_LIMIT;
@@ -98,7 +128,7 @@ export function openReaderFileInState(
   if (sameReaderPath(current.current, file)) {
     return {
       ...current,
-      current: withLocation(file, file),
+      current: withJumpRequest(file, file),
       history: current.history.map((entry, index) =>
         index === current.historyIndex ? withLocation(entry, file) : entry),
     };
@@ -109,7 +139,7 @@ export function openReaderFileInState(
   truncated.push(withLocation(file, file));
   const capped = capHistory(truncated, truncated.length - 1);
   return {
-    current: withLocation(file, file),
+    current: withJumpRequest(file, file),
     history: capped.history,
     historyIndex: capped.historyIndex,
     dirty: false,

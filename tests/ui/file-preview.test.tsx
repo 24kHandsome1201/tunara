@@ -5,6 +5,7 @@ import { FilePreview } from "@/ui/FilePreview";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { requestActiveDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
+import { nextReaderJumpRequestId } from "@/modules/session/reader-state";
 
 const original = {
   kind: "text",
@@ -919,10 +920,35 @@ describe("FilePreview navigation targets and inert views", () => {
       throw new Error(`unexpected command: ${command}`);
     });
     render(<FilePreview filePath="/tmp/n.txt" fileName="n.txt" fill onClose={() => {}}
-      resource={{ transport: "local", logicalSessionId: "local-preview", path: "/tmp/n.txt", line: 3, column: 2 }} />);
+      resource={{ transport: "local", logicalSessionId: "local-preview", path: "/tmp/n.txt", line: 3, column: 2, jumpRequestId: nextReaderJumpRequestId() }} />);
     const textarea = await screen.findByRole("textbox", { name: "Edit n.txt" }) as HTMLTextAreaElement;
     expect(textarea.selectionStart).toBe(9);
     expect(textarea.selectionEnd).toBe(9);
+  });
+
+  test("applies a jump once per request: remounts keep the caret, a new request re-jumps", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { kind: "text", content: "one\ntwo\nthree\n", size: 14, fingerprint: "d".repeat(64) };
+      if (command === "fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const firstRequest = nextReaderJumpRequestId();
+    const resource = (jumpRequestId: number) => ({ transport: "local" as const, logicalSessionId: "local-preview", path: "/tmp/n.txt", line: 3, column: 2, jumpRequestId });
+    const view = render(<FilePreview filePath="/tmp/n.txt" fileName="n.txt" fill onClose={() => {}} resource={resource(firstRequest)} />);
+    let textarea = await screen.findByRole("textbox", { name: "Edit n.txt" }) as HTMLTextAreaElement;
+    expect(textarea.selectionStart).toBe(9);
+    view.unmount();
+
+    // Remount with the same stored request (history back/forward, split
+    // changes): the user's caret must not be reset to the old target.
+    const remount = render(<FilePreview filePath="/tmp/n.txt" fileName="n.txt" fill onClose={() => {}} resource={resource(firstRequest)} />);
+    textarea = await screen.findByRole("textbox", { name: "Edit n.txt" }) as HTMLTextAreaElement;
+    expect(textarea.selectionStart).not.toBe(9);
+    textarea.setSelectionRange(1, 1);
+
+    // Clicking the same hit again is a new request and jumps again.
+    remount.rerender(<FilePreview filePath="/tmp/n.txt" fileName="n.txt" fill onClose={() => {}} resource={resource(nextReaderJumpRequestId())} />);
+    await waitFor(() => expect(textarea.selectionStart).toBe(9));
   });
 
   test("keeps the truncation notice out of the previewed document", async () => {

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -86,4 +87,46 @@ pub fn fs_read_dir(path: String, include_hidden: Option<bool>) -> Result<Vec<Dir
     });
 
     Ok(entries)
+}
+
+/// Resolves a local directory the UI only knows as `~` / `~/…` (a fresh local
+/// session before OSC 7 reports its cwd) to an absolute path. Tilde expansion
+/// stays backend-side so the frontend needs no `core:path` permission; an
+/// unresolvable home is an error so the explorer can leave its loading state.
+#[tauri::command]
+pub fn fs_resolve_dir(path: String) -> Result<String, String> {
+    resolve_dir_with(&path, super::expand_tilde)
+}
+
+fn resolve_dir_with(path: &str, expand: impl Fn(&str) -> PathBuf) -> Result<String, String> {
+    let resolved = expand(path.trim());
+    if !resolved.is_absolute() {
+        return Err(format!("cannot resolve {path} to an absolute directory"));
+    }
+    Ok(resolved.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_dir_with;
+    use crate::modules::util::expand_tilde_with;
+    use std::path::Path;
+
+    #[test]
+    fn resolve_dir_expands_tilde_against_home() {
+        let expand = |p: &str| expand_tilde_with(p, Some(Path::new("/Users/alice")));
+        assert_eq!(resolve_dir_with("~", expand).unwrap(), "/Users/alice");
+        assert_eq!(
+            resolve_dir_with("~/src", expand).unwrap(),
+            "/Users/alice/src"
+        );
+        assert_eq!(resolve_dir_with("/opt/app", expand).unwrap(), "/opt/app");
+    }
+
+    #[test]
+    fn resolve_dir_rejects_unresolvable_paths() {
+        let expand = |p: &str| expand_tilde_with(p, None);
+        assert!(resolve_dir_with("~", expand).is_err());
+        assert!(resolve_dir_with("relative", expand).is_err());
+    }
 }

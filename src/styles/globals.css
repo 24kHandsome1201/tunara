@@ -1957,6 +1957,9 @@ select:focus-visible {
 .overlay-backdrop {
   animation: fadeIn var(--dur-fast) var(--ease-out);
 }
+.overlay-loading-fallback {
+  animation: fadeIn var(--dur-base) var(--ease-out) 200ms both;
+}
 .overlay-sheet {
   animation: overlayIn var(--dur-base) var(--ease-out) both;
 }
