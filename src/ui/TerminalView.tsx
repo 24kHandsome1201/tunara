@@ -394,9 +394,11 @@ function TerminalViewImpl({
         inputToPtyEnabled = false;
         term.options.disableStdin = true;
         oscGuard.reset();
-        recordPtyExit(sessionIdRef.current, Boolean(getCurrentSession()?.remote), code, generation);
-        handleTerminalProcessExit(term, sessionIdRef.current, code, Boolean(getCurrentSession()?.remote));
-        snapshotScheduler.flush();
+        const remote = Boolean(getCurrentSession()?.remote);
+        recordPtyExit(sessionIdRef.current, remote, code, generation);
+        // Drain first: the final echo (e.g. `exit`) may still be frame-batched.
+        void handleTerminalProcessExit(term, sessionIdRef.current, code, remote, outputBuffer.drain(), () => disposed)
+          .then(() => { if (!disposed) snapshotScheduler.flush(); });
         setExitCode(code);
       };
       const sshReadyFocus = createDeferredTerminalFocus();
@@ -618,7 +620,7 @@ function TerminalViewImpl({
       }} />}
       {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
       {openError !== null && session && <PtyErrorBanner session={session} error={openError} />}
-      {active && showRestoredHistory && ptyReady && exitCode === null && openError === null && session?.connection?.phase === "ready" && <RestoredHistoryNotice remote={Boolean(session.remote)} onDismiss={() => { setShowRestoredHistory(false); const token = issueFocusReturnToken(sessionId); if (token) returnTerminalFocus(token); }} />}
+      {showRestoredHistory && ptyReady && exitCode === null && openError === null && session?.connection?.phase === "ready" && <RestoredHistoryNotice remote={Boolean(session.remote)} onDismiss={() => { setShowRestoredHistory(false); const token = issueFocusReturnToken(sessionId); if (token) returnTerminalFocus(token); }} />}
     </>
   );
 }

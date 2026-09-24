@@ -874,7 +874,7 @@ test("terminal snapshot writes flip a dirty flag the persist backstop consumes",
   assert.match(scheduler, /return \{[\s\S]*?schedule,[\s\S]*?flush,[\s\S]*?dispose\(\)/);
   assert.doesNotMatch(scheduler, /if \(shouldCapture\(\)\) capture\(\);/);
   assert.match(terminalView, /shouldCapture: \(\) =>[\s\S]*sessions\.some\(\(s\) => s\.id === sessionIdRef\.current\)/);
-  assert.match(terminalView, /handleTerminalProcessExit\(term, sessionIdRef\.current, code, Boolean\(getCurrentSession\(\)\?\.remote\)\);[\s\S]*?snapshotScheduler\.flush\(\);/);
+  assert.match(terminalView, /handleTerminalProcessExit\(term, sessionIdRef\.current, code, remote, outputBuffer\.drain\(\), \(\) => disposed\)\s*\.then\(\(\) => \{ if \(!disposed\) snapshotScheduler\.flush\(\); \}\);/);
 });
 
 test("responsive shells close cleanly and avoid stale remote git badges", () => {

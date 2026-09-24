@@ -13,7 +13,7 @@ import {
   sshHome,
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
-import { formatSize, reconnectPrefillFromSession } from "./types";
+import { formatSize } from "./types";
 import { PanelEmptyState, PanelLoadingState, PanelState } from "./shared";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
@@ -1155,11 +1155,6 @@ export function FileExplorer({
     void openResource(resourceRefForSession(owner, path, line), "preview");
   }
 
-  function reconnectRemote() {
-    if (!remoteSession?.remote) return;
-    useUIStore.getState().openSshConnect(reconnectPrefillFromSession(remoteSession));
-  }
-
   function changeSort(key: SortKey) {
     setSort((current) => current.key === key
       ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
@@ -1188,13 +1183,10 @@ export function FileExplorer({
         </div>
       )}
       {remoteDisconnected && (
-        <div style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <span role="status" aria-live="polite">{t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}</span>
-          {remoteSession?.remote && (
-            <button type="button" className="ui-button" onClick={reconnectRemote} style={{ flexShrink: 0, minHeight: 24, padding: "2px 8px", fontSize: "var(--fs-meta)" }}>
-              {t("terminal.exited.reconnect")}
-            </button>
-          )}
+        // Status only: the inspector follows the active session, whose terminal
+        // pane recovery bar already owns the single Reconnect action.
+        <div role="status" aria-live="polite" title={t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")} style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}
         </div>
       )}
       <ExplorerNav
