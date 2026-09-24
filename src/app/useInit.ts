@@ -161,7 +161,7 @@ export function useInit() {
         commandUsage: snapshot.commandUsage ?? {},
         explorerFollowCwd: snapshot.ui.explorerFollowCwd !== false,
         readers: sanitizeReaders(snapshot.ui.readers ?? {}, new Set(merged.map((session) => session.id))),
-        focusedPaneId: snapshot.activeSessionId,
+        focusedPaneId: activeSessionId,
       });
 
       if (snapshot.terminals && Object.keys(snapshot.terminals).length > 0) {

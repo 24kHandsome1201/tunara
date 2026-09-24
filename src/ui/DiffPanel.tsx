@@ -122,6 +122,11 @@ export function MiniDiff({
     return () => ro.disconnect();
   }, [diff]);
 
+  useEffect(() => () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+  }, []);
+
   const onScroll = () => {
     if (rafRef.current) return;
     rafRef.current = requestAnimationFrame(() => {
@@ -290,6 +295,9 @@ export function ReaderDiff({ session, diffRef, findRequest }: {
   const [diff, setDiff] = useState<FileDiff>();
   const [error, setError] = useState<string>();
   const [query, setQuery] = useState("");
+  // The input shows IME composition text immediately; filtering waits for the
+  // committed text so partial pinyin/kana never drives the hunk filter.
+  const [draftQuery, setDraftQuery] = useState("");
   const [retry, setRetry] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
@@ -346,11 +354,14 @@ export function ReaderDiff({ session, diffRef, findRequest }: {
         className="ui-native-control"
         aria-label={t("diff.search.placeholder")}
         placeholder={t("diff.search.placeholder")}
-        value={query}
+        value={draftQuery}
         onCompositionStart={() => { isComposingRef.current = true; }}
         onCompositionEnd={(event) => { isComposingRef.current = false; setQuery(event.currentTarget.value); }}
-        onChange={(event) => setQuery(event.target.value)}
-        onKeyDown={(event) => { if (!event.nativeEvent.isComposing && !isComposingRef.current && event.key === "Escape") { event.stopPropagation(); setQuery(""); } }}
+        onChange={(event) => {
+          setDraftQuery(event.target.value);
+          if (!isComposingRef.current && !(event.nativeEvent as InputEvent).isComposing) setQuery(event.target.value);
+        }}
+        onKeyDown={(event) => { if (!event.nativeEvent.isComposing && !isComposingRef.current && event.key === "Escape") { event.stopPropagation(); setDraftQuery(""); setQuery(""); } }}
         style={{ margin: 8, padding: "6px 8px", border: "1px solid var(--c-control-border)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-primary)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)" }}
       />
       <MiniDiff diff={diff} error={error} searchQuery={query} filePath={diffRef.relativePath} onRetry={() => setRetry((value) => value + 1)} onCopyHunk={(text) => { void copyHunk(text); }} />

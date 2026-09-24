@@ -40,9 +40,18 @@ function escapeTemplateTokenName(value: string): string {
   return value.replace(TEMPLATE_TOKEN_SPECIALS, "\\$&");
 }
 
+/** Keeps `<html lang>` aligned so screen readers and text shaping use the UI language. */
+function syncDocumentLanguage(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = resolvedLanguage;
+}
+
+syncDocumentLanguage();
+
 export function setLanguage(language: Language): void {
   currentLanguage = LANGUAGES.includes(language) ? language : "system";
   resolvedLanguage = resolve(currentLanguage);
+  syncDocumentLanguage();
   for (const listener of listeners) listener();
 }
 

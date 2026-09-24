@@ -85,7 +85,7 @@ export function useTerminalRuntimeSync({
       }
     }, 30);
     return () => clearTimeout(timer);
-  }, [active, fitRef, ptyRef, sessionId, termRef]);
+  }, [active, fitRef, ptyRef, sessionId, termReady, termRef]);
 
   useEffect(() => {
     const term = termRef.current;

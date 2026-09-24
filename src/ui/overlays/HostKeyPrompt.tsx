@@ -66,7 +66,7 @@ export function HostKeyPromptDialog() {
           position: "fixed",
           inset: 0,
           background: "var(--backdrop-color)",
-          zIndex: 300,
+          zIndex: 330,
         }}
       />
       <div
@@ -89,7 +89,7 @@ export function HostKeyPromptDialog() {
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
-          zIndex: 301,
+          zIndex: 331,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

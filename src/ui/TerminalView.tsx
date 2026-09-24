@@ -181,7 +181,10 @@ function TerminalViewImpl({
       const fileLinkDisposable = registerTerminalFileLinkProvider(term, {
         getCwd: (line) => lineCwdTracker.getCwdForLine(line, useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)?.dir ?? dir),
         shouldActivate: linkInputRef.current.shouldActivate,
-        createResource: (path, line, column) => resourceRefForSession(useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current)!, path, line, column),
+        createResource: (path, line, column) => {
+          const owner = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
+          return owner ? resourceRefForSession(owner, path, line, column) : null;
+        },
       });
       cleanups.push(() => fileLinkDisposable.dispose());
       const rebuildWebglAtlas = createWebglAtlasRebuilder(webglRef, termRef);
