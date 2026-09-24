@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
@@ -8,7 +8,7 @@ import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 import { copyText } from "./lib/clipboard";
 import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
-import { SessionRemediationNotice } from "./SessionRemediationNotice";
+import { SessionRemediationNotice, useSessionRemediationAction } from "./SessionRemediationNotice";
 
 /**
  * banner 挂载时：把焦点从死终端的 xterm textarea 挪到 banner 主操作按钮
@@ -60,10 +60,90 @@ function ConnectionDiagnosticButton({ session }: { session: Session }) {
       type="button"
       onClick={() => { void copy(); }}
       className="hover-bg"
-      style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 6px", borderRadius: "var(--r-btn)", flexShrink: 0 }}
+      style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 6px", borderRadius: "var(--r-btn)", flexShrink: 0, whiteSpace: "nowrap" }}
     >
       {t("connection.diagnostics.copy")}
     </button>
+  );
+}
+
+function CloseSessionButton({ session }: { session: Session }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={() => { useSessionsStore.getState().closeSession(session.id); }}
+      className="hover-bg"
+      style={{ border: "1px solid var(--c-border-1)", background: "transparent", color: "var(--c-text-3)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 8px", borderRadius: "var(--r-btn)", flexShrink: 0, whiteSpace: "nowrap" }}
+    >
+      {t("terminal.exited.close_session")}
+    </button>
+  );
+}
+
+/**
+ * Shared pane-bar layout for dead terminals. The status label stays on one
+ * line and truncates (full text in `title`) so narrow panes never break short
+ * CJK labels mid-word; the action group wraps as a unit to the next row. The
+ * primary action must stay the last button: pane activation and attention
+ * reveal focus the last button inside the `[role="alert"]` bar.
+ */
+function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
+  rootRef: RefObject<HTMLDivElement | null>;
+  role: "alert" | "status";
+  tone: string;
+  label: string;
+  context?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      ref={rootRef}
+      role={role}
+      aria-atomic="true"
+      data-pane-recovery-bar
+      style={{
+        position: "absolute",
+        left: 8,
+        right: 8,
+        bottom: 8,
+        background: "var(--c-bg-1)",
+        border: "1px solid var(--c-border-1)",
+        borderRadius: "var(--r-btn)",
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        padding: "6px 10px",
+        columnGap: 12,
+        rowGap: 6,
+        boxShadow: "var(--shadow-card)",
+        animation: "statusBarSlideIn var(--dur-base) var(--ease-out)",
+        zIndex: 5,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 12em", minWidth: 0 }}>
+        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: tone, flexShrink: 0 }} />
+        <span
+          title={label}
+          style={{
+            fontSize: "var(--fs-meta)",
+            color: "var(--c-text-2)",
+            lineHeight: "16px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: "1 1 auto",
+            minWidth: 0,
+          }}
+        >
+          {label}
+        </span>
+        {context}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -72,13 +152,18 @@ interface TerminalExitBannerProps {
   exitCode: number;
 }
 
-/** Shown once after a restored terminal becomes ready; history is not a live process. */
+/**
+ * Shown once after a restored terminal becomes ready; history is not a live
+ * process. Rendered in the pane's flex column (not over the canvas) so the
+ * terminal shrinks and refits instead of hiding a full-screen TUI's bottom rows.
+ */
 export function RestoredHistoryNotice({ remote, onDismiss }: { remote: boolean; onDismiss: () => void }) {
   const t = useT();
+  const label = t(remote ? "terminal.history.remote_ready" : "terminal.history.local_ready");
   return (
-    <div role="status" style={{ position: "absolute", bottom: 8, left: 8, right: 8, zIndex: 4, display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
-      <span style={{ flex: 1 }}>{t(remote ? "terminal.history.remote_ready" : "terminal.history.local_ready")}</span>
-      <button type="button" className="ui-button" onClick={onDismiss}>{t("common.done")}</button>
+    <div role="status" data-restored-history-notice style={{ flexShrink: 0, margin: "0 8px 8px", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+      <span title={label} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <button type="button" className="ui-button" onClick={onDismiss} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{t("common.done")}</button>
     </div>
   );
 }
@@ -88,11 +173,14 @@ export function RestoredHistoryNotice({ remote, onDismiss }: { remote: boolean; 
  * pane with a single grey "[process exited: N]" line and no obvious next step.
  * Offers "Restart in this directory" (local) / "Reconnect" (remote). Replacing
  * the session in place keeps the sidebar grouping and split layout stable.
+ * A pending SSH remediation owns the single primary action; its notice only
+ * adds context so the bar never shows two "Reconnect" buttons.
  */
 export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
   const rootRef = useFocusPrimaryActionOnMount();
+  const remediation = useSessionRemediationAction(session);
 
   const restart = () => {
     if (isRemote && session.remote) {
@@ -115,77 +203,25 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
   const visibleLabel = disconnected
     ? `${label} · ${t("terminal.exited.history_readonly")}`
     : label;
-  const actionLabel = isRemote
+  const actionLabel = remediation?.label ?? (isRemote
     ? disconnected ? t("terminal.exited.reconnect") : t("terminal.exited.open_new_shell")
-    : t("terminal.exited.restart");
-  const closeLabel = t("terminal.exited.close_session");
+    : t("terminal.exited.restart"));
 
   return (
-    <div
-      ref={rootRef}
+    <PaneRecoveryBar
+      rootRef={rootRef}
       role={disconnected || exitCode !== 0 ? "alert" : "status"}
-      aria-atomic="true"
-      style={{
-        position: "absolute",
-        left: 8,
-        right: 8,
-        bottom: 8,
-        flexShrink: 0,
-        background: "var(--c-bg-1)",
-        border: "1px solid var(--c-border-1)",
-        borderRadius: "var(--r-btn)",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 10px",
-        gap: 8,
-        flexWrap: "wrap",
-        paddingTop: 6,
-        paddingBottom: 6,
-        boxShadow: "var(--shadow-card)",
-        animation: "statusBarSlideIn var(--dur-base) var(--ease-out)",
-        zIndex: 5,
-      }}
+      tone={tone}
+      label={visibleLabel}
+      context={<SessionRemediationNotice session={session} compact showAction={false} />}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: tone,
-          flexShrink: 0,
-        }}
-      />
-      <span
-        style={{
-          fontSize: "var(--fs-meta)",
-          color: "var(--c-text-2)",
-          lineHeight: "16px",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "normal",
-          flexBasis: 140,
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        {visibleLabel}
-      </span>
-      <SessionRemediationNotice session={session} compact />
       {isRemote && <ConnectionDiagnosticButton session={session} />}
-      <button
-        type="button"
-        onClick={() => { useSessionsStore.getState().closeSession(session.id); }}
-        className="hover-bg"
-        style={{ border: "1px solid var(--c-border-1)", background: "transparent", color: "var(--c-text-3)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 8px", borderRadius: "var(--r-btn)", flexShrink: 0 }}
-      >
-        {closeLabel}
-      </button>
-      <AccentActionButton onClick={restart} title={actionLabel} ariaLabel={actionLabel}>
+      <CloseSessionButton session={session} />
+      <AccentActionButton onClick={remediation?.run ?? restart} title={actionLabel} ariaLabel={actionLabel}>
         <RestartIcon size={10} />
         {actionLabel}
       </AccentActionButton>
-    </div>
+    </PaneRecoveryBar>
   );
 }
 
@@ -203,11 +239,13 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
   const rootRef = useFocusPrimaryActionOnMount();
+  const remediation = useSessionRemediationAction(session);
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
   const detail = isRemote ? error : t("pty.error.subtitle");
   const phase = session.connection?.failedAtPhase;
   const phaseLabel = phase ? t(`connection.phase.${phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
+  const retryLabel = remediation?.label ?? t("pty.error.retry");
 
   const retry = () => {
     if (isRemote) {
@@ -222,67 +260,20 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   };
 
   return (
-    <div
-      ref={rootRef}
+    <PaneRecoveryBar
+      rootRef={rootRef}
       role="alert"
-      aria-atomic="true"
-      style={{
-        position: "absolute",
-        left: 8,
-        right: 8,
-        bottom: 8,
-        flexShrink: 0,
-        background: "var(--c-bg-1)",
-        border: "1px solid var(--c-border-1)",
-        borderRadius: "var(--r-btn)",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 10px",
-        gap: 8,
-        boxShadow: "var(--shadow-card)",
-        animation: "statusBarSlideIn var(--dur-base) var(--ease-out)",
-        zIndex: 5,
-      }}
+      tone="var(--c-error)"
+      label={summary}
+      context={<SessionRemediationNotice session={session} compact showAction={false} />}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: "var(--c-error)",
-          flexShrink: 0,
-        }}
-      />
-      <span
-        style={{
-          fontSize: "var(--fs-meta)",
-          color: "var(--c-text-2)",
-          lineHeight: "16px",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        {summary}
-      </span>
-      <SessionRemediationNotice session={session} compact />
       <ConnectionDiagnosticButton session={session} />
-      <button
-        type="button"
-        onClick={() => { useSessionsStore.getState().closeSession(session.id); }}
-        className="hover-bg"
-        style={{ border: "1px solid var(--c-border-1)", background: "transparent", color: "var(--c-text-3)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 8px", borderRadius: "var(--r-btn)", flexShrink: 0 }}
-      >
-        {t("terminal.exited.close_session")}
-      </button>
-      <AccentActionButton onClick={retry} title={t("pty.error.retry")} ariaLabel={t("pty.error.retry")}>
+      <CloseSessionButton session={session} />
+      <AccentActionButton onClick={remediation?.run ?? retry} title={retryLabel} ariaLabel={retryLabel}>
         <RestartIcon size={10} />
-        {t("pty.error.retry")}
+        {retryLabel}
       </AccentActionButton>
-    </div>
+    </PaneRecoveryBar>
   );
 }
 
