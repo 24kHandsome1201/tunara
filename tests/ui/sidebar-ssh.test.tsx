@@ -217,3 +217,25 @@ test("saved hosts open the connect sheet when the host has no live session", asy
   fireEvent.click(await screen.findByRole("button", { name: "other box" }));
   await waitFor(() => expect(useUIStore.getState().overlay).toBe("ssh"));
 });
+
+test("a saved host that matches an ssh config entry is listed once", async () => {
+  mockIPC((command) => {
+    if (command === "ssh_hosts_load") {
+      return [{ id: "saved-qa", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "" }];
+    }
+    if (command === "ssh_hosts_import_config") {
+      return { imported: [{ id: "ssh-config-qa", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identity_file: "~/.ssh/id_qa" }], skipped: 0, diagnostics: [] };
+    }
+    return undefined;
+  });
+  render(<Sidebar sessions={[sshSession("live", "/root")]} activeSessionId="live" onSelectSession={vi.fn()} />);
+
+  // One row, so the count is 1 rather than 2 (saved + config).
+  fireEvent.click(await screen.findByRole("button", { name: /SSH hosts · 1/ }));
+  const rows = await screen.findAllByRole("button", { name: "qa-local" });
+  expect(rows).toHaveLength(1);
+  expect(rows[0].textContent).toContain("Saved · SSH config");
+  fireEvent.click(rows[0]);
+  await waitFor(() => expect(useUIStore.getState().overlay).toBe("ssh"));
+  expect(useUIStore.getState().sshPrefill).toMatchObject({ host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "~/.ssh/id_qa" });
+});

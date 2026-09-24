@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { toProfile, toRaw, toImportResult, toProfilesPanelModel, type RawHostProfile, type RawSshImportResult, type SshHostProfile, type SshImportResult, type SshProfilesPanelModelV1 } from "./hosts-model.ts";
 
-export { SSH_AUTH_METHODS, isSshAuthMethod, makeHostId, normalizeSshPort, parseSshPort, toProfile, toRaw, toImportResult, toProfilesPanelModel, resolveSshProfileRoute, type RawHostProfile, type RawSshImportDiagnostic, type RawSshImportResult, type SshAuthMethod, type SshHostProfile, type SshImportDiagnostic, type SshImportDiagnosticV1, type SshImportResult, type SshProfileRouteResolutionV1, type SshProfileRouteV1, type SshProfileSourceV1, type SshProfilesPanelActionsV1, type SshProfilesPanelModelV1 } from "./hosts-model.ts";
+export { SSH_AUTH_METHODS, isSshAuthMethod, makeHostId, normalizeSshPort, parseSshPort, toProfile, toRaw, toImportResult, toProfilesPanelModel, resolveSshProfileRoute, sshProfileEntries, type RawHostProfile, type RawSshImportDiagnostic, type RawSshImportResult, type SshAuthMethod, type SshHostProfile, type SshImportDiagnostic, type SshImportDiagnosticV1, type SshImportResult, type SshProfileRouteResolutionV1, type SshProfileEntryV1, type SshProfileRouteV1, type SshProfileSourceV1, type SshProfilesPanelActionsV1, type SshProfilesPanelModelV1 } from "./hosts-model.ts";
 
 export async function loadHosts(): Promise<SshHostProfile[]> {
   const raw = await invoke<RawHostProfile[]>("ssh_hosts_load");

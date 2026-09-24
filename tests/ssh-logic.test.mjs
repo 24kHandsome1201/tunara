@@ -24,6 +24,7 @@ import {
   normalizeSshPort,
   parseSshPort,
   resolveSshProfileRoute,
+  sshProfileEntries,
   toProfilesPanelModel,
 } from "../src/modules/ssh/hosts-model.ts";
 import {
@@ -33,7 +34,9 @@ import {
 } from "../src/modules/ssh/pending-credentials.ts";
 import {
   exactSshProfileMatch,
+  filterSshProfileEntries,
   formatSshTarget,
+  sshAliasProfileMatch,
   parseSshTarget,
   sshTargetHasInvalidPort,
 } from "../src/modules/ssh/connect-target.ts";
@@ -66,6 +69,11 @@ test("classifySshFailure buckets host-key errors including the kebab form", () =
   assert.equal(classifySshFailure("server key MISMATCH"), "hostKey");
   // russh returns this exact text when a first-use prompt is rejected.
   assert.equal(classifySshFailure("SSH handshake failed: Unknown server key"), "hostKey");
+});
+
+test("classifySshFailure buckets resolution errors with connection errors", () => {
+  assert.equal(classifySshFailure("resolve qa-local:22 failed: failed to lookup address information"), "connect");
+  assert.equal(classifySshFailure("resolve qa-local:22 timed out after 15s"), "connect");
 });
 
 test("classifySshFailure buckets connection errors", () => {
@@ -113,6 +121,30 @@ test("exactSshProfileMatch matches aliases and user@host", () => {
 test("classifySshFailure is case-insensitive", () => {
   assert.equal(classifySshFailure("AUTHENTICATION FAILED"), "auth");
   assert.equal(classifySshFailure("TIMED OUT"), "connect");
+});
+
+test("sshAliasProfileMatch resolves a typed Host alias, user@alias and alias:port", () => {
+  const qa = { id: "c1", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "~/.ssh/id_qa" };
+  const profiles = [qa];
+  assert.equal(sshAliasProfileMatch(profiles, "qa-local"), qa);
+  assert.equal(sshAliasProfileMatch(profiles, "root@qa-local"), qa);
+  assert.equal(sshAliasProfileMatch(profiles, "qa-local:2200"), qa);
+  assert.equal(sshAliasProfileMatch(profiles, "qauser@127.0.0.1:2222"), undefined);
+  assert.equal(sshAliasProfileMatch(profiles, "qa"), undefined);
+});
+
+test("sshProfileEntries shows a saved host once when ssh config has the same endpoint", () => {
+  const saved = { id: "s1", label: "QA box", host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "" };
+  const config = { id: "c1", label: "qa-local", host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "~/.ssh/id_qa" };
+  const otherPort = { id: "c2", label: "qa-alt", host: "127.0.0.1", port: 22, user: "qauser", identityFile: "" };
+  const routed = { id: "c3", label: "qa-routed", host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "", proxyJumpProfileId: "c2" };
+  const model = toProfilesPanelModel([saved], { imported: [config, otherPort, routed], skipped: 0, diagnostics: [] });
+  const entries = sshProfileEntries(model);
+  assert.deepEqual(entries.map((entry) => entry.key), ["saved:s1", "sshConfig:c2", "sshConfig:c3"]);
+  assert.equal(entries[0].configProfile, config);
+  // The model itself keeps both sources for route/jump resolution.
+  assert.equal(model.configProfiles.length, 3);
+  assert.deepEqual(filterSshProfileEntries(entries, "qa-local").map((entry) => entry.key), ["saved:s1"]);
 });
 
 // ── hosts-model: case boundary ───────────────────────────────────────────

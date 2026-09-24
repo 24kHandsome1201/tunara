@@ -150,9 +150,11 @@ export function reportSshOpenFailure(
   const authFailure = ["password", "key", "agent", "keyboardInteractive", "auth"].includes(reason);
   const stage = phase === "authenticating" || authFailure ? "auth"
     : phase === "handshaking" ? "handshake"
-      : reason === "hostKey" ? "hostKey" : "TCP";
+      : reason === "hostKey" ? "hostKey"
+        : phase === "resolving" ? "DNS" : "TCP";
   const code = authFailure ? "authenticationFailed"
-    : reason === "hostKey" ? "hostKeyRejected" : "transportClosed";
+    : reason === "hostKey" ? "hostKeyRejected"
+      : stage === "DNS" ? "dnsFailed" : "transportClosed";
   if (typed) {
     appendDiagnostic(sessionId, { requestId: "ssh-open-v2", status: "failed", diagnostic: typed });
   } else {
@@ -220,7 +222,9 @@ function recordConnectionStage(sessionId: string, phase: PtyConnectionStatusPhas
         transportGeneration: session.transportGeneration,
       }
     : undefined;
-  if (phase === "handshaking") {
+  if (phase === "connecting") {
+    recordSshLifecycleDiagnostic(sessionId, "DNS", "passed", "ok", binding);
+  } else if (phase === "handshaking") {
     recordSshLifecycleDiagnostic(sessionId, "TCP", "passed", "ok", binding);
   } else if (phase === "authenticating") {
     recordSshLifecycleDiagnostic(sessionId, "handshake", "passed", "ok", binding);

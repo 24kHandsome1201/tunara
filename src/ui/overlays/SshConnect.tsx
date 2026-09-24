@@ -13,6 +13,7 @@ import {
   loadSshProfilesPanel,
   toProfilesPanelModel,
   resolveSshProfileRoute,
+  sshProfileEntries,
   type SshAuthMethod,
   type SshHostProfile,
   type SshImportDiagnosticV1,
@@ -23,7 +24,7 @@ import {
   type SshProfilesPanelModelV1,
 } from "@/modules/ssh/hosts-bridge";
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
-import { exactSshProfileMatch, filterSshProfiles, formatSshTarget, parseSshTarget, sshTargetHasInvalidPort } from "@/modules/ssh/connect-target";
+import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort } from "@/modules/ssh/connect-target";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
 import { diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
@@ -60,6 +61,7 @@ const labelStyle: React.CSSProperties = {
 function SuggestionRow({
   profile,
   source,
+  alsoInConfig,
   selected,
   active,
   onSelect,
@@ -68,6 +70,7 @@ function SuggestionRow({
 }: {
   profile: SshHostProfile;
   source: SshProfileSourceV1;
+  alsoInConfig?: boolean;
   selected: boolean;
   active: boolean;
   onSelect: () => void;
@@ -109,7 +112,7 @@ function SuggestionRow({
         </span>
         <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)" }}>
           {formatSshTarget(profile.user, profile.host, profile.port)}
-          {source === "sshConfig" ? " · ~/.ssh/config" : ""}
+          {source === "sshConfig" || alsoInConfig ? " · ~/.ssh/config" : ""}
         </span>
       </button>
       {onDelete && (
@@ -180,7 +183,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [autoReconnect, setAutoReconnect] = useState(prefill?.autoReconnect ?? false);
   const [panelModel, setPanelModel] = useState<SshProfilesPanelModelV1>(EMPTY_PANEL_MODEL);
   const forwardSnapshotInFlight = useRef(false);
-  const [loadingConfig, setLoadingConfig] = useState(false);
+  // Starts true: the mount effect loads profiles, and until it settles an empty
+  // list is "not loaded yet", not "no match" (Reconnect used to flash that).
+  const [loadingConfig, setLoadingConfig] = useState(true);
   const [jumpProfileId, setJumpProfileId] = useState(prefill?.route?.profileId ?? "");
   const [selectedProfile, setSelectedProfile] = useState<{ id: string; source: SshProfileSourceV1 } | null>(null);
   const [routeResolution, setRouteResolution] = useState<SshProfileRouteResolutionV1 | null>(null);
@@ -280,7 +285,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     });
   }, [t]);
 
-  const fillFrom = (profileId: string, source: SshProfileSourceV1) => {
+  const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
     setSelectedProfile({ id: profileId, source });
     setRouteResolution(resolution);
@@ -298,8 +303,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setTarget(formatSshTarget(profile.user, profile.host, profile.port));
     setPort(String(profile.port));
     setAuthMethod(profile.authMethod ?? "auto");
-    setIdentityFile(profile.authMethod === "password" ? "" : profile.identityFile);
-    setCertificateFile(profile.authMethod === "password" ? "" : profile.certificateFile ?? "");
+    // A saved row that shadows a config entry keeps that entry's IdentityFile when it has none.
+    const keyFallback = profile.identityFile ? undefined : fallback;
+    setIdentityFile(profile.authMethod === "password" ? "" : profile.identityFile || keyFallback?.identityFile || "");
+    setCertificateFile(profile.authMethod === "password" ? "" : profile.certificateFile || keyFallback?.certificateFile || "");
     setJumpProfileId(jump?.id ?? "");
     setJumpAuthMethod(jump?.authMethod ?? "auto");
     setJumpIdentityFile(jump?.authMethod === "password" ? "" : jump?.identityFile ?? "");
@@ -382,13 +389,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
     : null;
 
   const suggestions = useMemo(() => {
-    const saved = filterSshProfiles(hosts, target);
-    const config = filterSshProfiles(configHosts, target);
+    // Saved and config rows are capped separately so one source cannot crowd out the other.
+    const entries = sshProfileEntries(panelModel);
     return [
-      ...saved.map((profile) => ({ profile, source: "saved" as const })),
-      ...config.map((profile) => ({ profile, source: "sshConfig" as const })),
+      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), target),
+      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "sshConfig"), target),
     ];
-  }, [configHosts, hosts, target]);
+  }, [panelModel, target]);
 
   const methodReady = authMethod === "key"
     ? identityFile.trim().length > 0
@@ -414,15 +421,39 @@ export function SshConnect({ onClose }: SshConnectProps) {
     if (connectInFlightRef.current || loadingConfig) return;
     const parsed = parseSshTarget(target);
     const match = exactSshProfileMatch(allProfiles, target);
-    const nextHost = parsed?.host || match?.host || "";
-    const nextUser = parsed?.user || match?.user || "";
-    const nextAuth = authMethod ?? "auto";
-    const nextIdentity = identityFile ?? "";
-    const nextCertificate = certificateFile;
-    const nextJump = jumpProfile;
-    const nextJumpAuth = jumpAuthMethod;
-    const nextJumpIdentity = jumpIdentityFile;
-    const nextJumpCertificate = jumpCertificateFile;
+    // A typed alias resolves like picking its row; a picked row already filled the form.
+    const alias = selectedProfile ? undefined : sshAliasProfileMatch(allProfiles, target);
+    const aliasSource: SshProfileSourceV1 = alias && hosts.includes(alias) ? "saved" : "sshConfig";
+    const aliasResolution = alias ? resolveSshProfileRoute(alias.id, aliasSource, panelModel) : null;
+    if (aliasResolution?.status === "rejected") {
+      fillFrom(aliasResolution.profileId, aliasSource);
+      return;
+    }
+    const aliasRoute = aliasResolution?.route;
+    const aliasTarget = aliasRoute?.target;
+    // Explicit auth choices in the form win; an untouched form takes the alias's.
+    const aliasOwnsAuth = Boolean(aliasTarget && authMethod === "auto" && !identityFile.trim() && !certificateFile.trim());
+    const aliasUsesJump = Boolean(aliasRoute?.jump && !jumpProfileId);
+    const nextHost = aliasTarget?.host || parsed?.host || match?.host || "";
+    const nextUser = parsed?.user || aliasTarget?.user || match?.user || "";
+    const nextAuth = aliasOwnsAuth ? aliasTarget?.authMethod ?? "auto" : authMethod ?? "auto";
+    const aliasKeySource = aliasTarget?.identityFile
+      ? aliasTarget
+      : sshProfileEntries(panelModel).find((entry) => entry.profile === alias)?.configProfile ?? aliasTarget;
+    const nextIdentity = aliasOwnsAuth
+      ? aliasTarget?.authMethod === "password" ? "" : aliasKeySource?.identityFile ?? ""
+      : identityFile ?? "";
+    const nextCertificate = aliasOwnsAuth
+      ? aliasTarget?.authMethod === "password" ? "" : aliasKeySource?.certificateFile ?? ""
+      : certificateFile;
+    const nextJump = aliasUsesJump ? aliasRoute?.jump : jumpProfile;
+    const nextJumpAuth = aliasUsesJump ? aliasRoute?.jump?.authMethod ?? "auto" : jumpAuthMethod;
+    const nextJumpIdentity = aliasUsesJump
+      ? aliasRoute?.jump?.authMethod === "password" ? "" : aliasRoute?.jump?.identityFile ?? ""
+      : jumpIdentityFile;
+    const nextJumpCertificate = aliasUsesJump
+      ? aliasRoute?.jump?.authMethod === "password" ? "" : aliasRoute?.jump?.certificateFile ?? ""
+      : jumpCertificateFile;
     const nextMethodReady = nextAuth === "key"
       ? nextIdentity.trim().length > 0
       : nextAuth === "password"
@@ -435,11 +466,16 @@ export function SshConnect({ onClose }: SshConnectProps) {
           ? jumpPassword.length > 0
           : true
     );
+    if (alias && (!nextMethodReady || !nextJumpReady)) {
+      // The alias needs a secret (e.g. password auth): show its filled form instead of a silent no-op.
+      fillFrom(alias.id, aliasSource);
+      return;
+    }
     if (!nextHost || !nextUser || !nextMethodReady || !nextJumpReady || routeError) return;
     connectInFlightRef.current = true;
     const attempt = ++connectAttemptRef.current;
     setConnecting(true);
-    const safePort = parsed?.port ?? match?.port ?? normalizeSshPort(port);
+    const safePort = parsed?.port ?? aliasTarget?.port ?? match?.port ?? normalizeSshPort(port);
     // pty-bridge only forwards IdentityFile for `key`. Auto with a known path
     // therefore opens as key so ssh-config / saved IdentityFile still reaches russh.
     const usesKeyMaterial = nextAuth === "key" || (nextAuth === "auto" && nextIdentity.trim().length > 0);
@@ -513,7 +549,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setJumpKeyPassphrase("");
     const selectedSaved = selectedProfile?.source === "saved"
       ? hosts.find((candidate) => candidate.id === selectedProfile.id)
-      : undefined;
+      : aliasSource === "saved" ? alias : undefined;
     const pendingSavedHost = sshHostProfileFromSuccessfulConnect(
       remote,
       match?.label || `${nextUser}@${nextHost}`,
@@ -625,7 +661,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           if (event.key === "Enter" && !excludesSubmit) {
             event.preventDefault();
             if (targetEl === targetRef.current && highlight >= 0 && suggestions[highlight]) {
-              fillFrom(suggestions[highlight].profile.id, suggestions[highlight].source);
+              fillFrom(suggestions[highlight].profile.id, suggestions[highlight].source, suggestions[highlight].configProfile);
               return;
             }
             if (canConnect) void connect();
@@ -696,12 +732,13 @@ export function SshConnect({ onClose }: SshConnectProps) {
           <div id="ssh-connect-suggestions" role="listbox" aria-label={t("ssh.source.saved")} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {suggestions.map((entry, index) => (
               <SuggestionRow
-                key={`${entry.source}:${entry.profile.id}`}
+                key={entry.key}
                 profile={entry.profile}
                 source={entry.source}
+                alsoInConfig={Boolean(entry.configProfile)}
                 selected={selectedProfile?.id === entry.profile.id && selectedProfile.source === entry.source}
                 active={highlight === index}
-                onSelect={() => fillFrom(entry.profile.id, entry.source)}
+                onSelect={() => fillFrom(entry.profile.id, entry.source, entry.configProfile)}
                 onDelete={entry.source === "saved" ? () => { void actions.onRemove(entry.profile.id); } : undefined}
                 deletePending={isPending(`ssh-profile:${entry.profile.id}`)}
               />
