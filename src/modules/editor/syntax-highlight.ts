@@ -51,7 +51,8 @@ export async function highlightSource(fileName: string, content: string): Promis
   }
   try {
     return await highlightCode(language, content);
-  } catch {
+  } catch (error) {
+    console.error("SHIKI_DEBUG", error);
     return null;
   }
 }
