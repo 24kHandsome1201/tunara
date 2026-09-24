@@ -8,7 +8,7 @@ import { getTerminalTheme } from "@/styles/terminalTheme";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
-import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { isTypingOutsidePane, issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
 
@@ -79,7 +79,7 @@ export function useTerminalRuntimeSync({
         const actions = recovery?.querySelectorAll<HTMLButtonElement>("button");
         const primary = actions?.[actions.length - 1];
         if (primary && !primary.disabled) primary.focus();
-        else term.focus();
+        else if (!isTypingOutsidePane(term.element)) term.focus();
       } catch {
         /* noop */
       }

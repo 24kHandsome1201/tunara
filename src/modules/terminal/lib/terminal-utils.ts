@@ -41,6 +41,8 @@ function titleGraphemes(value: string): string[] {
 export function sanitizeTerminalTitle(title: string): string | null {
   const normalized = title
     .normalize("NFC")
+    // Tabs/newlines separate words; turn them into spaces before stripping controls.
+    .replace(/[\t\n\r]/g, " ")
     .replace(TITLE_UNSAFE, "")
     .replace(/\s+/g, " ")
     .replace(TRAILING_TITLE_DECORATION, "")

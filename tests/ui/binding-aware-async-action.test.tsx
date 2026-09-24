@@ -63,6 +63,24 @@ describe("createDeferredTerminalFocus", () => {
     dispose();
   });
 
+  it("does not pull focus out of a text field when an SSH session becomes ready", () => {
+    const identity = { logicalSessionId: "palette", paneId: "palette", physicalPtyId: 5, transportGeneration: "five", terminalInstanceEpoch: allocateTerminalInstanceEpoch() };
+    const focus = vi.fn();
+    const deferredFocus = createDeferredTerminalFocus();
+    const dispose = registerTerminalBinding(identity, focus);
+    const input = document.createElement("input");
+    document.body.append(input);
+
+    recordTerminalFocusIntent(identity.paneId);
+    expect(deferredFocus.capture(identity.paneId)).toBe(false);
+    input.focus();
+    expect(deferredFocus.ready()).toBe(false);
+    expect(focus).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(input);
+    input.remove();
+    dispose();
+  });
+
   it("does not steal focus after the captured intent becomes stale", () => {
     const identity = { logicalSessionId: "stale", paneId: "stale", physicalPtyId: 3, transportGeneration: "three", terminalInstanceEpoch: allocateTerminalInstanceEpoch() };
     const otherIdentity = { logicalSessionId: "current", paneId: "current", physicalPtyId: 4, transportGeneration: "four", terminalInstanceEpoch: allocateTerminalInstanceEpoch() };
