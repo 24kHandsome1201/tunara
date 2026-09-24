@@ -346,9 +346,13 @@ mod tests {
     }
 
     fn fixture() -> std::path::PathBuf {
+        // Tests run in parallel and macOS clocks tick in microseconds, so the
+        // timestamp alone can collide; the counter keeps each fixture unique.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let p = physical_temp_dir().join(format!(
-            "tunara-local-write-{}-{}",
+            "tunara-local-write-{}-{}-{}",
             std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
