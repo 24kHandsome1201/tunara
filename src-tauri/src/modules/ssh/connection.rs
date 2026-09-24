@@ -1897,7 +1897,7 @@ impl SshSession {
     /// Execute a probe where a non-zero status is part of the caller's state
     /// machine rather than a transport failure (for example, Git with no
     /// upstream). All other SSH commands should use `exec`.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "benchmark"))]
     pub async fn exec_allow_nonzero(
         &self,
         command: &str,
