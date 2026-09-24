@@ -51,6 +51,26 @@ describe("independent sidebar workflow", () => {
     ]);
   });
 
+  test("default names follow the UI language after creation; custom titles do not", () => {
+    setLanguage("zh-CN");
+    const first = createSession("/work/project");
+    const second = createSession("/work/project");
+    useSessionsStore.getState().addSession(first);
+    useSessionsStore.getState().addSession(second);
+    const stored = useSessionsStore.getState().sessions;
+    expect(stored.map((entry) => entry.defaultTitleIndex)).toEqual([1, 2]);
+    expect(stored.map((entry) => deriveTitle(entry).primary)).toEqual(["终端 1", "终端 2"]);
+
+    setLanguage("en");
+    expect(stored.map((entry) => deriveTitle(entry).primary)).toEqual(["Terminal 1", "Terminal 2"]);
+    expect(deriveTitle({ ...stored[0], customTitle: "发布" }).primary).toBe("发布");
+
+    // A legacy "终端 1" stored by an older build still occupies number 1.
+    useSessionsStore.setState({ sessions: [session({ id: "legacy", title: "终端 1" })] });
+    useSessionsStore.getState().addSession(createSession("/work/project"));
+    expect(useSessionsStore.getState().sessions[1].defaultTitleIndex).toBe(2);
+  });
+
   test("Enter selects a card while F2 still renames it", () => {
     const onSelect = vi.fn();
     render(<SessionCard session={session()} active onSelect={onSelect} onRename={vi.fn()} />);

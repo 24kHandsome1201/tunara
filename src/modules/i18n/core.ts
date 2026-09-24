@@ -75,6 +75,12 @@ export function t(key: string, params?: Record<string, string | number>): string
   return value;
 }
 
+/** Every shipped translation of `key`, for recognizing strings older builds stored localized. */
+export function translationsOf(key: string): string[] {
+  const values = Object.values(DICTS).map((dict) => dict[key]).filter((value): value is string => typeof value === "string");
+  return [...new Set(values)];
+}
+
 export function subscribeI18n(listener: () => void): () => void {
   listeners.add(listener);
   return () => {

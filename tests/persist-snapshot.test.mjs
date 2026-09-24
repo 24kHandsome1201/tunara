@@ -20,6 +20,21 @@ import {
   toPersistedSession,
 } from "../src/state/persist-snapshot.ts";
 
+test("persisted default titles keep their index and migrate legacy localized names", () => {
+  const legacyZh = fromPersistedSession(persistedSession("s-zh", "/w", 1, { title: "终端 3" }));
+  const legacyEn = fromPersistedSession(persistedSession("s-en", "/w", 1, { title: "Terminal 2" }));
+  const custom = fromPersistedSession(persistedSession("s-custom", "/w", 1, { title: "终端 4", customTitle: "Build" }));
+  const named = fromPersistedSession(persistedSession("s-named", "/w", 1, { title: "终端机 4" }));
+  assert.equal(legacyZh.defaultTitleIndex, 3);
+  assert.equal(legacyEn.defaultTitleIndex, 2);
+  assert.equal(custom.customTitle, "Build");
+  assert.equal(named.defaultTitleIndex, undefined);
+
+  const roundTrip = fromPersistedSession(toPersistedSession({ ...legacyEn, defaultTitleIndex: 5 }));
+  assert.equal(roundTrip.defaultTitleIndex, 5);
+  assert.equal(fromPersistedSession(persistedSession("s-bad", "/w", 1, { title: "x", defaultTitleIndex: -1 })).defaultTitleIndex, undefined);
+});
+
 function persistedSession(id, dir, updatedAt = 1, extra = {}) {
   return {
     id,

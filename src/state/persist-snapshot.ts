@@ -10,6 +10,7 @@ import { initialConnectionEvidence } from "../modules/terminal/lib/connection-st
 import { isSshAuthMethod, parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
+import { isDefaultTitleIndex, parseDefaultSessionTitle } from "../modules/session/default-title.ts";
 import { sanitizeRecentCommands } from "./recent-commands.ts";
 import {
   sanitizeHostFilePrefsMap,
@@ -32,7 +33,7 @@ import {
 export type PersistedSession = Pick<
   Session,
   "id" | "title" | "dir" | "branch" | "updatedAt"
-> & { customTitle?: string; remote?: Session["remote"]; pinned?: boolean };
+> & { customTitle?: string; defaultTitleIndex?: number; remote?: Session["remote"]; pinned?: boolean };
 
 export type PersistedSessionV2 = PersistedSession;
 
@@ -189,6 +190,7 @@ export function toPersistedSession(s: Session): PersistedSession {
     updatedAt: s.updatedAt,
   };
   if (customTitle) p.customTitle = customTitle;
+  if (isDefaultTitleIndex(s.defaultTitleIndex)) p.defaultTitleIndex = s.defaultTitleIndex;
   if (s.pinned === true) p.pinned = true;
   // Persist remote connection info (no secrets) so an SSH session can be
   // re-established after restart. The connection itself is re-opened lazily
@@ -217,6 +219,12 @@ export function isPersistedSession(value: unknown): value is PersistedSession {
 export function sanitizePersistedSession(p: PersistedSession): PersistedSession {
   const customTitle = typeof p.customTitle === "string" ? p.customTitle.trim() : "";
   const remote = sanitizeRemoteInfo(p.remote);
+  // Older builds stored the localized "终端 N" / "Terminal N" string itself;
+  // recover the index so the name follows later language switches.
+  const legacyIndex = parseDefaultSessionTitle(p.title);
+  const defaultTitleIndex = isDefaultTitleIndex(p.defaultTitleIndex)
+    ? p.defaultTitleIndex
+    : legacyIndex !== null && legacyIndex > 0 ? legacyIndex : undefined;
   return {
     id: p.id,
     title: p.title.trim() || t("session.default_title"),
@@ -224,6 +232,7 @@ export function sanitizePersistedSession(p: PersistedSession): PersistedSession 
     branch: p.branch,
     updatedAt: p.updatedAt,
     ...(customTitle ? { customTitle } : {}),
+    ...(defaultTitleIndex ? { defaultTitleIndex } : {}),
     ...(remote ? { remote } : {}),
     ...(p.pinned === true ? { pinned: true } : {}),
   };

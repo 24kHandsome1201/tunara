@@ -3,6 +3,7 @@ import type { Session } from "./types";
 import { deriveAttentionRow, nextAttentionSessionId } from "@/modules/session/session-attention";
 import { useT } from "@/modules/i18n";
 import { revealSessionAttention } from "@/modules/terminal/lib/terminal-action-registry";
+import { sessionDisplayTitle } from "@/modules/session/default-title";
 
 interface AttentionRowProps {
   sessions: Session[];
@@ -38,7 +39,7 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
         }}
         aria-label={label}
         aria-description={reason || undefined}
-        title={target ? `${target.customTitle || target.title} · ${reason || label}` : label}
+        title={target ? `${sessionDisplayTitle(target)} · ${reason || label}` : label}
         className="attention-row-button"
         data-kind={row.kind}
         style={{
