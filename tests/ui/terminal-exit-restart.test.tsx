@@ -24,3 +24,34 @@ test("restarting an inactive dead pane replaces that pane, not the active one", 
   expect(replacement?.dir).toBe("/tmp/dead");
   expect(splitLayoutSessionIds(useUIStore.getState().split)).toEqual([live.id, replacement!.id]);
 });
+
+test("closing a session that took over a split pane brings the displaced session back", () => {
+  const left: Session = { ...base, id: "left", title: "Left", dir: "/tmp/left" };
+  const right: Session = { ...base, id: "right", title: "Right", dir: "/tmp/right" };
+  useSessionsStore.setState({ sessions: [left, right], activeSessionId: left.id });
+  useUIStore.setState({ split: { root: null } });
+  useUIStore.getState().splitPane(left.id, right.id, "horizontal");
+
+  const newcomer: Session = { ...base, id: "ssh", title: "SSH", dir: "~" };
+  useSessionsStore.getState().addSession(newcomer);
+  expect(splitLayoutSessionIds(useUIStore.getState().split)).toEqual([newcomer.id, right.id]);
+
+  useSessionsStore.getState().removeSession(newcomer.id);
+  expect(splitLayoutSessionIds(useUIStore.getState().split)).toEqual([left.id, right.id]);
+  expect(useSessionsStore.getState().activeSessionId).toBe(left.id);
+});
+
+test("a displaced session that was closed meanwhile is not resurrected", () => {
+  const left: Session = { ...base, id: "left2", title: "Left", dir: "/tmp/left" };
+  const right: Session = { ...base, id: "right2", title: "Right", dir: "/tmp/right" };
+  useSessionsStore.setState({ sessions: [left, right], activeSessionId: left.id });
+  useUIStore.setState({ split: { root: null } });
+  useUIStore.getState().splitPane(left.id, right.id, "horizontal");
+  const newcomer: Session = { ...base, id: "ssh2", title: "SSH", dir: "~" };
+  useSessionsStore.getState().addSession(newcomer);
+
+  useSessionsStore.getState().removeSession(left.id);
+  useSessionsStore.getState().removeSession(newcomer.id);
+  expect(splitLayoutSessionIds(useUIStore.getState().split)).not.toContain(left.id);
+  expect(useSessionsStore.getState().sessions.some((session) => session.id === left.id)).toBe(false);
+});
