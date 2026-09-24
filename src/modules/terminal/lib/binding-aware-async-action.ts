@@ -62,6 +62,22 @@ export function runBindingAwareContinuation(token: TerminalFocusReturnToken, con
   return true;
 }
 
+/** Automatic focus (a pane finishing its open/connect) must not pull keystrokes
+ * out of the command palette, a rename box or a search field into the PTY.
+ * Another pane's xterm textarea is a normal pane switch, not typing elsewhere. */
+export function isTypingOutsidePane(paneElement?: Element | null): boolean {
+  if (typeof document === "undefined") return false;
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement) || paneElement?.contains(focused)) return false;
+  if (focused.closest(".xterm")) return false;
+  return (
+    focused.isContentEditable ||
+    focused instanceof HTMLInputElement ||
+    focused instanceof HTMLTextAreaElement ||
+    focused instanceof HTMLSelectElement
+  );
+}
+
 /** Focus once both an active terminal binding and backend readiness exist.
  * The captured return token prevents a late ready event from stealing focus. */
 export function createDeferredTerminalFocus(): {
@@ -76,6 +92,7 @@ export function createDeferredTerminalFocus(): {
     attempted = true;
     const captured = token;
     token = null;
+    if (isTypingOutsidePane()) return false;
     return returnTerminalFocus(captured);
   };
   return {

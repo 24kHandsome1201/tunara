@@ -8,24 +8,9 @@ import { getTerminalTheme } from "@/styles/terminalTheme";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
-import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { isTypingOutsidePane, issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
-
-// termReady can flip while the user is already typing elsewhere (command
-// palette, rename box, explorer search); don't pull those keystrokes into the PTY.
-function isTypingOutsidePane(paneElement: HTMLElement | undefined): boolean {
-  const focused = document.activeElement;
-  if (!(focused instanceof HTMLElement) || paneElement?.contains(focused)) return false;
-  // Another pane's xterm helper textarea is a normal pane switch, not typing elsewhere.
-  if (focused.closest(".xterm")) return false;
-  return (
-    focused.isContentEditable ||
-    focused instanceof HTMLInputElement ||
-    focused instanceof HTMLTextAreaElement ||
-    focused instanceof HTMLSelectElement
-  );
-}
 
 interface TerminalRuntimeSyncOptions {
   sessionId: string;

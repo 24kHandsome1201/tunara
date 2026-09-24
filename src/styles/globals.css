@@ -1291,11 +1291,12 @@ button.explorer-listing-action {
   background: var(--c-bg-1);
   color: var(--c-text-7);
   box-shadow: inset -1px 0 var(--c-border-1);
-  font: var(--fs-meta)/1.7 var(--font-mono);
+  /* Row height follows the editor text size (not the smaller gutter font) so numbers stay aligned. */
+  font: var(--fs-meta)/calc(var(--fs-secondary) * 1.7) var(--font-mono);
   text-align: right;
   user-select: none;
 }
-.file-editor-lines span { display: block; height: 1.7em; font-variant-numeric: tabular-nums; }
+.file-editor-lines span { display: block; height: calc(var(--fs-secondary) * 1.7); font-variant-numeric: tabular-nums; }
 .file-editor-input {
   position: relative;
   min-width: 0;

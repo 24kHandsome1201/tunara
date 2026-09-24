@@ -72,6 +72,7 @@ test("terminal titles strip controls, bidi overrides, and HerdR-style decoration
   assert.equal(sanitizeTerminalTitle("────────────────────────────────────────"), null);
   assert.equal(sanitizeTerminalTitle("HerdR" + "─".repeat(100)), "HerdR");
   assert.ok(sanitizeTerminalTitle("HerdR".repeat(80))?.endsWith("…"));
+  assert.equal(sanitizeTerminalTitle("herdr\tagent\nlog"), "herdr agent log");
 });
 
 test("terminal title limits are UTF-8 and grapheme safe", () => {
