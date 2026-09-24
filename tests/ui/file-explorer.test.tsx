@@ -108,6 +108,46 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.getAllByRole("button", { name: "/" })[0].getAttribute("aria-current")).toBe("page");
   });
 
+  test("resolves a local ~ cwd to the real home before listing", async () => {
+    const readPaths: string[] = [];
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir") {
+        expect((payload as { path: string }).path).toBe("~");
+        return "/Users/alice";
+      }
+      if (command === "fs_read_dir") {
+        readPaths.push((payload as { path: string }).path);
+        return [{ name: "notes.txt", kind: "file", size: 1, mtime: 0 }];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="~" />);
+    expect(await screen.findByRole("treeitem", { name: /^notes\.txt/ })).toBeTruthy();
+    expect(readPaths).toEqual(["/Users/alice"]);
+    expect(screen.getByRole("button", { name: "alice" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByText("Loading")).toBeNull();
+  });
+
+  test("a local ~ that cannot be resolved shows an error and Refresh retries", async () => {
+    let resolveCalls = 0;
+    mockIPC((command) => {
+      if (command === "fs_resolve_dir") {
+        resolveCalls += 1;
+        if (resolveCalls === 1) throw new Error("no home");
+        return "/Users/alice";
+      }
+      if (command === "fs_read_dir") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="local" rootDir="~" />);
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole("button", { name: "alice" }).getAttribute("aria-current")).toBe("page"));
+    expect(resolveCalls).toBe(2);
+  });
+
   test("follows the SSH terminal cwd until the host toggle is turned off", async () => {
     useSessionsStore.setState({
       activeSessionId: "remote",
