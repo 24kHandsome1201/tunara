@@ -12,6 +12,21 @@ import { issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTer
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
 
+// termReady can flip while the user is already typing elsewhere (command
+// palette, rename box, explorer search); don't pull those keystrokes into the PTY.
+function isTypingOutsidePane(paneElement: HTMLElement | undefined): boolean {
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement) || paneElement?.contains(focused)) return false;
+  // Another pane's xterm helper textarea is a normal pane switch, not typing elsewhere.
+  if (focused.closest(".xterm")) return false;
+  return (
+    focused.isContentEditable ||
+    focused instanceof HTMLInputElement ||
+    focused instanceof HTMLTextAreaElement ||
+    focused instanceof HTMLSelectElement
+  );
+}
+
 interface TerminalRuntimeSyncOptions {
   sessionId: string;
   active: boolean;
@@ -79,7 +94,7 @@ export function useTerminalRuntimeSync({
         const actions = recovery?.querySelectorAll<HTMLButtonElement>("button");
         const primary = actions?.[actions.length - 1];
         if (primary && !primary.disabled) primary.focus();
-        else term.focus();
+        else if (!isTypingOutsidePane(term.element)) term.focus();
       } catch {
         /* noop */
       }

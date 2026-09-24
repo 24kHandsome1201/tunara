@@ -625,7 +625,7 @@
   "inspector.preview.tunnel.opening": "正在建立转发",
   "inspector.preview.tunnel.ready": "转发已就绪",
   "inspector.preview.tunnel.failed": "转发失败",
-  "inspector.preview.tunnel.no_source": "SSH 隧道没有返回可用的 Preview 转发地址。",
+  "inspector.preview.tunnel.no_source": "SSH 转发没有返回可用的预览地址。",
   "inspector.preview.tunnel.open": "建立转发并打开",
   "inspector.preview.tunnel.close": "关闭转发和预览",
   "inspector.preview.view_terminal": "查看来源终端",

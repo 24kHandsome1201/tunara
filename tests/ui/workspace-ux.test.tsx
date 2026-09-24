@@ -77,6 +77,25 @@ test("activating a previously hidden dead terminal focuses recovery after layout
   expect(focus).not.toHaveBeenCalled();
 });
 
+test("a terminal that becomes ready does not steal focus from typing elsewhere", async () => {
+  render(<><input aria-label="Rename" /><div data-terminal-session-id={session.id}><div data-testid="xterm" className="xterm"><textarea aria-label="Other pane" /></div></div></>);
+  const focus = vi.fn();
+  const termRef = { current: { element: screen.getByTestId("xterm"), options: {}, rows: 0, cols: 80, focus } as unknown as Terminal };
+  const fitRef = { current: { fit: vi.fn() } as unknown as FitAddon };
+  const ptyRef = { current: null };
+  const rename = screen.getByRole("textbox", { name: "Rename" });
+  rename.focus();
+  const view = renderHook(({ termReady }) => useTerminalRuntimeSync({ sessionId: session.id, active: true, termReady, termRef, fitRef, ptyRef, fontSize: 14, fontFamily: "monospace", nerdFontFallback: false, scrollback: 1000, cursorStyle: "bar", cursorBlink: true, screenReaderMode: false, theme: "light", accent: "#c2683c" }), { initialProps: { termReady: false } });
+  view.rerender({ termReady: true });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(focus).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(rename);
+  screen.getByRole("textbox", { name: "Other pane" }).focus();
+  view.rerender({ termReady: false });
+  view.rerender({ termReady: true });
+  await waitFor(() => expect(focus).toHaveBeenCalledOnce());
+});
+
 test("reader takes focus, returns without closing, and close does not bubble into reader selection", async () => {
   useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
   useUIStore.getState().openReader({ sessionId: session.id, filePath: "/project/a.ts", fileName: "a.ts" });
