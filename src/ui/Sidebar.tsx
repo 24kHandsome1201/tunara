@@ -17,7 +17,8 @@ import {
   sidebarGroupKey,
 } from "@/modules/session/sidebar-groups";
 import { sessionTerminalMultiplexer } from "@/modules/session/terminal-multiplexer";
-import { useHerdrStatusPolling } from "@/state/herdr-status";
+import { useMultiplexerStatusPolling } from "@/state/multiplexer-status";
+import { statusMultiplexer, type StatusMultiplexer } from "@/modules/session/multiplexer-status";
 
 // Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
@@ -63,7 +64,14 @@ export function Sidebar({
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
   const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
   const hasSessions = sessions.length > 0;
-  useHerdrStatusPolling(sessions.some((s) => !s.remote && sessionTerminalMultiplexer(s) === "herdr"));
+  const polledMultiplexers = useMemo(
+    () => sessions.flatMap((s): StatusMultiplexer[] => {
+      const kind = s.remote ? null : statusMultiplexer(sessionTerminalMultiplexer(s));
+      return kind ? [kind] : [];
+    }),
+    [sessions],
+  );
+  useMultiplexerStatusPolling(polledMultiplexers);
   const q = search.trim().toLowerCase();
   // Derived view of the session list. Memoized so an unrelated sessions-store
   // update (e.g. an agent heartbeat that rebuilds the sessions array) doesn't

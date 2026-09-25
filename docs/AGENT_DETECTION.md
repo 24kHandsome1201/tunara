@@ -245,6 +245,26 @@ Non-interactive utility invocations (`claude --version`, `claude auth`,
 from `AgentResumeIntent`; starting the binary is not itself evidence of an
 interactive session that can be resumed.
 
+## Multiplexer panes (HerdR / tmux / Zellij)
+
+When a local, non-Agent session's foreground command is `herdr`, `tmux` or
+`zellij`, the Sidebar polls `multiplexer_status({ kind })` every 3 s
+(`src/state/multiplexer-status.ts`). The Rust side
+(`src-tauri/src/modules/multiplexer/`) has one `MultiplexerAdapter` per kind;
+each runs a read-only CLI query (2 s timeout per call, 1 MiB output cap, at
+most 128 panes, fields ≤ 1024 bytes with no control characters) and returns
+`{ kind, panes: [{ paneId, sessionId, windowId, focused, agent, agentStatus, cwd }] }`.
+Adapters never send keys or write to a pane; remote (SSH) sessions are not polled.
+
+| Kind | Query | Agent status | Known limits |
+|---|---|---|---|
+| HerdR | `herdr api snapshot` | HerdR's own `idle / working / blocked / done` | blocked panes join the "needs you" row |
+| tmux | `tmux list-panes -a -F …` (default server) | `running` when `pane_current_command` matches a registry `commands` entry | only sessions with an attached client; focus = active pane of the most recently active attached session; cannot tell working from waiting for input; node-wrapped CLIs whose process name is `node` are not matched |
+| Zellij | `zellij list-sessions --no-formatting`, then `zellij --session <name> action dump-layout` | `running` when the layout's pane `command` matches the registry | no pane ids in the CLI, ids are synthesized `<session>:<tab>:<pane>`; `focus` only exists while a client is attached; first 4 live sessions; 3 s total deadline |
+
+The summary (`blocked / working / running / done / focusedCwd`) drives the
+session-card chip, and the Inspector follows `focusedCwd` for all three kinds.
+
 ## Preflight & resolution
 
 When the UI is about to start an agent it calls the `agent_preflight` Tauri
