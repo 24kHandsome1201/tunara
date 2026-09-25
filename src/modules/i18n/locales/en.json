@@ -142,7 +142,7 @@
   "ssh.keyboardInteractive.response_failed": "The authentication prompt is no longer available",
   "ssh.keyboardInteractive.stale": "A stale authentication prompt was cancelled for your safety",
   "ssh.keyboardInteractive.stale_detail": "The SSH host or this connection attempt changed. Tunara did not send a response.",
-  "connection.phase.pending": "Queued",
+  "connection.phase.pending": "Not started",
   "connection.phase.opening": "Opening terminal",
   "connection.phase.resolving": "Resolving host",
   "connection.phase.connecting": "Connecting to host",

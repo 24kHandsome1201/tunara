@@ -144,3 +144,8 @@ test("sidebarActivityLabel names the running program only", () => {
   assert.equal(sidebarActivityLabel(local("b", "/p", { runState: "idle", lastCommand: "vim" })), "");
   assert.equal(sidebarActivityLabel(local("c", "/p", { runState: "running", agent: "CC", lastCommand: "claude" })), "");
 });
+
+test("sshConnectionPhaseTone keeps not-started sessions neutral and ready sessions green", () => {
+  assert.equal(sshConnectionPhaseTone("pending"), "neutral");
+  assert.equal(sshConnectionPhaseTone("ready"), "success");
+});

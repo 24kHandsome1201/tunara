@@ -3,7 +3,7 @@ import { type Session, type TerminalProgress, deriveTitle } from "./types";
 import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { sessionCue } from "@/modules/session/session-attention";
-import { sidebarActivityLabel, sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
+import { sidebarActivityLabel, sidebarCwdLabel, CONNECTION_TONE_COLORS, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import { sessionTerminalMultiplexer, terminalMultiplexerLabel } from "@/modules/session/terminal-multiplexer";
 import { useHerdrStatusStore } from "@/state/herdr-status";
 import { SessionCueDot } from "./SessionCueDot";
@@ -436,16 +436,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                   fontSize: "var(--fs-meta)",
                   fontWeight: 700,
                   lineHeight: "16px",
-                  color: connectionTone === "error"
-                    ? "var(--c-error)"
-                    : connectionTone === "warning"
-                      ? "var(--c-warning-text)"
-                      : "var(--c-accent)",
-                  background: connectionTone === "error"
-                    ? "var(--c-error-bg)"
-                    : connectionTone === "warning"
-                      ? "var(--c-warning-bg)"
-                      : "color-mix(in srgb, var(--c-accent) 14%, transparent)",
+                  ...CONNECTION_TONE_COLORS[connectionTone],
                 }}
               >
                 {t(`connection.phase.${connectionPhase}`)}
