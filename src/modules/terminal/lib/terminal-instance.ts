@@ -1,7 +1,7 @@
 import { Terminal, type ILinkHandler } from "@xterm/xterm";
 import type { CursorStyle } from "@/state/ui";
 import type { ThemeType } from "@/ui/types";
-import { getTerminalMinimumContrastRatio, getTerminalTheme } from "@/styles/terminalTheme";
+import { getTerminalMinimumContrastRatio, getTerminalTheme, withBackgroundOpacity } from "@/styles/terminalTheme";
 import { withAtlasIsolationFontFamily } from "./terminal-atlas-isolation.ts";
 import { buildTerminalFontFamily } from "./terminal-font.ts";
 
@@ -15,6 +15,7 @@ interface TerminalInstanceOptions {
   cursorBlink: boolean;
   cursorStyle: CursorStyle;
   screenReaderMode: boolean;
+  backgroundOpacity?: number;
   atlasIsolationKey?: string;
   linkHandler?: ILinkHandler | null;
 }
@@ -29,6 +30,7 @@ export function createTerminalInstance({
   cursorBlink,
   cursorStyle,
   screenReaderMode,
+  backgroundOpacity = 1,
   atlasIsolationKey,
   linkHandler,
 }: TerminalInstanceOptions): Terminal {
@@ -39,7 +41,8 @@ export function createTerminalInstance({
     ),
     fontSize,
     lineHeight: 1.05,
-    theme: getTerminalTheme(theme, accent),
+    theme: withBackgroundOpacity(getTerminalTheme(theme, accent), backgroundOpacity),
+    allowTransparency: backgroundOpacity < 1,
     minimumContrastRatio: getTerminalMinimumContrastRatio(theme),
     cursorBlink,
     cursorStyle,

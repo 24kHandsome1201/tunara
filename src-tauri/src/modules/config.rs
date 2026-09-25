@@ -12,6 +12,7 @@ const DEFAULT_SCROLLBACK: u32 = 10_000;
 const MIN_SIDEBAR_WIDTH: u16 = 200;
 const MAX_SIDEBAR_WIDTH: u16 = 400;
 const MIN_PANEL_WIDTH: u16 = 240;
+const MIN_BACKGROUND_OPACITY: f64 = 0.3;
 const CONFIG_DIR: &str = "tunara";
 const LEGACY_CONFIG_DIR: &str = "conduit";
 static CONFIG_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -37,6 +38,8 @@ pub struct AppearanceConfig {
     pub terminal_inline_images: bool,
     pub terminal_screen_reader_mode: bool,
     pub terminal_host_modifier: String,
+    pub background_opacity: f64,
+    pub background_blur: bool,
     pub language: String,
     pub global_shortcut: String,
 }
@@ -67,6 +70,8 @@ impl Default for AppearanceConfig {
                 "shift"
             }
             .into(),
+            background_opacity: 1.0,
+            background_blur: false,
             language: "system".into(),
             global_shortcut: "CmdOrCtrl+Shift+T".into(),
         }
@@ -86,6 +91,11 @@ impl AppearanceConfig {
             }
             .into();
         }
+        self.background_opacity = if self.background_opacity.is_finite() {
+            self.background_opacity.clamp(MIN_BACKGROUND_OPACITY, 1.0)
+        } else {
+            1.0
+        };
         self.font_size = self.font_size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
         self.scrollback = DEFAULT_SCROLLBACK;
         self.sidebar_width = self
@@ -295,7 +305,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 20] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 22] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -327,6 +337,8 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
             "terminal_host_modifier",
             value(config.terminal_host_modifier.clone()),
         ),
+        ("background_opacity", value(config.background_opacity)),
+        ("background_blur", value(config.background_blur)),
         ("language", value(config.language.clone())),
         ("global_shortcut", value(config.global_shortcut.clone())),
     ]
@@ -718,6 +730,8 @@ font_size = 15
         assert!(saved.contains("[keybindings]"));
         assert!(saved.contains("scrollback = 10000"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
+        assert!(saved.contains("background_opacity = 1.0"));
+        assert!(saved.contains("background_blur = false"));
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));
 

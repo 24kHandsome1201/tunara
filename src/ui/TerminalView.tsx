@@ -97,8 +97,9 @@ function TerminalViewImpl({
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const screenReaderMode = useUIStore((s) => s.terminalScreenReaderMode); const accent = useUIStore((s) => s.accent);
+  const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
   useTerminalRuntimeSync({
-    sessionId, active, termReady: ptyReady, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, accent,
+    sessionId, active, termReady: ptyReady, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, theme, accent, backgroundOpacity,
   });
   useTerminalWebgl(termRef, active, webglRef, sessionId, ptyReady, fitRef, ptyRef);
   useEffect(() => {
@@ -129,6 +130,7 @@ function TerminalViewImpl({
         cursorBlink,
         cursorStyle,
         screenReaderMode,
+        backgroundOpacity: useUIStore.getState().backgroundOpacity,
         atlasIsolationKey: sessionId,
         linkHandler: createTerminalHyperlinkHandler(openUrl, linkInputRef.current.shouldActivate),
       });

@@ -19,6 +19,8 @@ export interface RawAppearanceConfig {
   terminal_inline_images: boolean;
   terminal_screen_reader_mode: boolean;
   terminal_host_modifier: "shift" | "meta" | "alt";
+  background_opacity: number;
+  background_blur: boolean;
   language: string;
   global_shortcut: string;
 }

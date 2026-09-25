@@ -34,6 +34,7 @@ commands.allow = [
   "open_in_editor",
   "remote_edit_staging_path",
   "load_config",
+  "set_window_background_blur",
   "save_config",
   "workspace_store_file_state",
   "preview_open",

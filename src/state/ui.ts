@@ -63,6 +63,8 @@ export interface AppearanceSettings {
   terminalClipboardWrite: boolean;
   terminalScreenReaderMode: boolean;
   terminalHostModifier: TerminalHostModifier;
+  backgroundOpacity: number;
+  backgroundBlur: boolean;
   keybindings: KeybindingConfig;
   language: Language;
   globalShortcut: string;
@@ -75,6 +77,12 @@ const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 400;
 const MIN_PANEL_WIDTH = 240;
 const MAX_PANEL_WIDTH_RATIO = 0.45;
+export const MIN_BACKGROUND_OPACITY = 0.3;
+
+export function sanitizeBackgroundOpacity(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return 1;
+  return Math.round(Math.min(1, Math.max(MIN_BACKGROUND_OPACITY, raw)) * 100) / 100;
+}
 
 export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   theme: "light",
@@ -95,6 +103,8 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   // Cmd on macOS still needs real-hardware/WKWebView verification; Option is
   // available as an alternative. Shift is the conservative Win/Linux choice.
   terminalHostModifier: typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "meta" : "shift",
+  backgroundOpacity: 1,
+  backgroundBlur: false,
   keybindings: { ...DEFAULT_KEYBINDINGS },
   language: "system",
   globalShortcut: "CmdOrCtrl+Shift+T",
@@ -156,6 +166,8 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
     terminalClipboardWrite: typeof raw?.terminal_clipboard_write === "boolean" ? raw.terminal_clipboard_write : DEFAULT_SETTINGS.terminalClipboardWrite,
     terminalScreenReaderMode: typeof raw?.terminal_screen_reader_mode === "boolean" ? raw.terminal_screen_reader_mode : DEFAULT_SETTINGS.terminalScreenReaderMode,
     terminalHostModifier: raw?.terminal_host_modifier === "meta" || raw?.terminal_host_modifier === "alt" || raw?.terminal_host_modifier === "shift" ? raw.terminal_host_modifier : DEFAULT_SETTINGS.terminalHostModifier,
+    backgroundOpacity: sanitizeBackgroundOpacity(raw?.background_opacity),
+    backgroundBlur: typeof raw?.background_blur === "boolean" ? raw.background_blur : DEFAULT_SETTINGS.backgroundBlur,
     keybindings: sanitizeKeybindings(config?.keybindings),
     language: isLanguage(raw?.language) ? raw.language : DEFAULT_SETTINGS.language,
     globalShortcut: typeof raw?.global_shortcut === "string" ? raw.global_shortcut : DEFAULT_SETTINGS.globalShortcut,
@@ -183,6 +195,8 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       terminal_inline_images: true,
       terminal_screen_reader_mode: s.terminalScreenReaderMode,
       terminal_host_modifier: s.terminalHostModifier,
+      background_opacity: s.backgroundOpacity,
+      background_blur: s.backgroundBlur,
       language: s.language,
       global_shortcut: s.globalShortcut,
     },
@@ -354,6 +368,8 @@ interface UIState extends AppearanceSettings {
   setBellNotification: (b: boolean) => void;
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
+  setBackgroundOpacity: (opacity: number) => void;
+  setBackgroundBlur: (enabled: boolean) => void;
   resetAppearance: () => void;
   setLanguage: (lang: Language) => void;
 }
@@ -605,6 +621,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setBellNotification: (bellNotification) => set({ bellNotification: typeof bellNotification === "boolean" ? bellNotification : true }),
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
+    setBackgroundOpacity: (opacity) => set({ backgroundOpacity: sanitizeBackgroundOpacity(opacity) }),
+    setBackgroundBlur: (backgroundBlur) => set({ backgroundBlur: backgroundBlur === true }),
     resetAppearance: () => set({
       theme: DEFAULT_SETTINGS.theme,
       accent: DEFAULT_SETTINGS.accent,
@@ -616,6 +634,8 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       nerdFontFallback: DEFAULT_SETTINGS.nerdFontFallback,
       sidebarWidth: DEFAULT_SETTINGS.sidebarWidth,
       panelWidth: DEFAULT_SETTINGS.panelWidth,
+      backgroundOpacity: DEFAULT_SETTINGS.backgroundOpacity,
+      backgroundBlur: DEFAULT_SETTINGS.backgroundBlur,
     }),
     setLanguage: (language) => {
       const next = isLanguage(language) ? language : DEFAULT_SETTINGS.language;
@@ -664,7 +684,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

@@ -357,6 +357,7 @@ export default function App() {
         const target = event.target instanceof HTMLElement ? event.target : null;
         if (!target?.closest('[role="menu"], [role="listbox"]')) advanceTerminalFocusEpoch();
       }}
+      className="tunara-shell"
       style={{
         display: "flex",
         flexDirection: "column",

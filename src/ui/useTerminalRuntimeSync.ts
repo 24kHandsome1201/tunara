@@ -4,7 +4,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { PtySession } from "@/modules/terminal/lib/pty-bridge";
 import type { CursorStyle } from "@/state/ui";
 import type { ThemeType } from "./types";
-import { getTerminalMinimumContrastRatio, getTerminalTheme } from "@/styles/terminalTheme";
+import { getTerminalMinimumContrastRatio, getTerminalTheme, withBackgroundOpacity } from "@/styles/terminalTheme";
 import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
@@ -30,6 +30,7 @@ interface TerminalRuntimeSyncOptions {
   screenReaderMode: boolean;
   theme: ThemeType;
   accent: string;
+  backgroundOpacity: number;
 }
 
 export function useTerminalRuntimeSync({
@@ -48,6 +49,7 @@ export function useTerminalRuntimeSync({
   screenReaderMode,
   theme,
   accent,
+  backgroundOpacity,
 }: TerminalRuntimeSyncOptions) {
   const [systemIsDark, setSystemIsDark] = useState(() =>
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
@@ -102,7 +104,8 @@ export function useTerminalRuntimeSync({
     term.options.cursorBlink = cursorBlink;
     term.options.screenReaderMode = screenReaderMode;
     const resolvedTheme = theme === "system" ? (systemIsDark ? "dark" : "light") : theme;
-    term.options.theme = getTerminalTheme(resolvedTheme, accent);
+    term.options.allowTransparency = backgroundOpacity < 1;
+    term.options.theme = withBackgroundOpacity(getTerminalTheme(resolvedTheme, accent), backgroundOpacity);
     term.options.minimumContrastRatio = getTerminalMinimumContrastRatio(resolvedTheme);
     try {
       fit?.fit();
@@ -123,5 +126,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
+  }, [active, accent, backgroundOpacity, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
 }
