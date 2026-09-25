@@ -90,3 +90,34 @@ jobs:
       - name: Build Tauri binary (release)
         if: matrix.label == 'macos'
         run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin tunara
+
+  e2e:
+    runs-on: ubuntu-latest
+    name: e2e (chromium)
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Typecheck e2e harness
+        run: pnpm typecheck:e2e
+      - name: Run e2e smoke tests
+        run: pnpm test:e2e
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
