@@ -30,7 +30,7 @@ interface TerminalRuntimeSyncOptions {
   screenReaderMode: boolean;
   theme: ThemeType;
   accent: string;
-  backgroundOpacity: number;
+  backgroundOpacity?: number;
 }
 
 export function useTerminalRuntimeSync({
@@ -49,7 +49,7 @@ export function useTerminalRuntimeSync({
   screenReaderMode,
   theme,
   accent,
-  backgroundOpacity,
+  backgroundOpacity = 1,
 }: TerminalRuntimeSyncOptions) {
   const [systemIsDark, setSystemIsDark] = useState(() =>
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
