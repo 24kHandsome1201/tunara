@@ -952,11 +952,14 @@ fn system_canonical_lookup(host: &str) -> Result<Option<CanonicalLookup>, String
     hints.ai_flags = libc::AI_CANONNAME;
     let mut result = std::ptr::null_mut();
     let status = unsafe { libc::getaddrinfo(host.as_ptr(), std::ptr::null(), &hints, &mut result) };
-    if status != 0 || result.is_null() {
+    if status != 0 {
         return Ok(None);
     }
+    let Some(info) = (unsafe { result.as_ref() }) else {
+        return Ok(None);
+    };
     let canonical_name = unsafe {
-        let value = (*result).ai_canonname;
+        let value = info.ai_canonname;
         (!value.is_null())
             .then(|| CStr::from_ptr(value).to_str().ok().map(str::to_string))
             .flatten()
