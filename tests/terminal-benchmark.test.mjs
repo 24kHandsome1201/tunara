@@ -2,8 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  compareRendererBenchmarkReports,
   evaluateAnimationFrames,
+  mebibytesPerSecond,
   percentile,
+  renderRendererComparisonMarkdown,
+  resolveBenchmarkRendererOverride,
   scanBenchmarkMarker,
   summarizeDurations,
   TerminalOutputSequenceTracker,
@@ -95,4 +99,52 @@ test("M1 output sequence tracker detects dropped or reordered blocks", () => {
   const result = tracker.push(framedOutput(nonce, payload));
   assert.equal(result?.sequenceValid, false);
   assert.match(result?.firstSequenceError ?? "", /block 1 header mismatch/);
+});
+
+test("benchmark builds pin the renderer instead of running the glyph self-check", () => {
+  assert.equal(resolveBenchmarkRendererOverride(false, "dom"), null);
+  assert.equal(resolveBenchmarkRendererOverride(true, undefined), "gpu");
+  assert.equal(resolveBenchmarkRendererOverride(true, "webgl"), "gpu");
+  assert.equal(resolveBenchmarkRendererOverride(true, "dom"), "compat");
+});
+
+test("renderer comparison table reports throughput and four-pane frame time side by side", () => {
+  const report = (renderer, scale) => ({
+    benchmark: "renderer",
+    renderer,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    paneRenderers: [renderer, renderer, renderer, renderer],
+    throughput: {
+      bytes: 50 * 1024 * 1024,
+      elapsedMs: 1000 * scale,
+      mebibytesPerSecond: mebibytesPerSecond(50 * 1024 * 1024, 1000 * scale),
+      renderDrainMs: 12 * scale,
+      referenceVisible: true,
+      sequenceValid: true,
+      frames: summarizeDurations([16, 17, 18]),
+    },
+    fourPane: {
+      panes: 4,
+      bytesPerPane: 8 * 1024 * 1024,
+      elapsedMs: 2000 * scale,
+      frames: summarizeDurations([16, 20, 40 * scale]),
+      frameP95BudgetMs: 33.4,
+      referencesVisible: 4,
+    },
+    correct: true,
+    passed: scale === 1,
+  });
+  const rows = compareRendererBenchmarkReports(report("webgl", 1), report("dom", 2));
+  const byMetric = Object.fromEntries(rows.map((row) => [row.metric, row]));
+  assert.equal(byMetric["large output throughput"].webgl, "50.00 MiB/s (50 MiB in 1000 ms)");
+  assert.equal(byMetric["large output throughput"].dom, "25.00 MiB/s (50 MiB in 2000 ms)");
+  assert.equal(byMetric["4-pane frame p50 / p95 / max"].dom, "20.00 ms / 80.00 ms / 80.00 ms");
+  assert.equal(byMetric["panes on requested renderer"].webgl, "4/4");
+  assert.equal(byMetric["4-pane frame p95 within budget"].webgl, "no (budget 33.40 ms)");
+  assert.equal(byMetric["4-pane frame p95 within budget"].dom, "no (budget 33.40 ms)");
+  assert.equal(byMetric["output correct"].dom, "yes");
+  const markdown = renderRendererComparisonMarkdown(rows);
+  assert.match(markdown, /^\| Metric \| WebGL \| DOM \|\n\| --- \| --- \| --- \|\n/);
+  assert.equal(markdown.split("\n").length, rows.length + 2);
+  assert.equal(mebibytesPerSecond(1024, 0), 0);
 });

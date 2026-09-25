@@ -1,5 +1,7 @@
 import { useUIStore, type ExternalEditor, EXTERNAL_EDITORS, EDITOR_LABELS } from "@/state/ui";
 import { useT } from "@/modules/i18n";
+import { TERMINAL_RENDERER_PREFERENCES } from "@/modules/terminal/lib/terminal-renderer-policy";
+import { useTerminalGpuHealth, type TerminalGpuHealth } from "@/ui/useTerminalWebgl";
 import {
   SECTION_HINT,
   SECTION_LABEL,
@@ -8,9 +10,28 @@ import {
 } from "./controls";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 
-/** Terminal: host modifier, clipboard, bell, editor, accessibility. */
+const RENDERER_LABEL_KEYS = {
+  auto: "settings.terminal.renderer.auto",
+  gpu: "settings.terminal.renderer.gpu",
+  compat: "settings.terminal.renderer.compat",
+} as const;
+
+function rendererStatusKey(health: TerminalGpuHealth): string {
+  if (health.gpuFault) return "settings.terminal.renderer.status.fault";
+  switch (health.selfCheck) {
+    case "passed": return "settings.terminal.renderer.status.passed";
+    case "failed": return "settings.terminal.renderer.status.failed";
+    case "unavailable": return "settings.terminal.renderer.status.unavailable";
+    default: return "settings.terminal.renderer.status.pending";
+  }
+}
+
+/** Terminal: renderer, host modifier, clipboard, bell, editor, accessibility. */
 export function TerminalSettings() {
   const t = useT();
+  const terminalRenderer = useUIStore((s) => s.terminalRenderer);
+  const setTerminalRenderer = useUIStore((s) => s.setTerminalRenderer);
+  const gpuHealth = useTerminalGpuHealth();
   const bellNotification = useUIStore((s) => s.bellNotification);
   const setBellNotification = useUIStore((s) => s.setBellNotification);
   const terminalClipboardWrite = useUIStore((s) => s.terminalClipboardWrite);
@@ -24,6 +45,22 @@ export function TerminalSettings() {
 
   return (
     <div>
+      <div style={{ marginBottom: 24 }}>
+        <div style={SECTION_LABEL}>{t("settings.terminal.renderer")}</div>
+        <Segmented
+          ariaLabel={t("settings.terminal.renderer")}
+          options={TERMINAL_RENDERER_PREFERENCES.map((renderer) => ({ id: renderer, label: t(RENDERER_LABEL_KEYS[renderer]) }))}
+          value={terminalRenderer}
+          onChange={setTerminalRenderer}
+        />
+        <div style={SECTION_HINT}>{t("settings.terminal.renderer.hint")}</div>
+        {terminalRenderer === "auto" && (
+          <div style={SECTION_HINT} data-testid="terminal-renderer-status">
+            {t(rendererStatusKey(gpuHealth))}
+            {gpuHealth.report?.reason && <code style={{ display: "block", marginTop: 4, wordBreak: "break-all" }}>{gpuHealth.report.reason}</code>}
+          </div>
+        )}
+      </div>
       <div className="settings-terminal-interactions" style={{ marginBottom: 24 }}>
         <label htmlFor="terminal-host-modifier" className="settings-interaction-row" style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) minmax(210px, auto)", alignItems: "center", gap: 10, fontSize: "var(--fs-secondary)" }}>
           <span>{t("settings.appearance.host_modifier")}</span>

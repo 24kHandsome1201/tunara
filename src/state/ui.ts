@@ -32,6 +32,11 @@ import {
 } from "@/modules/session/reader-state";
 import { DEFAULT_ACCENT } from "@/styles/shell-tint-boot";
 import type { TerminalHostModifier } from "@/modules/terminal/lib/terminal-input-router";
+import {
+  DEFAULT_TERMINAL_RENDERER,
+  sanitizeTerminalRendererPreference,
+  type TerminalRendererPreference,
+} from "@/modules/terminal/lib/terminal-renderer-policy";
 
 const REMOVED_TERMINAL_THEMES = [
   "catppuccin",
@@ -64,6 +69,7 @@ export interface AppearanceSettings {
   terminalScreenReaderMode: boolean;
   terminalHostModifier: TerminalHostModifier;
   terminalOptionAsMeta: boolean;
+  terminalRenderer: TerminalRendererPreference;
   backgroundOpacity: number;
   backgroundBlur: boolean;
   keybindings: KeybindingConfig;
@@ -105,6 +111,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   // available as an alternative. Shift is the conservative Win/Linux choice.
   terminalHostModifier: typeof navigator !== "undefined" && /Mac/.test(navigator.platform) ? "meta" : "shift",
   terminalOptionAsMeta: false,
+  terminalRenderer: DEFAULT_TERMINAL_RENDERER,
   backgroundOpacity: 1,
   backgroundBlur: false,
   keybindings: { ...DEFAULT_KEYBINDINGS },
@@ -169,6 +176,7 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
     terminalScreenReaderMode: typeof raw?.terminal_screen_reader_mode === "boolean" ? raw.terminal_screen_reader_mode : DEFAULT_SETTINGS.terminalScreenReaderMode,
     terminalHostModifier: raw?.terminal_host_modifier === "meta" || raw?.terminal_host_modifier === "alt" || raw?.terminal_host_modifier === "shift" ? raw.terminal_host_modifier : DEFAULT_SETTINGS.terminalHostModifier,
     terminalOptionAsMeta: typeof raw?.terminal_option_as_meta === "boolean" ? raw.terminal_option_as_meta : DEFAULT_SETTINGS.terminalOptionAsMeta,
+    terminalRenderer: sanitizeTerminalRendererPreference(raw?.terminal_renderer),
     backgroundOpacity: sanitizeBackgroundOpacity(raw?.background_opacity),
     backgroundBlur: typeof raw?.background_blur === "boolean" ? raw.background_blur : DEFAULT_SETTINGS.backgroundBlur,
     keybindings: sanitizeKeybindings(config?.keybindings),
@@ -199,6 +207,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       terminal_screen_reader_mode: s.terminalScreenReaderMode,
       terminal_host_modifier: s.terminalHostModifier,
       terminal_option_as_meta: s.terminalOptionAsMeta,
+      terminal_renderer: s.terminalRenderer,
       background_opacity: s.backgroundOpacity,
       background_blur: s.backgroundBlur,
       language: s.language,
@@ -373,6 +382,7 @@ interface UIState extends AppearanceSettings {
   setTerminalClipboardWrite: (enabled: boolean) => void;
   setTerminalHostModifier: (modifier: TerminalHostModifier) => void;
   setTerminalOptionAsMeta: (enabled: boolean) => void;
+  setTerminalRenderer: (renderer: TerminalRendererPreference) => void;
   setBackgroundOpacity: (opacity: number) => void;
   setBackgroundBlur: (enabled: boolean) => void;
   resetAppearance: () => void;
@@ -627,6 +637,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setTerminalClipboardWrite: (terminalClipboardWrite) => set({ terminalClipboardWrite: typeof terminalClipboardWrite === "boolean" ? terminalClipboardWrite : DEFAULT_SETTINGS.terminalClipboardWrite }),
     setTerminalHostModifier: (terminalHostModifier) => set({ terminalHostModifier }),
     setTerminalOptionAsMeta: (terminalOptionAsMeta) => set({ terminalOptionAsMeta: typeof terminalOptionAsMeta === "boolean" ? terminalOptionAsMeta : DEFAULT_SETTINGS.terminalOptionAsMeta }),
+    setTerminalRenderer: (terminalRenderer) => set({ terminalRenderer: sanitizeTerminalRendererPreference(terminalRenderer) }),
     setBackgroundOpacity: (opacity) => set({ backgroundOpacity: sanitizeBackgroundOpacity(opacity) }),
     setBackgroundBlur: (backgroundBlur) => set({ backgroundBlur: backgroundBlur === true }),
     resetAppearance: () => set({
@@ -690,7 +701,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "terminalOptionAsMeta", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "terminalOptionAsMeta", "terminalRenderer", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

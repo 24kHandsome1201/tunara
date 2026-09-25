@@ -115,7 +115,12 @@ export function installMockBackend(): TunaraE2EHandle {
   const ptyById = (id: unknown) => state.ptys.find((pty) => pty.id === id);
 
   const handlers: Record<string, (args: InvokeArgs) => unknown> = {
-    load_config: () => ({ path: `${HOME}/.config/tunara/config.toml`, config: { keybindings: {} }, error: null }),
+    // The smoke tests read terminal text from `.xterm-rows`, which only the DOM renderer produces.
+    load_config: () => ({
+      path: `${HOME}/.config/tunara/config.toml`,
+      config: { appearance: { terminal_renderer: "compat" }, keybindings: {} },
+      error: null,
+    }),
     save_config: (args) => {
       state.savedConfigs.push(args?.config);
       return null;

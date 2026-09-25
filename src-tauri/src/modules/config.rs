@@ -39,6 +39,7 @@ pub struct AppearanceConfig {
     pub terminal_screen_reader_mode: bool,
     pub terminal_host_modifier: String,
     pub terminal_option_as_meta: bool,
+    pub terminal_renderer: String,
     pub background_opacity: f64,
     pub background_blur: bool,
     pub language: String,
@@ -72,6 +73,7 @@ impl Default for AppearanceConfig {
             }
             .into(),
             terminal_option_as_meta: false,
+            terminal_renderer: "auto".into(),
             background_opacity: 1.0,
             background_blur: false,
             language: "system".into(),
@@ -92,6 +94,9 @@ impl AppearanceConfig {
                 "shift"
             }
             .into();
+        }
+        if !matches!(self.terminal_renderer.as_str(), "auto" | "gpu" | "compat") {
+            self.terminal_renderer = "auto".into();
         }
         self.background_opacity = if self.background_opacity.is_finite() {
             self.background_opacity.clamp(MIN_BACKGROUND_OPACITY, 1.0)
@@ -307,7 +312,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 23] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 24] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -343,6 +348,7 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
             "terminal_option_as_meta",
             value(config.terminal_option_as_meta),
         ),
+        ("terminal_renderer", value(config.terminal_renderer.clone())),
         ("background_opacity", value(config.background_opacity)),
         ("background_blur", value(config.background_blur)),
         ("language", value(config.language.clone())),
@@ -737,6 +743,7 @@ font_size = 15
         assert!(saved.contains("scrollback = 10000"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
         assert!(saved.contains("terminal_option_as_meta = false"));
+        assert!(saved.contains("terminal_renderer = \"auto\""));
         assert!(saved.contains("background_opacity = 1.0"));
         assert!(saved.contains("background_blur = false"));
         assert!(saved.contains("[terminal_interactions]"));

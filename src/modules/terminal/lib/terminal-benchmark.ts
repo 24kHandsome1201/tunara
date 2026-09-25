@@ -1,13 +1,35 @@
+import type { TerminalRendererPreference } from "./terminal-renderer-policy.ts";
+
 const configuredBenchmark = typeof import.meta.env !== "undefined"
   ? import.meta.env.VITE_TUNARA_BENCHMARK
   : undefined;
 
-export type TerminalBenchmarkVariant = "m0" | "m1-output" | "m2-safe-write" | "m2-local-safe-write" | "m2-native-close" | "phase3-restart" | "phase3-tunnel";
+export type TerminalBenchmarkVariant = "m0" | "m1-output" | "m2-safe-write" | "m2-local-safe-write" | "m2-native-close" | "phase3-restart" | "phase3-tunnel" | "renderer";
 export const TERMINAL_BENCHMARK_VARIANT: TerminalBenchmarkVariant | null =
-  configuredBenchmark === "m0" || configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write" || configuredBenchmark === "m2-local-safe-write" || configuredBenchmark === "m2-native-close" || configuredBenchmark === "phase3-restart" || configuredBenchmark === "phase3-tunnel"
+  configuredBenchmark === "m0" || configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write" || configuredBenchmark === "m2-local-safe-write" || configuredBenchmark === "m2-native-close" || configuredBenchmark === "phase3-restart" || configuredBenchmark === "phase3-tunnel" || configuredBenchmark === "renderer"
     ? configuredBenchmark
     : null;
 export const TERMINAL_BENCHMARK_MODE = TERMINAL_BENCHMARK_VARIANT !== null;
+type BenchmarkRendererMode = "webgl" | "dom";
+
+/**
+ * Benchmark builds pin the renderer instead of running the glyph self-check:
+ * `VITE_TUNARA_BENCHMARK_RENDERER=dom` forces the compat (DOM) path and any
+ * other value forces WebGL, so a WebGL-vs-DOM comparison is two builds of the
+ * same commit that differ only in this variable.
+ */
+export function resolveBenchmarkRendererOverride(
+  benchmarkMode: boolean,
+  configured: string | undefined,
+): TerminalRendererPreference | null {
+  if (!benchmarkMode) return null;
+  return configured === "dom" ? "compat" : "gpu";
+}
+export const TERMINAL_BENCHMARK_RENDERER_OVERRIDE: TerminalRendererPreference | null = resolveBenchmarkRendererOverride(
+  TERMINAL_BENCHMARK_MODE,
+  TERMINAL_BENCHMARK_MODE ? import.meta.env.VITE_TUNARA_BENCHMARK_RENDERER : undefined,
+);
+export const TERMINAL_BENCHMARK_RENDERER: BenchmarkRendererMode = TERMINAL_BENCHMARK_RENDERER_OVERRIDE === "compat" ? "dom" : "webgl";
 export type TerminalBenchmarkTransport = "local" | "ssh";
 export const TERMINAL_BENCHMARK_TRANSPORT: TerminalBenchmarkTransport =
   (configuredBenchmark === "m1-output" || configuredBenchmark === "m2-safe-write")
@@ -21,7 +43,6 @@ export const TERMINAL_OUTPUT_REFERENCE = "TUNARA_M1_OK 中文 🐟 é 界 ┌�
 
 type BenchmarkWriter = (data: string) => Promise<void>;
 type BenchmarkSnapshotReader = () => Promise<string>;
-type BenchmarkRendererMode = "webgl" | "dom";
 
 interface BenchmarkRendererControl {
   mode: () => BenchmarkRendererMode;
@@ -553,4 +574,103 @@ export function sampleAnimationFrames(durationMs = 5_000): Promise<number[]> {
     const timeout = setTimeout(finish, durationMs + 1_000);
     frameId = requestAnimationFrame(tick);
   });
+}
+
+/** Frame sampler with an explicit stop, for phases whose length is set by the workload rather than a timer. */
+export function startAnimationFrameSampler(): { stop: () => number[] } {
+  const deltas: number[] = [];
+  let previous: number | null = null;
+  let frameId = 0;
+  let stopped = false;
+  const tick = (now: number) => {
+    if (stopped) return;
+    if (previous !== null) deltas.push(now - previous);
+    previous = now;
+    frameId = requestAnimationFrame(tick);
+  };
+  frameId = requestAnimationFrame(tick);
+  return {
+    stop: () => {
+      stopped = true;
+      if (frameId) cancelAnimationFrame(frameId);
+      return deltas;
+    },
+  };
+}
+
+/** Per-renderer numbers the pre-release renderer benchmark emits and the comparison table consumes. */
+export interface RendererBenchmarkReport {
+  benchmark: "renderer";
+  renderer: BenchmarkRendererMode;
+  timestamp: string;
+  paneRenderers: BenchmarkRendererMode[];
+  throughput: {
+    bytes: number;
+    elapsedMs: number;
+    mebibytesPerSecond: number;
+    renderDrainMs: number;
+    referenceVisible: boolean;
+    sequenceValid: boolean;
+    frames: DurationSummary;
+  };
+  fourPane: {
+    panes: number;
+    bytesPerPane: number;
+    elapsedMs: number;
+    frames: DurationSummary;
+    frameP95BudgetMs: number;
+    referencesVisible: number;
+  };
+  /** Every pane used the requested renderer and all output arrived intact. */
+  correct: boolean;
+  /** `correct` and the 4-pane frame p95 stayed within budget. */
+  passed: boolean;
+}
+
+export function mebibytesPerSecond(bytes: number, elapsedMs: number): number {
+  if (!(elapsedMs > 0)) return 0;
+  return Math.round((bytes / 1024 / 1024) / (elapsedMs / 1000) * 100) / 100;
+}
+
+export interface RendererComparisonRow {
+  metric: string;
+  webgl: string;
+  dom: string;
+}
+
+function formatMs(value: number | null): string {
+  return value === null ? "n/a" : `${value.toFixed(2)} ms`;
+}
+
+/** Rows for the WebGL-vs-DOM table recorded in release notes and PRs. */
+export function compareRendererBenchmarkReports(
+  webgl: RendererBenchmarkReport,
+  dom: RendererBenchmarkReport,
+): RendererComparisonRow[] {
+  const pick = (label: string, read: (report: RendererBenchmarkReport) => string): RendererComparisonRow => ({
+    metric: label,
+    webgl: read(webgl),
+    dom: read(dom),
+  });
+  return [
+    pick("panes on requested renderer", (report) => `${report.paneRenderers.filter((mode) => mode === report.renderer).length}/${report.paneRenderers.length}`),
+    pick("large output throughput", (report) => `${report.throughput.mebibytesPerSecond.toFixed(2)} MiB/s (${Math.round(report.throughput.bytes / 1024 / 1024)} MiB in ${Math.round(report.throughput.elapsedMs)} ms)`),
+    pick("large output render drain", (report) => formatMs(report.throughput.renderDrainMs)),
+    pick("large output frame p50 / p95", (report) => `${formatMs(report.throughput.frames.p50Ms)} / ${formatMs(report.throughput.frames.p95Ms)}`),
+    pick("large output reference intact", (report) => report.throughput.referenceVisible && report.throughput.sequenceValid ? "yes" : "no"),
+    pick("4-pane frame p50 / p95 / max", (report) => `${formatMs(report.fourPane.frames.p50Ms)} / ${formatMs(report.fourPane.frames.p95Ms)} / ${formatMs(report.fourPane.frames.maxMs)}`),
+    pick("4-pane wall time", (report) => `${Math.round(report.fourPane.elapsedMs)} ms for ${report.fourPane.panes} × ${Math.round(report.fourPane.bytesPerPane / 1024 / 1024)} MiB`),
+    pick("4-pane references intact", (report) => `${report.fourPane.referencesVisible}/${report.fourPane.panes}`),
+    pick("4-pane frame p95 within budget", (report) => {
+      const p95 = report.fourPane.frames.p95Ms;
+      return p95 !== null && p95 <= report.fourPane.frameP95BudgetMs ? "yes" : `no (budget ${formatMs(report.fourPane.frameP95BudgetMs)})`;
+    }),
+    pick("output correct", (report) => report.correct ? "yes" : "no"),
+  ];
+}
+
+export function renderRendererComparisonMarkdown(rows: readonly RendererComparisonRow[]): string {
+  const lines = ["| Metric | WebGL | DOM |", "| --- | --- | --- |"];
+  for (const row of rows) lines.push(`| ${row.metric} | ${row.webgl} | ${row.dom} |`);
+  return lines.join("\n");
 }
