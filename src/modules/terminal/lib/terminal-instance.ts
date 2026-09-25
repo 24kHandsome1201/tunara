@@ -15,6 +15,7 @@ interface TerminalInstanceOptions {
   cursorBlink: boolean;
   cursorStyle: CursorStyle;
   screenReaderMode: boolean;
+  optionAsMeta: boolean;
   atlasIsolationKey?: string;
   linkHandler?: ILinkHandler | null;
 }
@@ -29,6 +30,7 @@ export function createTerminalInstance({
   cursorBlink,
   cursorStyle,
   screenReaderMode,
+  optionAsMeta,
   atlasIsolationKey,
   linkHandler,
 }: TerminalInstanceOptions): Terminal {
@@ -45,6 +47,7 @@ export function createTerminalInstance({
     cursorStyle,
     cursorInactiveStyle: "outline",
     screenReaderMode,
+    macOptionIsMeta: optionAsMeta,
     scrollback,
     wordSeparator: " ()[]{}'\";,",
     // Right-click selects the word under the cursor (iTerm/Terminal.app behaviour)

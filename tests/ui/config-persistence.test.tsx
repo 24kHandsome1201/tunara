@@ -151,6 +151,9 @@ test("screen reader mode persists and applies to open and new terminals", async 
   useUIStore.getState().setTerminalScreenReaderMode(true);
   await waitFor(() => expect(saved).toMatchObject({ appearance: { terminal_screen_reader_mode: true } }));
 
+  useUIStore.getState().setTerminalOptionAsMeta(true);
+  await waitFor(() => expect(saved).toMatchObject({ appearance: { terminal_option_as_meta: true } }));
+
   const existing = createTerminalInstance({
     fontSize: 14,
     fontFamily: "JetBrains Mono",
