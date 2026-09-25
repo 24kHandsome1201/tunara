@@ -90,3 +90,54 @@ jobs:
       - name: Build Tauri binary (release)
         if: matrix.label == 'macos'
         run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin tunara
+
+  # Real-SSH regression matrix: drives the production russh client against
+  # Docker OpenSSH containers (auth methods, bash/zsh, host key TOFU/mismatch,
+  # ProxyJump, passive disconnect + reconnect, SFTP on ~10k files, remote
+  # grep latency). Fixture and runner live in tests/ssh-matrix/; details in
+  # docs/TESTING.md ("Real SSH regression matrix").
+  ssh-matrix:
+    runs-on: ubuntu-22.04
+    name: ssh-matrix (docker)
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: ssh-matrix
+
+      - name: Generate fixture client keys
+        run: tests/ssh-matrix/keygen.sh
+
+      # sshd only starts listening after the entrypoint has provisioned users
+      # and the ~10k-file directory, so the containers finish booting while
+      # the test binary compiles; run.sh waits for both ports before testing.
+      - name: Start OpenSSH fixture (target + jump)
+        run: docker compose -f tests/ssh-matrix/docker-compose.yml up -d --build
+
+      - name: Compile matrix test binary
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --features ssh-matrix --no-run
+
+      - name: Run real-SSH regression matrix
+        run: tests/ssh-matrix/run.sh
+
+      - name: Fixture logs
+        if: failure()
+        run: docker compose -f tests/ssh-matrix/docker-compose.yml logs --no-color
+
+      - name: Tear down fixture
+        if: always()
+        run: docker compose -f tests/ssh-matrix/docker-compose.yml down -v --remove-orphans

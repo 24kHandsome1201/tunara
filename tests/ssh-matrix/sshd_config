@@ -1,0 +1,57 @@
+# sshd configuration for the Tunara real-SSH regression matrix containers.
+# Deliberately permissive in ways a production host should not be (password
+# and keyboard-interactive enabled) because the matrix has to exercise every
+# client-side auth path. Never reuse this outside the fixture.
+
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/matrix/ssh_host_ed25519_key
+HostKey /etc/ssh/matrix/ssh_host_rsa_key
+PidFile /run/sshd.pid
+
+LogLevel VERBOSE
+UseDNS no
+PrintMotd no
+PermitRootLogin no
+StrictModes yes
+MaxAuthTries 6
+# The Rust test binary opens many sessions in parallel; never drop
+# handshakes at random because of the default 10:30:100 throttle.
+MaxStartups 100
+MaxSessions 100
+# Passive-disconnect coverage kills the per-connection sshd process; keep the
+# server from racing that with its own keepalive teardown.
+ClientAliveInterval 0
+TCPKeepAlive no
+
+# Debian sshd needs PAM for both password and keyboard-interactive.
+UsePAM yes
+PubkeyAuthentication yes
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+PermitEmptyPasswords no
+
+# ProxyJump = direct-tcpip through the jump hop.
+AllowTcpForwarding yes
+AllowAgentForwarding no
+X11Forwarding no
+
+Subsystem sftp internal-sftp
+AcceptEnv LANG LC_*
+
+# Each fixture user is pinned to exactly one method so a passing test proves
+# the client really used that path instead of falling through to another.
+Match User keyuser
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    AuthenticationMethods publickey
+
+Match User pwuser
+    PubkeyAuthentication no
+    KbdInteractiveAuthentication no
+    AuthenticationMethods password
+
+Match User kbduser
+    PubkeyAuthentication no
+    PasswordAuthentication no
+    AuthenticationMethods keyboard-interactive

@@ -1,0 +1,54 @@
+# Real-SSH regression matrix fixture. See docs/TESTING.md ("Real SSH
+# regression matrix") for the full flow; the short version is:
+#
+#   tests/ssh-matrix/keygen.sh
+#   docker compose -f tests/ssh-matrix/docker-compose.yml up -d --build --wait
+#   tests/ssh-matrix/run.sh
+#   docker compose -f tests/ssh-matrix/docker-compose.yml down -v --remove-orphans
+#
+# `target` is the host every scenario ends on; `jump` is the ProxyJump hop and
+# reaches `target` over the private compose network as `target:22`. Both hops
+# generate fresh host keys on every start.
+
+services:
+  target:
+    build: .
+    image: tunara-ssh-matrix:local
+    environment:
+      MATRIX_ROLE: target
+    volumes:
+      - ./.generated/client:/fixture/client:ro
+    ports:
+      - "127.0.0.1:${TUNARA_SSH_MATRIX_TARGET_PORT:-2201}:22"
+    networks:
+      - matrix
+    healthcheck:
+      test: ["CMD", "bash", "-c", "test -f /run/matrix-ready && exec 3<>/dev/tcp/127.0.0.1/22"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  jump:
+    build: .
+    image: tunara-ssh-matrix:local
+    environment:
+      MATRIX_ROLE: jump
+    volumes:
+      - ./.generated/client:/fixture/client:ro
+    ports:
+      - "127.0.0.1:${TUNARA_SSH_MATRIX_JUMP_PORT:-2202}:22"
+    networks:
+      - matrix
+    depends_on:
+      - target
+    healthcheck:
+      test: ["CMD", "bash", "-c", "test -f /run/matrix-ready && exec 3<>/dev/tcp/127.0.0.1/22"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+networks:
+  matrix:
+    driver: bridge
