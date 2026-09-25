@@ -10,6 +10,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 修复
+- 终端启用 Unicode 15 字形簇宽度（`@xterm/addon-unicode-graphemes`，随终端懒加载）：emoji ZWJ 组合、旗帜、肤色修饰符和 emoji 呈现选择器按单个宽字符计算列宽，修复光标与列错位；CJK 与全角标点宽度不变，与禁用的标点压缩保持一致。
+
 ### 稳定性
 - 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
 
