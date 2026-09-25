@@ -1,7 +1,7 @@
 import { t } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import type { RemoteInfo } from "@/ui/types";
-import { makeHostId, saveHost, type SshHostProfile } from "./hosts-bridge";
+import { loadHosts, makeHostId, saveHost, type SshHostProfile } from "./hosts-bridge";
 
 /**
  * Snapshot of the host profile to persist after the SSH session reports
@@ -33,6 +33,8 @@ export function sshHostProfileFromSuccessfulConnect(
     identityFile: identity,
     certificateFile: remote.authMethod === "key" || remote.authMethod === "auto" ? remote.certificateFile ?? "" : "",
     ...(remote.route?.profileId ? { proxyJumpProfileId: remote.route.profileId } : {}),
+    ...(remote.autoReconnect ? { autoReconnect: true } : {}),
+    ...(remote.injectShellIntegration === false ? { injectShellIntegration: false } : {}),
   };
 }
 
@@ -40,6 +42,23 @@ export async function persistSuccessfulSshHost(profile: SshHostProfile): Promise
   try {
     await saveHost(profile);
     useUIStore.getState().bumpSshProfilesEpoch();
+  } catch {
+    useUIStore.getState().addToast({ title: t("ssh.profile.save_failed"), subtitle: "", variant: "error" });
+  }
+}
+
+/** Turns on auto reconnect for the saved profile matching this endpoint, if one exists. */
+export async function enableSavedHostAutoReconnect(remote: RemoteInfo): Promise<void> {
+  try {
+    const jumpId = remote.route?.profileId ?? "";
+    const saved = (await loadHosts()).find((candidate) =>
+      candidate.host === remote.host
+      && candidate.port === remote.port
+      && candidate.user === remote.user
+      && (candidate.proxyJumpProfileId ?? "") === jumpId
+    );
+    if (!saved || saved.autoReconnect) return;
+    await persistSuccessfulSshHost({ ...saved, autoReconnect: true });
   } catch {
     useUIStore.getState().addToast({ title: t("ssh.profile.save_failed"), subtitle: "", variant: "error" });
   }
