@@ -14,6 +14,9 @@ review/
 node_modules/
 dist/
 dist-ssr/
+dist-e2e/
+test-results/
+playwright-report/
 *.local
 .vite/
 
