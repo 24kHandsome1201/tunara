@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -28,6 +29,8 @@ import { INSPECTOR_TAB_DESCRIPTORS, resolveInspectorScope } from "./inspector-sc
 import { resolveInspectorNavigation } from "./inspector-navigation";
 import { hasActivePreviewSource } from "@/modules/preview/preview-source";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
+import { useHerdrStatusStore } from "@/state/herdr-status";
+import { sessionTerminalMultiplexer } from "@/modules/session/terminal-multiplexer";
 
 const DiffPanel = lazy(() => import("./DiffPanel").then((module) => ({ default: module.DiffPanel })));
 const TransferCenter = lazy(() => import("./TransferCenter").then((module) => ({ default: module.TransferCenter })));
@@ -75,8 +78,15 @@ function SwitcherButton({
   );
 }
 
-export function InspectorPanel({ session, onClose, filesOnly = false }: InspectorPanelProps) {
+export function InspectorPanel({ session: terminalSession, onClose, filesOnly = false }: InspectorPanelProps) {
   const t = useT();
+  const herdrCwd = useHerdrStatusStore((s) =>
+    !terminalSession.remote && sessionTerminalMultiplexer(terminalSession) === "herdr" ? s.summary?.focusedCwd ?? null : null
+  );
+  const session = useMemo(
+    () => (herdrCwd ? { ...terminalSession, dir: herdrCwd } : terminalSession),
+    [terminalSession, herdrCwd],
+  );
   const storeTab = useUIStore((s) => s.inspectorTab);
   const setTab = useUIStore((s) => s.setInspectorTab);
   const previewOpened = useUIStore((s) => Boolean(s.inspectorPreviewOpenedSessionIds[session.id]));
@@ -131,6 +141,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
     case "files":
       activePanel = (
         <FileExplorer
+          key={herdrCwd ?? "terminal-cwd"}
           sessionId={session.id}
           rootDir={session.dir}
           remotePtyId={isRemote ? session.ptyId : undefined}

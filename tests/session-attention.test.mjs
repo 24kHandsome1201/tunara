@@ -115,3 +115,13 @@ test("FIFO waiting ties break by session list order", () => {
   ];
   assert.equal(nextAttentionSessionId(sessions, null), "second");
 });
+
+test("blocked HerdR agents count as needs-you and target the HerdR host session", () => {
+  const herdr = { sessionId: "h", blocked: 2 };
+  const sessions = [session("h", { runState: "running", lastCommand: "herdr" }), session("u", { unread: true })];
+  assert.deepEqual(deriveAttentionRow(sessions, herdr), { kind: "needs-you", count: 2 });
+  assert.equal(nextAttentionSessionId(sessions, null, herdr), "h");
+  const waiting = [...sessions, session("w", { agent: "CC", agentActivity: "waiting_confirmation" })];
+  assert.equal(nextAttentionSessionId(waiting, null, herdr), "w");
+  assert.equal(nextAttentionSessionId(sessions, null, { sessionId: "gone", blocked: 1 }), "u");
+});

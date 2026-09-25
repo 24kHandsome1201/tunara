@@ -3,6 +3,12 @@ import { isAgentActivityBusy } from "../terminal/lib/agent-lifecycle.ts";
 
 export type SessionCue = "needs-you" | "unread";
 
+/** Blocked HerdR agents, attributed to the local session hosting the HerdR client. */
+export interface HerdrAttention {
+  sessionId: string;
+  blocked: number;
+}
+
 export type AttentionRowModel =
   | { kind: "needs-you"; count: number }
   | { kind: "running"; count: number }
@@ -75,8 +81,8 @@ export function dockBadgeCount(sessions: readonly Session[]): number {
  * Sidebar first row: at most one fact. Waiting confirmation uses the
  * terracotta count; otherwise a muted running count; otherwise nothing.
  */
-export function deriveAttentionRow(sessions: readonly Session[]): AttentionRowModel {
-  const needsYou = dockBadgeCount(sessions);
+export function deriveAttentionRow(sessions: readonly Session[], herdr: HerdrAttention | null = null): AttentionRowModel {
+  const needsYou = dockBadgeCount(sessions) + (herdr?.blocked ?? 0);
   if (needsYou > 0) return { kind: "needs-you", count: needsYou };
   let running = 0;
   for (const session of sessions) {
@@ -94,12 +100,14 @@ export function deriveAttentionRow(sessions: readonly Session[]): AttentionRowMo
 export function nextAttentionSessionId(
   sessions: readonly Session[],
   _activeSessionId: string | null = null,
+  herdr: HerdrAttention | null = null,
 ): string | null {
   const waiting = sessions.filter(isWaitingForYou);
   if (waiting.length > 0) {
     waiting.sort((left, right) => compareByAttentionTime(left, right, sessions, "fifo"));
     return waiting[0].id;
   }
+  if (herdr && herdr.blocked > 0 && sessions.some((session) => session.id === herdr.sessionId)) return herdr.sessionId;
   const unread = sessions.filter((session) => Boolean(session.unread));
   if (unread.length > 0) {
     unread.sort((left, right) => compareByAttentionTime(left, right, sessions, "recent"));

@@ -1,6 +1,7 @@
 {
   "attention.reason.confirmation": "Awaiting confirmation",
   "attention.reason.connection": "Connection needs attention",
+  "attention.reason.herdr": "HerdR agent blocked",
   "attention.reason.failure": "Command failed",
   "reader.surface": "Reading pane",
   "reader.return_terminal": "Return to terminal",
