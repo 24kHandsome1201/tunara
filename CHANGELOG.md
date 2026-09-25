@@ -10,6 +10,10 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 新功能
+- 设置 → 终端新增「渲染器」：自动 / GPU / 兼容（默认自动）。自动模式先在隐藏终端里绘制中文、中文标点、Emoji、制表符、带重音拉丁字母和 ANSI 真彩色探针，比对 DOM 与 WebGL 的单元格尺寸并逐格检查字形墨迹、越界和颜色，通过后才启用 GPU（WebGL）渲染；自检失败、WebGL 不可用、初始化失败或运行中上下文丢失时回退并固定为 DOM 渲染。GPU 模式始终尝试 WebGL（保留原有逐终端回退），兼容模式始终使用 DOM。设置页会显示自检结果。
+- 终端基准新增 `renderer` 变体与 `scripts/benchmark-renderer.sh`：对同一构建分别以 WebGL 和 DOM 运行大输出吞吐、渲染排空与四窗格并发输出帧时间，输出可直接贴进发布记录的对比表。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复

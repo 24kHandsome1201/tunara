@@ -120,6 +120,9 @@ export default defineConfig(async ({ mode }) => ({
       output: {
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return;
+          // addon-webgl is dynamically imported only once a pane may use
+          // WebGL; keep it out of the modulepreloaded xterm chunk.
+          if (id.includes("@xterm/addon-webgl")) return "xterm-webgl";
           if (id.includes("/xterm/") || id.includes("@xterm/")) return "xterm";
           if (id.includes("@phosphor-icons/")) return;
           if (
