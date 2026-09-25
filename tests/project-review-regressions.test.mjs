@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+const readModule = (base) =>
+  [read(`${base}.rs`), ...readdirSync(resolve(root, base)).filter((name) => name.endsWith(".rs")).sort().map((name) => read(`${base}/${name}`))].join("\n");
 
 // The settings dialog is split into a shell plus per-tab panels; assertions
 // about "the settings UI" scan the concatenated sources of all of them.
@@ -203,7 +205,7 @@ test("release stays draft until direct, legacy, and updater assets are complete"
 
 test("SSH reconnect is transactional and host-key prompts fail closed", () => {
   const ssh = read("src-tauri/src/modules/ssh/mod.rs");
-  const connection = read("src-tauri/src/modules/ssh/connection.rs");
+  const connection = readModule("src-tauri/src/modules/ssh/connection");
   const auth = read("src-tauri/src/modules/ssh/auth.rs");
   const reconnect = read("src/modules/ssh/auto-reconnect.ts");
   const forwarding = read("src-tauri/src/modules/ssh/forwarding.rs");
@@ -236,7 +238,7 @@ test("SSH reconnect is transactional and host-key prompts fail closed", () => {
 
 test("SSH connection state comes from backend phase evidence and remains ephemeral", () => {
   const session = read("src-tauri/src/modules/pty/session.rs");
-  const connection = read("src-tauri/src/modules/ssh/connection.rs");
+  const connection = readModule("src-tauri/src/modules/ssh/connection");
   const bridge = read("src/modules/terminal/lib/pty-bridge.ts");
   const terminal = read("src/ui/TerminalView.tsx");
   const persisted = read("src/state/persist-snapshot.ts");
@@ -269,7 +271,7 @@ test("terminal initialization latch resets when an effect lifecycle is cleaned u
 test("restored SSH sessions forward only absolute cwd through a staged, quoted bootstrap", () => {
   const bridge = read("src/modules/terminal/lib/pty-bridge.ts");
   const ssh = read("src-tauri/src/modules/ssh/mod.rs");
-  const connection = read("src-tauri/src/modules/ssh/connection.rs");
+  const connection = readModule("src-tauri/src/modules/ssh/connection");
 
   assert.match(bridge, /cwd: opts\.cwd\?\.startsWith\("\/"\) \? opts\.cwd : undefined/);
   assert.match(bridge, /cwd: conn\.cwd \?\? null/);
@@ -1498,7 +1500,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(terminal, /let inputToPtyEnabled = true/);
   assert.match(terminal, /inputToPtyEnabled = false/);
   assert.match(terminal, /sendInput: writePty/);
-  const sshConnection = read("src-tauri/src/modules/ssh/connection.rs");
+  const sshConnection = readModule("src-tauri/src/modules/ssh/connection");
   assert.match(sshConnection, /let mut accepting_input = true/);
   assert.match(sshConnection, /accepting_input = false/);
   assert.match(sshConnection, /input = pump_control\.next_input\(\), if accepting_input/);

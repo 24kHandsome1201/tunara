@@ -13,6 +13,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ### 产品与体验
 - 新增跨会话终端搜索（默认 ⌘⇧F / Ctrl+Shift+F，也可从命令面板打开，可在配置文件 `[keybindings] global_terminal_search` 中修改）：在所有已打开的本地与 SSH 终端的内存回滚中搜索，支持纯文本、正则与大小写切换，按会话分组显示行上下文与所属命令块；选中结果会切换到该会话、滚动到对应行并高亮匹配。搜索分片让出主线程、新查询取消旧查询并限制结果数量；不建立索引，也不写入磁盘。
 
+### 修复与优化
+- 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复
