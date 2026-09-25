@@ -136,6 +136,53 @@ Two patterns appear, depending on what the code under test enforces:
 
 All three use a `SystemTime::now()` nanosecond suffix so parallel tests never collide on a path.
 
+### Real SSH regression matrix (`tests/ssh-matrix/`, cargo feature `ssh-matrix`)
+
+Everything above is hermetic. The one exception is the **real-SSH regression matrix** — a set of Rust integration tests in `src-tauri/src/modules/ssh/matrix_tests/` that drive the production russh client (`SshSession`, `auth.rs`, `known_hosts.rs`, the SFTP commands and `ssh_fs_grep`) against two Docker OpenSSH containers. It is the release-gate evidence for the roadmap item "发布后的真实环境回归矩阵" and runs as the `ssh-matrix (docker)` job in `.github/workflows/ci.yml` on every PR.
+
+**Gating.** The module is declared `#[cfg(all(test, feature = "ssh-matrix"))]`, so plain `cargo test --lib` (and `cargo clippy --all-targets`) never compiles it, needs no Docker, and stays hermetic. It only exists when you pass `--features ssh-matrix`, which is what `tests/ssh-matrix/run.sh` does.
+
+**Prerequisites.** Docker with Compose v2 (`docker compose`), `ssh-keygen`, `ssh-agent`/`ssh-add`, and a Rust toolchain. Ports `2201` (target) and `2202` (jump) on `127.0.0.1` are used by default; override with `TUNARA_SSH_MATRIX_TARGET_PORT` / `TUNARA_SSH_MATRIX_JUMP_PORT` (read by both the compose file and the runner).
+
+```bash
+tests/ssh-matrix/keygen.sh                                                  # throwaway ed25519 + RSA client keys in tests/ssh-matrix/.generated/ (git-ignored)
+docker compose -f tests/ssh-matrix/docker-compose.yml up -d --build         # build the Debian openssh-server image, start target + jump
+tests/ssh-matrix/run.sh                                                     # waits for both hops, then runs the gated tests
+tests/ssh-matrix/run.sh --nocapture                                         # extra args go to the test harness
+tests/ssh-matrix/run.sh matrix_tests::remote_fs                             # a single scenario
+docker compose -f tests/ssh-matrix/docker-compose.yml down -v --remove-orphans
+```
+
+`run.sh` compiles with your real `HOME`, then re-executes the test binary with `HOME` pointed at a fresh temp directory (also exported as `TUNARA_SSH_MATRIX_HOME`, which the harness asserts against `dirs::home_dir()`). That is what makes the host-key scenarios safe: `known_hosts.rs` reads/writes `$HOME/.ssh/known_hosts`, and the download sandbox confines to `$HOME`, so nothing in the matrix ever touches the developer's or the runner's real `~/.ssh`. The runner also starts a private `ssh-agent` holding only the fixture ed25519 key and exports its `SSH_AUTH_SOCK` for the agent scenario, then kills it and deletes the temp home on exit.
+
+**Topology** (`tests/ssh-matrix/docker-compose.yml`, `Dockerfile`, `entrypoint.sh`, `sshd_config`):
+
+| Container | Reached as | Role |
+|---|---|---|
+| `target` | `127.0.0.1:2201` from the host, `target:22` from `jump` | every scenario ends here; owns `/srv/matrix/big` (9,990 files, a `NEEDLE-tunara` line in every 1000th) and `/srv/matrix/scratch/edit.txt` |
+| `jump` | `127.0.0.1:2202` | ProxyJump hop; same image, no fixture data |
+
+Both hops generate fresh host keys on every start (so TOFU is always a genuine first connect), and provision three users with `Match User` blocks that pin **exactly one** method each — a scenario cannot pass by falling back to a different mechanism:
+
+| User | Shell | Only accepts | Credential |
+|---|---|---|---|
+| `keyuser` | `/bin/bash` | `publickey` (ed25519 **and** RSA both in `authorized_keys`) | `tests/ssh-matrix/.generated/client/id_{ed25519,rsa}` |
+| `pwuser` | `/bin/zsh` | `password` | `TUNARA_SSH_MATRIX_PW_PASSWORD` (default `tunara-matrix-pw`) |
+| `kbduser` | `/bin/bash` | `keyboard-interactive` (PAM) | `TUNARA_SSH_MATRIX_KBD_PASSWORD` (default `tunara-matrix-kbd`) |
+
+**Scenarios** (one file each under `matrix_tests/`; every test uses its own `session_id` and unique remote paths so they run in parallel):
+
+- `auth_matrix.rs` — `AuthMethod::Key` with ed25519 and with RSA (`identity_file`), `Password`, `KeyboardInteractive` (answers the PAM prompt through `resolve_keyboard_interactive_prompt` and asserts the prompt event came from the server with `echo=false`), and `Agent` via the runner's private agent. Each success asserts `id -un` and the `resolving → connecting → handshaking → authenticating → openingShell → ready` phase sequence; the negative cases (wrong password / wrong kbd answer) assert the failure is reported at the `authenticating` stage.
+- `shells.rs` — bash (`keyuser`) and zsh (`pwuser`) with `shell_integration` on: the bootstrap line is filtered out of the terminal, OSC 133 prompt/command-done markers and the OSC 7 cwd report arrive, `$SHELL`/`$0` name the expected shell, and the flow-control credit loop (`ack_output`) keeps output moving.
+- `host_key.rs` — first connect with `HostKeyPolicy::AcceptUnknown` persists a `[127.0.0.1]:2201` entry; a second connect matches without prompting or rewriting the file; `HostKeyPolicy::Prompt` covers accept+remember, accept-session-only (nothing written) and reject. **Mismatch**: the test learns the *jump* container's real key, writes it into `known_hosts` under a different alias for the *target* port (`localhost` vs `127.0.0.1`), connects to that alias and asserts `known_hosts.rs` refuses with a mismatch error and **no prompt** is offered; it then clears the store and reconnects to prove the target's own key is healthy. These tests serialize on a mutex because they share the single isolated `known_hosts` file.
+- `proxy_jump.rs` — `SshSession::open_via_jump` (`jump` hop with `keyuser`, target reached as `target:22`): `uname -n` on the routed shell equals the target's and differs from the jump's, `SSH_CONNECTION` on the target shows the jump's address, and both hops emit their own `hop`-tagged phases. Failure naming the hop: wrong jump credentials → `RoutedOpenError::Jump(..)` and the target is never dialed; good jump + wrong target credentials → `RoutedOpenError::Target(..)`.
+- `reconnect.rs` — passive disconnect: the shell runs `kill -9 $PPID` (its own sshd session process), the client observes `PtyEvent::TransportLost { reason: "transportClosed" }` then `Exit`, `SshSession::{transport_lost, is_closed, wait_closed}` agree and writes fail. Reconnect registers a new physical session for the **same logical session** with a new `transport_generation`; the old `SessionBindingV1` no longer resolves in `PtyState::get_for_ssh_binding`, a safe-write with the stale binding fails with `SSH_SFTP_WRITE_FAILED`, the new binding works, and no events from generation 1 leak after its close.
+- `remote_fs.rs` — SFTP on `/srv/matrix/big` (~10k files): `ssh_fs_read_dir` returns exactly 9,990 entries (hidden filtering checked), `ssh_fs_read_file` reads a needle file and fails on a missing one, `ssh_fs_upload` streams progress and refuses to overwrite without `overwrite`, `ssh_fs_write_text_file` (safe write) succeeds with the fresh fingerprint and rejects a stale one, `ssh_fs_download` lands under `$HOME/Downloads` and refuses a path outside `$HOME`. Remote grep: `ssh_fs_grep` over the same directory finds exactly the `NEEDLE-tunara` files with correct relative paths and line numbers, honours `case_insensitive`, and each of 3 samples must finish under `TUNARA_SSH_MATRIX_GREP_BUDGET_MS`.
+
+**Latency threshold.** The grep budget defaults to **3000 ms** per call. Remote grep is one `grep -rEIn` exec over ~10k small files on a warm container page cache, which measures well under a second on the GitHub `ubuntu-22.04` runner; 3 s leaves headroom for cold caches and noisy shared runners while still catching the regressions the roadmap item is about (per-file round trips, missing `--exclude-dir`, or output buffering stalls, all of which push a 10k-file search past several seconds). Raise it via `TUNARA_SSH_MATRIX_GREP_BUDGET_MS` only for slow local Docker VMs, never in CI.
+
+**Where this can't run.** Docker on macOS needs a hypervisor (Colima/Docker Desktop); on hosts without virtualization the fixture cannot start, and the `ssh-matrix (docker)` Ubuntu CI job is the source of truth. Nothing in the regular `cargo test --lib` gate depends on it.
+
 ## How to add a test
 
 **Frontend (`tests/*.test.mjs`):**

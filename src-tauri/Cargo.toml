@@ -27,6 +27,10 @@ benchmark = ["m2-safe-write-benchmark"]
 # product benchmark. Ordinary dev/release binaries do not compile this module.
 # Prefer the umbrella `benchmark` feature unless a script needs this one alone.
 m2-safe-write-benchmark = []
+# Real-SSH regression matrix (tests/ssh-matrix/). Compiles the Docker-backed
+# integration tests under src/modules/ssh/matrix_tests/; plain `cargo test
+# --lib` never builds or runs them. Driven by tests/ssh-matrix/run.sh.
+ssh-matrix = ["tauri/test"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
