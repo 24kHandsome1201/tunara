@@ -22,10 +22,10 @@ export function SidebarNewTerminalControl({
       position: { x: rect.right, y: rect.bottom },
       items: [
         ...(onNewTerminalInDirectory
-          ? [{ id: "new-terminal-directory", label: t("sidebar.new_terminal_in_directory"), icon: "folder" as const, action: onNewTerminalInDirectory }]
+          ? [{ id: "new-terminal-directory", label: t("titlebar.new_terminal_in_directory"), icon: "folder" as const, action: onNewTerminalInDirectory }]
           : []),
         null,
-        { id: "new-ssh", label: t("sidebar.new_ssh_connection"), icon: "ssh", action: () => useUIStore.getState().openSshConnect() },
+        { id: "new-ssh-session", label: t("titlebar.new_ssh_session"), icon: "ssh", action: () => useUIStore.getState().openSshConnect() },
       ],
     });
   };
