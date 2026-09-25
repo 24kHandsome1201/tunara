@@ -8,6 +8,7 @@ import {
   type ForwardReconnectIntent,
   type SessionBindingV1,
 } from "@/modules/terminal/lib/pty-bridge";
+import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import type { Session } from "@/ui/types";
@@ -81,8 +82,7 @@ function scheduleReconnect(
       lastExitCode: undefined,
       terminalProgress: undefined,
       unread: undefined,
-      pendingInput: undefined,
-      pendingInputSubmit: undefined,
+      ...postConnectPendingInput(latest.remote),
     });
   }, sshReconnectDelayMs(attempt));
   registerCleanup(() => window.clearTimeout(timer));

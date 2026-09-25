@@ -7,7 +7,7 @@ import {
 import { trimTerminalSnapshotSerialized } from "../modules/terminal/lib/terminal-snapshot-trim.ts";
 import { tailTerminalHistoryWithinUtf8Limit } from "../modules/terminal/lib/terminal-safe-history.ts";
 import { initialConnectionEvidence } from "../modules/terminal/lib/connection-state.ts";
-import { isSshAuthMethod, parseSshPort } from "../modules/ssh/hosts-model.ts";
+import { isSshAuthMethod, normalizePostConnectCommand, parseSshPort } from "../modules/ssh/hosts-model.ts";
 import { sanitizeRecentDirs } from "./recent-dirs.ts";
 import { t } from "../modules/i18n/core.ts";
 import { isDefaultTitleIndex, parseDefaultSessionTitle } from "../modules/session/default-title.ts";
@@ -92,6 +92,7 @@ function sanitizeRemoteInfo(remote: unknown): Session["remote"] | undefined {
       ? { injectShellIntegration: r.injectShellIntegration }
       : {}),
     ...(r.autoReconnect === true ? { autoReconnect: true } : {}),
+    ...(normalizePostConnectCommand(r.postConnectCommand) ? { postConnectCommand: normalizePostConnectCommand(r.postConnectCommand) } : {}),
     ...(route ? { route } : {}),
   };
 }

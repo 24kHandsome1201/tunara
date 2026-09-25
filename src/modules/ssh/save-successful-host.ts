@@ -35,6 +35,7 @@ export function sshHostProfileFromSuccessfulConnect(
     ...(remote.route?.profileId ? { proxyJumpProfileId: remote.route.profileId } : {}),
     ...(remote.autoReconnect ? { autoReconnect: true } : {}),
     ...(remote.injectShellIntegration === false ? { injectShellIntegration: false } : {}),
+    ...(remote.postConnectCommand ? { postConnectCommand: remote.postConnectCommand } : {}),
   };
 }
 

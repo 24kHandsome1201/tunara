@@ -18,6 +18,7 @@ export function sshConnectPrefillFromProfile(
     certificateFile: target.certificateFile,
     ...(profile.autoReconnect ? { autoReconnect: true } : {}),
     ...(profile.injectShellIntegration === false ? { injectShellIntegration: false } : {}),
+    ...(profile.postConnectCommand ? { postConnectCommand: profile.postConnectCommand } : {}),
     ...(jump
       ? {
           route: {

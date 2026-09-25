@@ -97,6 +97,8 @@
   "ssh.injectIntegration": "远程 Shell 集成",
   "ssh.injectIntegrationHint": "默认开启：在远程 bash/zsh 中注入轻量脚本，用于显示当前目录和命令状态。不支持时会自动忽略。取消勾选则不改动远程 Shell。",
   "ssh.autoReconnect": "网络中断后自动重新打开终端",
+  "ssh.postConnectCommand": "连接后运行",
+  "ssh.postConnectCommandHint": "每次连接和重连后在 shell 中执行，例如 herdr 以回到其会话。留空则不执行。",
   "ssh.autoReconnectHint": "默认关闭。重试次数有限，每次都会重新验证主机密钥，且不会重放输入。一次性凭据需要重新输入。",
   "ssh.forward.rebuildFailed": "无法重新创建 SSH 转发",
   "ssh.forward.snapshotFailed": "无法保存当前的端口转发设置",

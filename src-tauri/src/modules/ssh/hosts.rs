@@ -42,6 +42,8 @@ pub struct SshHostProfile {
     pub auto_reconnect: bool,
     /// Skip the remote bash/zsh integration script for this host.
     pub shell_integration_disabled: bool,
+    /// Command typed into the shell after each (re)connect, e.g. `herdr`.
+    pub post_connect_command: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
