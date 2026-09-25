@@ -3,6 +3,7 @@ import { isPromptLikeShellTitle } from "../../../ui/types.ts";
 import { initialAgentActivity, isAgentShellTitle, tracksAgentActivity } from "./agent-lifecycle.ts";
 import { t } from "../../i18n/core.ts";
 import { formatElapsed } from "../../../ui/lib/elapsed.ts";
+import { sessionTerminalMultiplexer } from "../../session/terminal-multiplexer.ts";
 
 export interface SessionLifecycleUpdate {
   patch: Partial<Session>;
@@ -152,6 +153,8 @@ export function commandDetectedUpdate(
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
   if (session?.agent || isPromptLikeShellTitle(command)) return null;
+  // Input typed inside a foreground multiplexer belongs to its panes, not the host shell.
+  if (session && sessionTerminalMultiplexer(session)) return null;
   return {
     patch: {
       lastCommand: command,
