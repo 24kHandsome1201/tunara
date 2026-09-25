@@ -183,7 +183,7 @@ export function installMockBackend(): TunaraE2EHandle {
     git_watch: () => null,
     git_unwatch: () => null,
     git_ahead_behind: () => null,
-    herdr_status: () => null,
+    multiplexer_status: () => null,
     resolve_all_bins: () => [],
     fs_scan_recent_repos: () => [],
     set_window_background_blur: () => null,
