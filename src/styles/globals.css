@@ -1997,12 +1997,13 @@ html.reduce-motion.dark {
 html[data-window-translucent],
 html[data-window-translucent] body,
 html[data-window-translucent] #root,
-html[data-window-translucent] .tunara-shell,
-html[data-window-translucent] [data-terminal-canvas="workspace"] {
+html[data-window-translucent] .tunara-shell {
   background: transparent !important;
 }
-html[data-window-translucent] .tunara-titlebar,
-html[data-window-translucent] .tunara-statusbar {
+html[data-window-translucent] [data-terminal-canvas="workspace"] {
+  background: color-mix(in srgb, var(--c-bg-white) var(--window-bg-opacity), transparent) !important;
+}
+html[data-window-translucent] .tunara-titlebar {
   background: color-mix(in srgb, var(--c-bg-1) var(--window-bg-opacity), transparent) !important;
 }
 html[data-window-translucent] .tunara-sidebar > *,
@@ -2014,6 +2015,8 @@ html[data-window-translucent] .tunara-translucent-layer,
 html[data-window-translucent] .explorer-nav,
 html[data-window-translucent] .explorer-search-row,
 html[data-window-translucent] .explorer-tools,
-html[data-window-translucent] .xterm .xterm-viewport {
+html[data-window-translucent] .tunara-statusbar,
+html[data-window-translucent] .xterm .xterm-viewport,
+html[data-window-translucent] .xterm .xterm-scrollable-element {
   background: transparent !important;
 }
