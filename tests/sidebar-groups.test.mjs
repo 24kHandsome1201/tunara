@@ -137,3 +137,8 @@ test("sshCardConnectionPhase stays quiet while ready and never invents local pha
   assert.equal(sshConnectionPhaseTone("needsUserAction"), "warning");
   assert.equal(sshConnectionPhaseTone("disconnected"), "error");
 });
+
+test("sshConnectionPhaseTone keeps not-started sessions neutral and ready sessions green", () => {
+  assert.equal(sshConnectionPhaseTone("pending"), "neutral");
+  assert.equal(sshConnectionPhaseTone("ready"), "success");
+});

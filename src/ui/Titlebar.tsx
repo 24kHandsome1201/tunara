@@ -8,9 +8,11 @@ import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
 import {
+  CONNECTION_TONE_COLORS,
   groupSessionsForSidebar,
   representativeSession,
   sidebarGroupKey,
+  sshConnectionPhaseTone,
   titlebarDeviceCaption,
 } from "@/modules/session/sidebar-groups";
 import type { ConnectionPhase } from "@/modules/terminal/lib/connection-state";
@@ -50,10 +52,7 @@ function PanelLeftIcon({ active }: { active: boolean }) {
 }
 
 function deviceConnectionColor(phase: ConnectionPhase | null): string {
-  if (phase === "ready") return "var(--c-success)";
-  if (phase === "failed" || phase === "disconnected" || phase === "exited") return "var(--c-error)";
-  if (phase === "needsUserAction" || phase === "verifyingHostKey") return "var(--c-warning)";
-  return phase ? "var(--c-accent)" : "var(--c-text-7)";
+  return phase ? CONNECTION_TONE_COLORS[sshConnectionPhaseTone(phase)].color : "var(--c-text-7)";
 }
 
 function DeviceIdentityContent({

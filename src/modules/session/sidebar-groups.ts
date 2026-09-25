@@ -113,9 +113,22 @@ export function sshCardConnectionPhase(
   return phase;
 }
 
+export type ConnectionPhaseTone = "success" | "neutral" | "error" | "warning" | "progress";
+
+/** Foreground and tinted background for a connection tone; shared by the sidebar badge and titlebar dot. */
+export const CONNECTION_TONE_COLORS: Record<ConnectionPhaseTone, { color: string; background: string }> = {
+  success: { color: "var(--c-success)", background: "color-mix(in srgb, var(--c-success) 14%, transparent)" },
+  neutral: { color: "var(--c-text-5)", background: "var(--c-bg-3)" },
+  error: { color: "var(--c-error)", background: "var(--c-error-bg)" },
+  warning: { color: "var(--c-warning-text)", background: "var(--c-warning-bg)" },
+  progress: { color: "var(--c-accent)", background: "color-mix(in srgb, var(--c-accent) 14%, transparent)" },
+};
+
 export function sshConnectionPhaseTone(
   phase: ConnectionPhase,
-): "error" | "warning" | "progress" {
+): ConnectionPhaseTone {
+  if (phase === "ready") return "success";
+  if (phase === "pending") return "neutral";
   if (phase === "failed" || phase === "disconnected" || phase === "exited") return "error";
   if (phase === "needsUserAction" || phase === "verifyingHostKey") return "warning";
   return "progress";
