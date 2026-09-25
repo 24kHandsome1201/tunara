@@ -803,7 +803,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                   <p style={{ fontSize: "var(--fs-meta)" }}>{jumpProfile.user}@{jumpProfile.host}:{jumpProfile.port}</p>
                   <div role="radiogroup" aria-label={t("ssh.route.jump_auth_method")} className="ssh-connect-choice-grid">
                     {AUTH_METHODS.map((method) => (
-                      <label key={`jump:${method}`} className="hover-bg ssh-connect-choice" data-selected={jumpAuthMethod === method ? "true" : undefined}>
+                      <label key={`jump:${method}`} className="hover-bg ssh-connect-choice ssh-connect-choice--compact" data-selected={jumpAuthMethod === method ? "true" : undefined}>
                         <input className="ui-choice" type="radio" name="ssh-jump-auth-method" value={method} checked={jumpAuthMethod === method} onChange={() => chooseJumpAuthMethod(method)} />
                         <span>{t(`ssh.auth.${method}.label`)}</span>
                       </label>

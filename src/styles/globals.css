@@ -561,6 +561,7 @@ select.ui-control {
   cursor: pointer;
 }
 .ssh-connect-choice[data-selected="true"] { border-color: var(--c-accent); }
+.ssh-connect-choice--compact { gap: 6px; padding: 6px; }
 .ssh-connect-toggle { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: var(--fs-secondary); }
 .ssh-connect-toggle > input { margin-top: 2px; }
 .ssh-connect-field-label { font-size: var(--fs-secondary); }
