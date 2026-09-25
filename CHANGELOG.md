@@ -10,6 +10,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 稳定性
+- 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复

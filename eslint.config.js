@@ -4,7 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   {
-    ignores: ["dist/", "node_modules/", "src-tauri/", "tests/", "review/", "outputs/", "_unzipped_design/"],
+    ignores: ["dist/", "dist-e2e/", "test-results/", "playwright-report/", "node_modules/", "src-tauri/", "tests/", "review/", "outputs/", "_unzipped_design/"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

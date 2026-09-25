@@ -6,7 +6,11 @@ Tunara has three automated test suites that run from one command:
 - **UI components** — Vitest + Testing Library in `tests/ui/`, running in happy-dom.
 - **Rust** — in-module `#[cfg(test)]` blocks run by `cargo test`.
 
-There is no end-to-end browser or Tauri webview harness. The Node suite is
+A separate **E2E smoke** suite (Playwright + headless Chromium, Tauri IPC
+mocked) covers the golden paths of the real app bundle; see
+[E2E smoke tests](#e2e-smoke-tests). It is not part of `pnpm test` because it
+needs a browser binary. There is still no harness for the real Tauri webview or
+Rust backend. The Node suite is
 deliberately constrained to pure logic so it can import `.ts` source with zero
 build step; DOM-backed component behavior belongs in the separate Vitest suite.
 
@@ -248,3 +252,50 @@ the modules that currently have tests:
 ```bash
 rg -l '#\[cfg\(test\)\]' src-tauri/src/modules
 ```
+
+## E2E smoke tests
+
+`e2e/` holds a Playwright suite that builds the production frontend with
+`e2e/vite.config.ts`, serves it with `vite preview` on `127.0.0.1:1430`, and
+drives it in headless Chromium. No Tauri runtime or Rust code runs: before the
+app boots, `e2e/boot.ts` installs `e2e/mock-backend.ts`, which uses
+`mockIPC` / `mockWindows` from `@tauri-apps/api/mocks` to answer every
+`invoke` the golden paths need (PTY open/write/resize/close with `Channel`
+output events, workspace snapshot load/save, config, plugin-store, SSH hosts).
+The mock PTY behaves like a cooked shell: it echoes typed characters and prints
+a prompt after Enter. It never touches a real PTY or the filesystem.
+
+```bash
+pnpm exec playwright install chromium   # once per machine
+pnpm test:e2e                           # build + preview + run all specs
+pnpm test:e2e --headed                  # watch it run
+pnpm test:e2e -g "Settings"             # filter by test title
+pnpm exec playwright show-trace test-results/<test>/trace.zip
+pnpm typecheck:e2e                      # typecheck e2e/ + playwright.config.ts
+```
+
+Locally an already-running preview on port 1430 is reused. The whole suite
+takes a few seconds after the build; keep it well under the 3-minute CI budget.
+
+CI runs it as the standalone `e2e (chromium)` job in
+`.github/workflows/ci.yml` on Ubuntu. On failure the job uploads
+`test-results/` (traces, screenshots) and `playwright-report/` as the
+`playwright-traces` artifact.
+
+### Extending the suite
+
+- **New golden path:** add a `test(...)` to `e2e/smoke.spec.ts` (or a new
+  `e2e/*.spec.ts`) using `test` / `expect` from `e2e/fixtures.ts`. Most tests
+  start with `openLocalTerminal(page, backend)`. The `backend` fixture exposes
+  `ptyWrites`, `openPtyIds`, `callCount`, and `emitPtyOutput` for asserting
+  what reached the mocked backend or pushing PTY output. Every test fails on an
+  uncaught page error.
+- **New backend command:** add a handler to the `handlers` map in
+  `e2e/mock-backend.ts`, returning the same shape as the Rust command (use the
+  frontend bridge types, e.g. `RawHostProfile`, as the reference). Unknown
+  commands resolve to `null` and are counted in `callCount`, so check the app
+  does not rely on a richer response.
+- Prefer role/label locators (`getByRole`, `getByLabel`) over CSS classes, and
+  `expect.poll` over fixed sleeps. Use `Meta+` shortcuts: the mock reports
+  `platform: "macos"` to `@tauri-apps/plugin-os`, so `Mod` maps to ⌘ on every
+  host OS, including the Linux CI runner.
