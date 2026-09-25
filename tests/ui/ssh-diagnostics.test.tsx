@@ -53,6 +53,12 @@ describe("SSH diagnostics safety boundaries", () => {
     expect(report).toContain("HOST_1");
   });
 
+  test("typed open errors name the failing stage and hop", () => {
+    const diagnostic = { schemaVersion: 1, stage: "TCP", code: "timeout", severity: "error", retryable: true, hopRole: "jump", timestamp: 1 };
+    expect(safeSshFailure({ diagnostic })).toEqual({ reason: "timeout", message: expect.stringMatching(/^Jump host: Connection timed out/) });
+    expect(safeSshFailure({ diagnostic: { ...diagnostic, code: "dnsFailed", stage: "DNS", hopRole: "direct" } }).reason).toBe("dns");
+  });
+
   test("store enforces per-session and global bounds", () => {
     for (let index = 0; index < 120; index += 1) appendDiagnostic("large", event(index));
     expect(diagnosticsForSession("large")).toHaveLength(100);

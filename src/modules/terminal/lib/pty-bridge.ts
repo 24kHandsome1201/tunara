@@ -3,7 +3,7 @@ import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { t } from "@/modules/i18n";
 import type { RemoteInfo } from "@/ui/types";
-import { classifySshFailure } from "@/modules/ssh/failure-reason";
+import { classifySshFailure, sshFailureReasonFromCode, type SshFailureReason } from "@/modules/ssh/failure-reason";
 import type { SshAuthMethod } from "@/modules/ssh/hosts-model";
 import type { PendingSshCredentials } from "@/modules/ssh/pending-credentials";
 import { appendDiagnostic, recordSshLifecycleDiagnostic } from "@/modules/ssh/diagnostics-store";
@@ -104,15 +104,12 @@ export function sshFailureReason(error: string): string {
 }
 
 /** Typed v2 errors are consumed directly; legacy strings are classified once and discarded. */
-export function safeSshFailure(error: unknown): { reason: ReturnType<typeof classifySshFailure>; message: string } {
-  const code = typeof error === "object" && error !== null && "diagnostic" in error
-    ? String((error as { diagnostic?: { code?: unknown } }).diagnostic?.code ?? "internal")
-    : undefined;
-  const reason = code === "authenticationFailed" ? "auth"
-    : code === "hostKeyRejected" ? "hostKey"
-      : code === "dnsFailed" || code === "connectionRefused" || code === "timeout" || code === "transportClosed" ? "connect"
-        : classifySshFailure(typeof error === "string" ? error : "");
-  return { reason, message: t(`ssh.fail.${reason}`) };
+export function safeSshFailure(error: unknown): { reason: SshFailureReason; message: string } {
+  const typed = typedSshDiagnostic(error);
+  const reason = (typed ? sshFailureReasonFromCode(typed.code) : null)
+    ?? classifySshFailure(typeof error === "string" ? error : "");
+  const message = t(`ssh.fail.${reason}`);
+  return { reason, message: typed?.hopRole === "jump" ? t("ssh.fail.via_jump", { reason: message }) : message };
 }
 
 function typedSshDiagnostic(error: unknown): SshDiagnosticV1 | undefined {

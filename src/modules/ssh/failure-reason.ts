@@ -7,6 +7,8 @@
  * russh and the selected auth method produce free-form English messages, and
  * we only need a coarse bucket for the user-facing toast.
  */
+import type { SshErrorCode } from "./diagnostics-schema.ts";
+
 export type SshFailureReason =
   | "password"
   | "key"
@@ -16,7 +18,26 @@ export type SshFailureReason =
   | "auth"
   | "hostKey"
   | "connect"
+  | "dns"
+  | "refused"
+  | "timeout"
+  | "transport"
+  | "invalidRequest"
   | "generic";
+
+/** Typed backend codes keep their precision instead of collapsing into "connect". */
+export function sshFailureReasonFromCode(code: SshErrorCode): SshFailureReason | null {
+  switch (code) {
+    case "authenticationFailed": return "auth";
+    case "hostKeyRejected": return "hostKey";
+    case "dnsFailed": return "dns";
+    case "connectionRefused": return "refused";
+    case "timeout": return "timeout";
+    case "transportClosed": return "transport";
+    case "invalidRequest": return "invalidRequest";
+    default: return null;
+  }
+}
 
 export function classifySshFailure(error: string): SshFailureReason {
   const e = error.toLowerCase();

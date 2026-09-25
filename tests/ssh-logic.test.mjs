@@ -11,7 +11,7 @@ import test from "node:test";
 // Rust-side and covered by `cargo test`; these tests guard the frontend
 // bridges that sit between the Tauri IPC boundary and the UI.
 
-import { classifySshFailure } from "../src/modules/ssh/failure-reason.ts";
+import { classifySshFailure, sshFailureReasonFromCode } from "../src/modules/ssh/failure-reason.ts";
 import {
   RemoteOperationCache,
   remoteOperationCacheKey,
@@ -42,6 +42,17 @@ import {
 } from "../src/modules/ssh/connect-target.ts";
 
 // ── failure-reason ───────────────────────────────────────────────────────
+
+test("typed backend codes keep DNS, refused, timeout and transport apart", () => {
+  assert.equal(sshFailureReasonFromCode("dnsFailed"), "dns");
+  assert.equal(sshFailureReasonFromCode("connectionRefused"), "refused");
+  assert.equal(sshFailureReasonFromCode("timeout"), "timeout");
+  assert.equal(sshFailureReasonFromCode("transportClosed"), "transport");
+  assert.equal(sshFailureReasonFromCode("authenticationFailed"), "auth");
+  assert.equal(sshFailureReasonFromCode("hostKeyRejected"), "hostKey");
+  assert.equal(sshFailureReasonFromCode("invalidRequest"), "invalidRequest");
+  assert.equal(sshFailureReasonFromCode("internal"), null);
+});
 
 test("classifySshFailure buckets auth errors", () => {
   assert.equal(classifySshFailure("authentication failed: bad password"), "auth");
