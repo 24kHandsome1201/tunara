@@ -185,6 +185,14 @@ export function FileExplorer({
   // OSC 7 / SFTP home are only the first location for SSH, not a cage.
   const [baseDir, setBaseDir] = useState<string | null>(isRemote ? null : rootDir);
   const [homeDir, setHomeDir] = useState<string | null>(null);
+  const [localHomeDir, setLocalHomeDir] = useState<string | null>(null);
+  useEffect(() => {
+    if (isRemote || !rootDir.startsWith("/")) return;
+    let cancelled = false;
+    fsResolveDir("~").then((home) => { if (!cancelled) setLocalHomeDir(home); }).catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- home only needs resolving once per explorer
+  }, [isRemote]);
   const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
@@ -500,6 +508,7 @@ export function FileExplorer({
         .then((absolute) => {
           if (cancelled) return;
           setBaseDir((current) => (current?.startsWith("/") ? current : absolute));
+          if (currentPath === "~") setLocalHomeDir(absolute);
           setCurrentPath(absolute);
         })
         .catch(() => {
@@ -1217,6 +1226,7 @@ export function FileExplorer({
         onGoUp={goUp}
         currentPath={currentPath}
         breadcrumbRoot={breadcrumbRoot}
+        breadcrumbHome={isRemote ? homeDir : localHomeDir}
         onNavigate={(path) => { setNavDir("out"); setCurrentPath(path); }}
         onRefresh={refresh}
       />

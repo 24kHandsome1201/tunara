@@ -125,7 +125,7 @@ describe("FileExplorer directory navigation", () => {
     render(<FileExplorer sessionId="local" rootDir="~" />);
     expect(await screen.findByRole("treeitem", { name: /^notes\.txt/ })).toBeTruthy();
     expect(readPaths).toEqual(["/Users/alice"]);
-    expect(screen.getByRole("button", { name: "alice" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "~" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByText("Loading")).toBeNull();
   });
 
@@ -144,7 +144,7 @@ describe("FileExplorer directory navigation", () => {
     render(<FileExplorer sessionId="local" rootDir="~" />);
     const retry = await screen.findByRole("button", { name: "Retry" });
     fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByRole("button", { name: "alice" }).getAttribute("aria-current")).toBe("page"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "~" }).getAttribute("aria-current")).toBe("page"));
     expect(resolveCalls).toBe(2);
   });
 
@@ -245,7 +245,7 @@ describe("FileExplorer directory navigation", () => {
     expect(within(nav).queryByRole("button", { name: "Upload file…" })).toBeNull();
 
     const search = screen.getByRole("search", { name: "Search files" });
-    expect(within(search).getByPlaceholderText("Search current project")).toBeTruthy();
+    expect(within(search).getByPlaceholderText("Search this folder")).toBeTruthy();
     expect(within(search).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
     expect(within(search).queryByRole("button", { name: "Refresh file list" })).toBeNull();
 
@@ -1476,11 +1476,11 @@ describe("FileExplorer workspace files", () => {
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/tmp/repo" remotePtyId={42} />);
-    fireEvent.change(screen.getByPlaceholderText("Search current project"), { target: { value: "match" } });
+    fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "match" } });
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
 
     expect(await screen.findByRole("button", { name: /^match\.txt/ })).toBeTruthy();
-    expect(screen.getByPlaceholderText("Search current project")).toHaveProperty("value", "match");
+    expect(screen.getByPlaceholderText("Search this folder")).toHaveProperty("value", "match");
     expect(searchAttempts).toBe(2);
   });
 });

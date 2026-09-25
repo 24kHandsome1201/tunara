@@ -728,7 +728,7 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   const tauriLib = read("src-tauri/src/lib.rs");
   assert.match(tauriLib, /modules::ssh::remote_git::ssh_fs_grep,/);
   const zhDictForExplorer = read("src/modules/i18n/locales/zh-CN.json");
-  assert.match(zhDictForExplorer, /"explorer\.search_placeholder": "搜索当前项目"/);
+  assert.match(zhDictForExplorer, /"explorer\.search_placeholder": "搜索当前文件夹"/);
   assert.match(zhDictForExplorer, /"explorer\.search_placeholder_content": "搜索文件内容"/);
   assert.match(zhDictForExplorer, /"explorer\.content_no_match": "未找到匹配内容"/);
   assert.match(search, /#\[serde\(rename_all = "camelCase"\)\]/);
