@@ -110,7 +110,7 @@ pub fn run() {
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
             modules::resolver::clear_bin_overrides,
-            modules::herdr::herdr_status,
+            modules::multiplexer::multiplexer_status,
             // Tunara 新增（agent CLI 检测）
             modules::agent::preflight::agent_preflight,
             modules::agent::preflight::agent_preflight_invalidate,
