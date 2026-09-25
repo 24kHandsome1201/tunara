@@ -23,6 +23,8 @@
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "typecheck:ui": "tsc --noEmit -p tsconfig.ui.json",
     "test:ui": "pnpm typecheck:ui && vitest run --config vitest.config.ts",
+    "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
+    "test:e2e": "playwright test",
     "test:bundle": "pnpm build && node --experimental-strip-types --test tests/bundle-budget.test.mjs",
     "test": "pnpm test:node && pnpm test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
     "preview": "vite preview",
@@ -59,6 +61,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.63.0",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^26.1.1",
