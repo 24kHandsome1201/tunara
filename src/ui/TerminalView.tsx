@@ -35,7 +35,7 @@ import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, should
 import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
-import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history";
+import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history"; import { announceSnapshotRestored } from "@/modules/terminal/lib/restore-notice";
 import { createTerminalOscGuard } from "@/modules/terminal/lib/terminal-osc-guard";
 import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
 import { createTerminalLinkInputOwnership, type TerminalMouseTrackingMode } from "@/modules/terminal/lib/terminal-input-router";
@@ -356,10 +356,10 @@ function TerminalViewImpl({
       cleanups.push(() => promptDisposable.dispose());
       const existingSnapshot = getTerminalSnapshot(sessionIdRef.current);
       if (existingSnapshot) {
-        const rl = getCurrentSession()?.remote ? t("terminal.restored_remote") : t("terminal.restored_local");
+        announceSnapshotRestored();
         const restored = getCurrentSession()?.remote
-          ? safeHistoryForTerminal(existingSnapshot.safeHistory ?? "", rl)
-          : existingSnapshot.serialized + `\r\n\x1b[2m[${rl}]\x1b[0m\r\n`;
+          ? safeHistoryForTerminal(existingSnapshot.safeHistory ?? "")
+          : existingSnapshot.serialized;
         term.write(restored, () => {
           // serialize() capture is relative to the restored buffer; wait until
           // the write lands or scrollToLine runs against an empty viewport.

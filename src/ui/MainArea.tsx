@@ -10,6 +10,7 @@ import { getNumberRecordValue } from "@/state/record-keys";
 import { useSessionGitContext } from "./useSessionGitContext";
 import { useWorkspaceHydration } from "./useWorkspaceHydration";
 import {
+  canSplitLayout,
   isReaderPaneId,
   readerPaneId,
   sessionIdFromPaneId,
@@ -131,6 +132,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
   }
 
   const isSplit = split.root !== null;
+  const canSplit = canSplitLayout(split);
   const splitGeometry = splitLayoutGeometry(split);
   const leafIds = splitLayoutLeafIds(split);
   const effectiveFocusedPaneId = focusedPaneId && leafIds.includes(focusedPaneId)
@@ -241,11 +243,15 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
           {compactPath(active?.dir ?? "")}
         </span>
 
+        {active?.branch && (
+          <>
         <span aria-hidden="true" style={{ width: 1, height: 12, background: "var(--c-border-2)", flexShrink: 0 }} />
 
         <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
-          ⎇ {active?.branch || "-"}
+          ⎇ {active.branch}
         </span>
+          </>
+        )}
 
         {remote?.state === "ok" && (remote.ahead > 0 || remote.behind > 0) && (
           <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", fontWeight: 500, fontFamily: "var(--font-mono)", flexShrink: 0, display: "inline-flex", gap: 3 }}>
@@ -261,7 +267,55 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
         <span style={{ flex: 1 }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {isSplit ? (
+            <>
+              <button
+                type="button"
+                onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
+                disabled={!canSplit}
+                title={`${t("split.horizontal")} ${formatShortcut(splitHorizontalShortcut)}`}
+                aria-label={t("split.horizontal")}
+                style={{
+                  width: 28,
+                  height: "var(--h-btn-sm)",
+                  border: "none",
+                  background: "transparent",
+                  cursor: canSplit ? "pointer" : "default",
+                  opacity: canSplit ? 1 : 0.4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--r-btn)",
+                }}
+                className="hover-bg"
+              >
+                <SplitIcon direction="columns" />
+              </button>
+              <button
+                type="button"
+                onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
+                disabled={!canSplit}
+                title={`${t("split.vertical")} ${formatShortcut(splitVerticalShortcut)}`}
+                aria-label={t("split.vertical")}
+                style={{
+                  width: 28,
+                  height: "var(--h-btn-sm)",
+                  border: "none",
+                  background: "transparent",
+                  cursor: canSplit ? "pointer" : "default",
+                  opacity: canSplit ? 1 : 0.4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--r-btn)",
+                }}
+                className="hover-bg"
+              >
+                <SplitIcon direction="rows" />
+              </button>
+            </>
+            {isSplit && (
+              <>
+                <span aria-hidden="true" style={{ width: 1, height: 12, margin: "0 4px", background: "var(--c-border-2)", flexShrink: 0 }} />
             <button
               type="button"
               onClick={() => {
@@ -287,50 +341,8 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
             >
               <SplitIcon direction="single" />
             </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => useSessionsStore.getState().splitWithNewSession("horizontal")}
-                title={`${t("split.horizontal")} ${formatShortcut(splitHorizontalShortcut)}`}
-                aria-label={t("split.horizontal")}
-                style={{
-                  width: 28,
-                  height: "var(--h-btn-sm)",
-                  border: "none",
-                  background: "transparent",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: "var(--r-btn)",
-                }}
-                className="hover-bg"
-              >
-                <SplitIcon direction="columns" />
-              </button>
-              <button
-                type="button"
-                onClick={() => useSessionsStore.getState().splitWithNewSession("vertical")}
-                title={`${t("split.vertical")} ${formatShortcut(splitVerticalShortcut)}`}
-                aria-label={t("split.vertical")}
-                style={{
-                  width: 28,
-                  height: "var(--h-btn-sm)",
-                  border: "none",
-                  background: "transparent",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: "var(--r-btn)",
-                }}
-                className="hover-bg"
-              >
-                <SplitIcon direction="rows" />
-              </button>
-            </>
-          )}
+              </>
+            )}
         </div>
       </div>
     </div>

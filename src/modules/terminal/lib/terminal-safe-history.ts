@@ -54,8 +54,9 @@ export function captureSafeTerminalHistory(
 }
 
 /** Convert inert history into trusted xterm input without reintroducing data controls. */
-export function safeHistoryForTerminal(history: string, restoredLabel: string): string {
+export function safeHistoryForTerminal(history: string, restoredLabel = ""): string {
   const safe = sanitizeTerminalHistoryText(history).replace(/\n/g, "\r\n");
   const prefix = safe ? `${safe}\r\n` : "";
+  if (!restoredLabel) return prefix;
   return `${prefix}\x1b[2m[${sanitizeTerminalHistoryText(restoredLabel)}]\x1b[0m\r\n`;
 }
