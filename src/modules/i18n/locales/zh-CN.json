@@ -962,5 +962,17 @@
   "remote_fs.mutation.absent": "路径不存在",
   "remote_fs.mutation.safety": "执行前会再确认这个文件（或文件夹）和它所在目录。不会递归删除或复制；如果中途失败，请刷新后检查结果。",
   "remote_fs.mutation.reconciled": "（上次没收到完整回复，已重新确认结果，没有再执行一次）",
-  "remote_fs.mutation.checking": "检查中…"
+  "remote_fs.mutation.checking": "检查中…",
+  "palette.cmd.global_terminal_search": "搜索所有已打开终端",
+  "terminal_search.title": "搜索所有终端",
+  "terminal_search.placeholder": "搜索所有已打开终端的回滚内容…",
+  "terminal_search.loading": "正在打开终端搜索…",
+  "terminal_search.hint": "搜索所有已打开的本地与 SSH 终端的内存回滚内容，不建立索引，也不写入磁盘。",
+  "terminal_search.searching": "正在搜索…",
+  "terminal_search.no_results": "没有匹配项",
+  "terminal_search.invalid_regex": "正则表达式无效",
+  "terminal_search.summary": "{{sessions}} 个终端中共 {{count}} 处匹配",
+  "terminal_search.summary_capped": "仅显示 {{sessions}} 个终端中的前 {{count}} 处匹配（上限 {{max}}）",
+  "terminal_search.line": "L{{line}}",
+  "terminal_search.block": "$ {{command}}"
 }

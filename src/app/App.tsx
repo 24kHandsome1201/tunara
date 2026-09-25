@@ -28,6 +28,7 @@ import { Icon, Terminal } from "@/ui/icons";
 
 const Settings = lazy(() => import("@/ui/overlays/Settings").then((module) => ({ default: module.Settings })));
 const InspectorPanel = lazy(() => import("@/ui/InspectorPanel").then((module) => ({ default: module.InspectorPanel })));
+const GlobalTerminalSearch = lazy(() => import("@/ui/overlays/GlobalTerminalSearch").then((module) => ({ default: module.GlobalTerminalSearch })));
 const SshConnect = lazy(() => import("@/ui/overlays/SshConnect").then((module) => ({ default: module.SshConnect })));
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
@@ -493,6 +494,11 @@ export default function App() {
         </Suspense>
       )}
       {overlay === "command-palette" && <CommandPalette onClose={() => setOverlay(null)} />}
+      {overlay === "terminal-search" && (
+        <Suspense fallback={<OverlayLoadingFallback label={staticT("terminal_search.loading")} />}>
+          <GlobalTerminalSearch onClose={() => setOverlay(null)} />
+        </Suspense>
+      )}
       {overlay === "ssh" && (
         <Suspense fallback={<OverlayLoadingFallback label={staticT("ssh.connect_loading")} />}>
           <SshConnect onClose={() => setOverlay(null)} />
