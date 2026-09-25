@@ -29,6 +29,7 @@ commands.allow = [
   "git_diff",
   "git_ahead_behind",
   "git_workspace_context",
+  "herdr_status",
   "git_watch",
   "git_unwatch",
   "open_in_editor",
