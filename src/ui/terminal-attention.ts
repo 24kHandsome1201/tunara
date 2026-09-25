@@ -9,8 +9,7 @@ import { rememberBackgroundAttention } from "./lib/background-attention-state";
 
 /**
  * Dock bounce for a background event. Same `eventKey` never bounces twice.
- * OSC 9/99/777 no longer bounce or toast — Agent confirmation is the product
- * attention path; long commands and BEL still share this one bounce helper.
+ * Long commands, BEL and non-Agent OSC notifications share this bounce helper.
  */
 export function requestInformationalAttention(eventKey = "bell") {
   if (document.hasFocus() || !useUIStore.getState().bellNotification) return;
@@ -20,11 +19,33 @@ export function requestInformationalAttention(eventKey = "bell") {
     .catch(() => {});
 }
 
-export function emitTerminalNotification(_sessionId: string, _notification: TerminalNotification) {
-  // OSC notify sequences used to toast + bounce independently of Agent
-  // confirmation, which stacked with the "waiting for you" cue. Parse them
-  // so the PTY still consumes the sequence, but do not surface a second
-  // reminder path.
+const NOTIFICATION_REPEAT_MS = 3000;
+const lastNotificationAt = new Map<string, number>();
+
+/**
+ * OSC 9/99/777 notifications from sessions Tunara does not track as an Agent
+ * (plain shells, multiplexers such as HerdR/tmux, remote tools). Detected
+ * Agent sessions stay on the confirmation path so the cues do not stack.
+ */
+export function emitTerminalNotification(sessionId: string, notification: TerminalNotification) {
+  const session = useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionId);
+  if (!session || session.agent) return;
+  const focusedHere = document.hasFocus() && useSessionsStore.getState().activeSessionId === sessionId;
+  if (focusedHere) return;
+  const key = `${sessionId}\u0000${notification.title}\u0000${notification.body ?? ""}`;
+  const now = Date.now();
+  const last = lastNotificationAt.get(key);
+  if (last !== undefined && now - last < NOTIFICATION_REPEAT_MS) return;
+  lastNotificationAt.set(key, now);
+  const oldest = lastNotificationAt.keys().next().value;
+  if (lastNotificationAt.size > 64 && oldest !== undefined) lastNotificationAt.delete(oldest);
+  useUIStore.getState().addToast({
+    sessionId,
+    title: notification.title,
+    subtitle: notification.body ?? session.title,
+    variant: "success",
+  });
+  requestInformationalAttention(`notify:${sessionId}:${now}`);
 }
 
 /**
