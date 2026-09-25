@@ -681,6 +681,7 @@
   "palette.cmd.unpin_current_session": "取消置顶当前会话",
   "sidebar.session.copy_remote": "复制远程名称",
   "sidebar.session.copy_remote_cwd": "复制远端工作目录",
+  "sidebar.session.multiplexer.hint": "{{name}} 运行中：其 pane 内的 Agent 状态、工作目录和通知由 {{name}} 管理，Tunara 只能看到它转发出来的部分。",
   "sidebar.session.remote": "远程 SSH 会话",
   "sidebar.session.pin": "置顶会话",
   "sidebar.session.pinned": "已置顶",

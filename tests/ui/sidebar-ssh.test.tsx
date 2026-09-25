@@ -239,3 +239,17 @@ test("a saved host that matches an ssh config entry is listed once", async () =>
   await waitFor(() => expect(useUIStore.getState().overlay).toBe("ssh"));
   expect(useUIStore.getState().sshPrefill).toMatchObject({ host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "~/.ssh/id_qa" });
 });
+
+test("session card marks a running multiplexer and explains where pane status comes from", () => {
+  render(
+    <Sidebar
+      sessions={[sshSession("herdr", "/srv", "box.example", { runState: "running", lastCommand: "herdr session attach work" })]}
+      activeSessionId="herdr"
+      onSelectSession={vi.fn()}
+    />,
+  );
+
+  const chip = screen.getByText("HerdR");
+  expect(chip.getAttribute("title")).toMatch(/HerdR is running: Agent status/);
+  expect(screen.getByRole("button", { name: /HerdR is running/ })).toBeTruthy();
+});

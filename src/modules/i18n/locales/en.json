@@ -681,6 +681,7 @@
   "palette.cmd.unpin_current_session": "Unpin current session",
   "sidebar.session.copy_remote": "Copy remote label",
   "sidebar.session.copy_remote_cwd": "Copy remote working directory",
+  "sidebar.session.multiplexer.hint": "{{name}} is running: Agent status, working directory and notifications inside its panes come from {{name}}, so Tunara only sees what it forwards.",
   "sidebar.session.remote": "Remote SSH session",
   "sidebar.session.pin": "Pin session",
   "sidebar.session.pinned": "Pinned",
