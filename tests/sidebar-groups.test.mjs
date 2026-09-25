@@ -7,6 +7,7 @@ import {
   liveSessionsOnEndpoint,
   representativeSession,
   sessionMatchesSidebarSearch,
+  sidebarActivityLabel,
   sidebarCwdLabel,
   sidebarGroupKey,
   sidebarGroupKeyFromEndpoint,
@@ -136,4 +137,10 @@ test("sshCardConnectionPhase stays quiet while ready and never invents local pha
   assert.equal(sshConnectionPhaseTone("connecting"), "progress");
   assert.equal(sshConnectionPhaseTone("needsUserAction"), "warning");
   assert.equal(sshConnectionPhaseTone("disconnected"), "error");
+});
+
+test("sidebarActivityLabel names the running program only", () => {
+  assert.equal(sidebarActivityLabel(local("a", "/p", { runState: "running", lastCommand: "FOO=1 sudo /usr/bin/vim /etc/hosts" })), "vim");
+  assert.equal(sidebarActivityLabel(local("b", "/p", { runState: "idle", lastCommand: "vim" })), "");
+  assert.equal(sidebarActivityLabel(local("c", "/p", { runState: "running", agent: "CC", lastCommand: "claude" })), "");
 });

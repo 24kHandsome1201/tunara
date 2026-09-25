@@ -268,6 +268,41 @@ function assignStableDefaultTitle(session: Session, sessions: Session[]): Sessio
   return { ...session, title: defaultSessionTitle(number), defaultTitleIndex: number };
 }
 
+/** Renumbers default "Terminal N" titles that collide within one sidebar group, keeping the first holder. */
+export function dedupeDefaultTitles(sessions: Session[]): Session[] {
+  const reserved = new Map<string, Set<number>>();
+  const reservedFor = (key: string) => {
+    let set = reserved.get(key);
+    if (!set) reserved.set(key, (set = new Set()));
+    return set;
+  };
+  for (const session of sessions) {
+    const taken = reservedFor(sidebarGroupKey(session));
+    if (isDefaultTitleIndex(session.defaultTitleIndex)) taken.add(session.defaultTitleIndex);
+    for (const title of [session.title, session.customTitle]) {
+      const index = parseDefaultSessionTitle(title);
+      if (index) taken.add(index);
+    }
+  }
+  const claimed = new Map<string, Set<number>>();
+  return sessions.map((session) => {
+    if (session.customTitle || !isDefaultTitleIndex(session.defaultTitleIndex)) return session;
+    const key = sidebarGroupKey(session);
+    let mine = claimed.get(key);
+    if (!mine) claimed.set(key, (mine = new Set()));
+    if (!mine.has(session.defaultTitleIndex)) {
+      mine.add(session.defaultTitleIndex);
+      return session;
+    }
+    const taken = reservedFor(key);
+    let number = 1;
+    while (taken.has(number)) number += 1;
+    taken.add(number);
+    mine.add(number);
+    return { ...session, title: defaultSessionTitle(number), defaultTitleIndex: number };
+  });
+}
+
 function isSessionObserved(activeSessionId: string | null, sessionId: string): boolean {
   return activeSessionId === sessionId
     && (typeof document === "undefined" || document.hasFocus());

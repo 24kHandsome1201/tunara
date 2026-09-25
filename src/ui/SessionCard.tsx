@@ -3,7 +3,7 @@ import { type Session, type TerminalProgress, deriveTitle } from "./types";
 import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { sessionCue } from "@/modules/session/session-attention";
-import { sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
+import { sidebarActivityLabel, sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import { sessionTerminalMultiplexer, terminalMultiplexerLabel } from "@/modules/session/terminal-multiplexer";
 import { useHerdrStatusStore } from "@/state/herdr-status";
 import { SessionCueDot } from "./SessionCueDot";
@@ -150,6 +150,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
     ? t("agent.status.waiting_confirmation")
     : t(`sidebar.session.status.${displayRunState}`);
   const multiplexer = sessionTerminalMultiplexer(session);
+  const activity = multiplexer ? "" : sidebarActivityLabel(session);
   const herdrSummary = useHerdrStatusStore((s) => (multiplexer === "herdr" && !session.remote ? s.summary : null));
   const multiplexerLabel = !multiplexer ? ""
     : herdrSummary?.blocked ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_blocked", { count: herdrSummary.blocked })}`
@@ -480,6 +481,11 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 48%", minWidth: 0 }}>
               {sidebarCwdLabel(session)}
             </span>
+            {activity && (
+              <span data-session-activity style={{ flexShrink: 0, color: "var(--c-text-4)" }}>
+                · {activity}
+              </span>
+            )}
           </div>
         </div>
       </div>
