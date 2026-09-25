@@ -731,12 +731,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
             aria-controls="ssh-connect-suggestions"
           />
           {portInvalid && (
-            <span id="ssh-connect-port-error" role="alert" style={{ fontSize: "var(--fs-meta)", color: "var(--c-warning-text)" }}>
+            <span id="ssh-connect-port-error" role="alert" className="ssh-connect-message" data-tone="warning">
               {t("ssh.port_invalid")}
             </span>
           )}
-          {formError && <p role="alert" style={{ color: "var(--c-error)", margin: 0, fontSize: "var(--fs-meta)" }}>{formError}</p>}
-          {routeError && <p role="alert" style={{ color: "var(--c-warning-text)", margin: 0 }}>{routeError}</p>}
+          {formError && <p role="alert" className="ssh-connect-message" data-tone="error">{formError}</p>}
+          {routeError && <p role="alert" className="ssh-connect-message" data-tone="warning">{routeError}</p>}
 
           <div id="ssh-connect-suggestions" role="listbox" aria-label={t("ssh.source.saved")} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {suggestions.map((entry, index) => (
@@ -763,11 +763,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
                 <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => { setPort(event.target.value); setPassword(""); setKeyPassphrase(""); }} />
               </div>
-              <fieldset style={{ margin: 0, padding: 0, border: "none" }}>
+              <fieldset className="ssh-connect-fieldset">
                 <legend style={labelStyle}>{t("ssh.auth.method")}</legend>
-                <div role="radiogroup" aria-label={t("ssh.auth.method")} style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                <div role="radiogroup" aria-label={t("ssh.auth.method")} className="ssh-connect-choice-grid">
                   {AUTH_METHODS.map((method) => (
-                    <label key={method} className="hover-bg" style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", border: `1px solid ${authMethod === method ? "var(--c-accent)" : "var(--c-border-2)"}`, borderRadius: "var(--r-btn)", cursor: "pointer" }}>
+                    <label key={method} className="hover-bg ssh-connect-choice" data-selected={authMethod === method ? "true" : undefined}>
                       <input className="ui-choice" type="radio" name="ssh-auth-method" value={method} checked={authMethod === method} onChange={() => chooseAuthMethod(method)} />
                       <span>{t(`ssh.auth.${method}.label`)}</span>
                     </label>
@@ -798,12 +798,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 </select>
               </div>
               {jumpProfile && (
-                <fieldset style={{ margin: 0, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", padding: 10 }}>
+                <fieldset className="ssh-connect-fieldset ssh-connect-fieldset--boxed">
                   <legend>{t("ssh.route.jump_legend")}</legend>
                   <p style={{ fontSize: "var(--fs-meta)" }}>{jumpProfile.user}@{jumpProfile.host}:{jumpProfile.port}</p>
-                  <div role="radiogroup" aria-label={t("ssh.route.jump_auth_method")} style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                  <div role="radiogroup" aria-label={t("ssh.route.jump_auth_method")} className="ssh-connect-choice-grid">
                     {AUTH_METHODS.map((method) => (
-                      <label key={`jump:${method}`} className="hover-bg" style={{ display: "flex", alignItems: "center", gap: 6, padding: 6, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)" }}>
+                      <label key={`jump:${method}`} className="hover-bg ssh-connect-choice" data-selected={jumpAuthMethod === method ? "true" : undefined}>
                         <input className="ui-choice" type="radio" name="ssh-jump-auth-method" value={method} checked={jumpAuthMethod === method} onChange={() => chooseJumpAuthMethod(method)} />
                         <span>{t(`ssh.auth.${method}.label`)}</span>
                       </label>
@@ -820,18 +820,18 @@ export function SshConnect({ onClose }: SshConnectProps) {
                   )}
                 </fieldset>
               )}
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)" }}>
-                <input className="ui-choice" type="checkbox" checked={injectIntegration} onChange={(event) => setInjectIntegration(event.target.checked)} style={{ marginTop: 2 }} />
-                <span>{t("ssh.injectIntegration")}<span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>{t("ssh.injectIntegrationHint")}</span></span>
+              <label className="ssh-connect-toggle">
+                <input className="ui-choice" type="checkbox" checked={injectIntegration} onChange={(event) => setInjectIntegration(event.target.checked)} />
+                <span>{t("ssh.injectIntegration")}<span className="ssh-connect-hint">{t("ssh.injectIntegrationHint")}</span></span>
               </label>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)" }}>
-                <input className="ui-choice" type="checkbox" checked={autoReconnect} onChange={(event) => setAutoReconnect(event.target.checked)} style={{ marginTop: 2 }} />
-                <span>{t("ssh.autoReconnect")}<span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>{t("ssh.autoReconnectHint")}</span></span>
+              <label className="ssh-connect-toggle">
+                <input className="ui-choice" type="checkbox" checked={autoReconnect} onChange={(event) => setAutoReconnect(event.target.checked)} />
+                <span>{t("ssh.autoReconnect")}<span className="ssh-connect-hint">{t("ssh.autoReconnectHint")}</span></span>
               </label>
-              <label htmlFor="ssh-post-connect-command" style={{ fontSize: "var(--fs-secondary)" }}>
+              <label htmlFor="ssh-post-connect-command" className="ssh-connect-field-label">
                 {t("ssh.postConnectCommand")}
                 <input id="ssh-post-connect-command" className="ui-control" style={fieldStyle} value={postConnectCommand} onChange={(event) => setPostConnectCommand(event.target.value)} placeholder="herdr" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={512} />
-                <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>{t("ssh.postConnectCommandHint")}</span>
+                <span className="ssh-connect-hint">{t("ssh.postConnectCommandHint")}</span>
               </label>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer" }}>
