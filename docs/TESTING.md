@@ -297,5 +297,6 @@ CI runs it as the standalone `e2e (chromium)` job in
   does not rely on a richer response.
 - Prefer role/label locators (`getByRole`, `getByLabel`) over CSS classes, and
   `expect.poll` over fixed sleeps. Use `Meta+` shortcuts: the mock reports
-  `platform: "macos"` to `@tauri-apps/plugin-os`, so `Mod` maps to ⌘ on every
-  host OS, including the Linux CI runner.
+  `platform: "macos"` to `@tauri-apps/plugin-os` and pins `navigator.platform`
+  to `MacIntel` (keybinding defaults read it), so the app behaves as macOS and
+  `Mod` maps to ⌘ on every host OS, including the Linux CI runner.

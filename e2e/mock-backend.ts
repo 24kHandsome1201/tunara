@@ -222,6 +222,10 @@ export function installMockBackend(): TunaraE2EHandle {
   };
 
   mockWindows("main");
+  // The golden paths use macOS defaults (⌘D, ⌘K). Some modules pick defaults
+  // from `navigator.platform` rather than plugin-os, so pin both to macOS to
+  // keep the host OS (e.g. Linux CI) from leaking into the app.
+  Object.defineProperty(window.navigator, "platform", { configurable: true, get: () => "MacIntel" });
   window.__TAURI_OS_PLUGIN_INTERNALS__ = {
     platform: "macos",
     family: "unix",
