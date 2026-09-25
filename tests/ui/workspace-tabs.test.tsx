@@ -77,7 +77,7 @@ describe("workspace reader pane and titlebar chrome", () => {
     fireEvent.click(screen.getByRole("button", { name: "New…" }));
     expect(screen.getByRole("menuitem", { name: "New terminal" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "New terminal in folder…" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "New SSH connection" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "New SSH connection…" })).toBeTruthy();
   });
 
   test("opens a reader beside the terminal instead of covering it", async () => {
