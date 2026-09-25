@@ -950,8 +950,12 @@ fn classify_open_error(error: &str, routed: bool) -> (SshStage, HopRole, SshErro
             )
         };
     let normalized = detail.to_ascii_lowercase();
+    let dns_failure = normalized.starts_with("resolve ")
+        || normalized.contains("failed to lookup")
+        || normalized.contains("name or service not known")
+        || normalized.contains("nodename nor servname");
     if invalid_request
-        || normalized.contains("invalid")
+        || (!dns_failure && normalized.contains("invalid"))
         || normalized.contains("must be")
         || normalized.contains("is required")
         || normalized.contains("requires")
@@ -971,9 +975,6 @@ fn classify_open_error(error: &str, routed: bool) -> (SshStage, HopRole, SshErro
         || normalized.contains("permission denied")
         || normalized.contains("identity file")
         || normalized.contains("ssh agent");
-    let dns_failure = normalized.contains("failed to lookup")
-        || normalized.contains("name or service not known")
-        || normalized.contains("nodename nor servname");
     let open_shell_failure = normalized.contains("open session")
         || normalized.contains("request pty")
         || normalized.contains("request shell");
@@ -1182,6 +1183,12 @@ mod tests {
         let dns = command_error_from_legacy("connect failed: failed to lookup address information");
         assert_eq!(dns.diagnostic.stage, SshStage::Dns);
         assert_eq!(dns.diagnostic.code, SshErrorCode::DnsFailed);
+
+        let invalid_tld_dns = command_error_from_legacy(
+            "resolve no-such-host.invalid:22 failed: nodename nor servname provided, or not known",
+        );
+        assert_eq!(invalid_tld_dns.diagnostic.stage, SshStage::Dns);
+        assert_eq!(invalid_tld_dns.diagnostic.code, SshErrorCode::DnsFailed);
 
         let auth_timeout = command_error_from_legacy("SSH authentication timed out after 135s");
         assert_eq!(auth_timeout.diagnostic.stage, SshStage::Auth);
