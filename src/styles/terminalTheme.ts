@@ -80,6 +80,13 @@ export function getTerminalMinimumContrastRatio(appTheme: ThemeType): number {
   return isDarkTheme(appTheme) ? DARK_MINIMUM_CONTRAST_RATIO : LIGHT_MINIMUM_CONTRAST_RATIO;
 }
 
+/** Ghostty-style background opacity: only the cell background gets alpha; glyphs stay opaque. */
+export function withBackgroundOpacity<T extends { background: string }>(theme: T, opacity: number): T {
+  if (!(opacity < 1) || !/^#[0-9a-f]{6}$/i.test(theme.background)) return theme;
+  const alpha = Math.round(Math.max(0, opacity) * 255).toString(16).padStart(2, "0");
+  return { ...theme, background: theme.background + alpha };
+}
+
 export function getTerminalTheme(appTheme: ThemeType, accent?: string) {
   const base = isDarkTheme(appTheme) ? DARK_THEME : LIGHT_THEME;
   if (accent) {

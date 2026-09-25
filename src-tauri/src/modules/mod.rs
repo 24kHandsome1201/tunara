@@ -20,4 +20,5 @@ pub mod git;
 pub mod herdr;
 // §ssh-client SSH 会话 + SFTP 文件
 pub mod ssh;
+pub mod window_effects;
 pub mod workspace_store;

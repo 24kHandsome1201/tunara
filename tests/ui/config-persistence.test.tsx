@@ -285,3 +285,25 @@ test("a save failure still raises an app toast when config loading already repor
 
   useUIStore.setState({ configLoaded: false, configError: null, toasts: [], fontSize: DEFAULT_SETTINGS.fontSize });
 });
+
+test("background opacity and blur hydrate clamped and persist", async () => {
+  let saved: unknown;
+  mockIPC((command, payload) => {
+    if (command === "load_config") {
+      return { path: "/tmp/tunara-config.toml", config: { appearance: { background_opacity: 0.1, background_blur: true }, keybindings: {} }, error: null };
+    }
+    if (command === "save_config") {
+      saved = (payload as { config: unknown }).config;
+      return undefined;
+    }
+    return undefined;
+  });
+  useUIStore.setState({ configLoaded: false, configError: null });
+
+  await loadUserConfig();
+  expect(useUIStore.getState()).toMatchObject({ backgroundOpacity: 0.3, backgroundBlur: true });
+
+  useUIStore.getState().setBackgroundOpacity(0.85);
+  await waitFor(() => expect(saved).toMatchObject({ appearance: { background_opacity: 0.85, background_blur: true } }));
+  useUIStore.setState({ configLoaded: false });
+});

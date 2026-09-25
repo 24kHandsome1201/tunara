@@ -10,6 +10,7 @@ import {
   SECTION_LABEL_INLINE,
   Segmented,
   Stepper,
+  IS_MAC,
   Toggle,
   TOGGLE_ROW,
   type ColorSchemeId,
@@ -50,6 +51,10 @@ export function AppearanceSettings() {
   const setFontLigatures = useUIStore((s) => s.setFontLigatures);
   const nerdFontFallback = useUIStore((s) => s.nerdFontFallback);
   const setNerdFontFallback = useUIStore((s) => s.setNerdFontFallback);
+  const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
+  const setBackgroundOpacity = useUIStore((s) => s.setBackgroundOpacity);
+  const backgroundBlur = useUIStore((s) => s.backgroundBlur);
+  const setBackgroundBlur = useUIStore((s) => s.setBackgroundBlur);
 
   const [fontDraft, setFontDraft] = useState(fontFamily);
   const composingFont = useRef(false);
@@ -175,6 +180,29 @@ export function AppearanceSettings() {
         </div>
         <CursorStylePicker value={cursorStyle} onChange={setCursorStyle} />
       </div>
+      {IS_MAC && (
+        <div style={{ marginTop: 24 }}>
+          <div style={TOGGLE_ROW}>
+            <label htmlFor="settings-background-opacity" style={SECTION_LABEL_INLINE}>{t("settings.appearance.background_opacity")}</label>
+            <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", fontVariantNumeric: "tabular-nums" }}>{Math.round(backgroundOpacity * 100)}%</span>
+          </div>
+          <input
+            id="settings-background-opacity"
+            type="range"
+            min={30}
+            max={100}
+            step={5}
+            value={Math.round(backgroundOpacity * 100)}
+            onChange={(e) => setBackgroundOpacity(Number(e.target.value) / 100)}
+            style={{ width: "100%", accentColor: "var(--c-accent)" }}
+          />
+          <div style={{ ...TOGGLE_ROW, marginTop: 10 }}>
+            <span style={SECTION_LABEL_INLINE}>{t("settings.appearance.background_blur")}</span>
+            <Toggle checked={backgroundBlur} onChange={setBackgroundBlur} ariaLabel={t("settings.appearance.background_blur")} />
+          </div>
+          <div style={SECTION_HINT}>{t("settings.appearance.background_opacity.hint")}</div>
+        </div>
+      )}
       <button
         type="button"
         onClick={async () => {

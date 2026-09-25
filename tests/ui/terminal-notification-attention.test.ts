@@ -23,7 +23,7 @@ test("background non-Agent sessions surface OSC notifications once", () => {
 });
 
 test("Agent sessions keep the confirmation path only", () => {
-  useSessionsStore.setState({ sessions: [{ ...shell, id: "agent", agent: "claude" }, other], activeSessionId: other.id });
+  useSessionsStore.setState({ sessions: [{ ...shell, id: "agent", agent: "CC" }, other], activeSessionId: other.id });
   useUIStore.setState({ toasts: [] });
   emitTerminalNotification("agent", { title: "done" });
   expect(useUIStore.getState().toasts).toHaveLength(0);

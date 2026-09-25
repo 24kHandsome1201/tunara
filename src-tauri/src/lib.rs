@@ -106,6 +106,7 @@ pub fn run() {
             fs::grep::cancel_operation_v1,
             fs::recent_repos::fs_scan_recent_repos,
             // Tunara 新增（§3.7.2 CLI 路径解析）
+            modules::window_effects::set_window_background_blur,
             modules::resolver::resolve_all_bins,
             modules::resolver::set_bin_override,
             modules::resolver::clear_bin_overrides,
@@ -257,5 +258,18 @@ mod window_config_tests {
         assert_eq!(linux_window["label"], "main");
         assert_eq!(linux_window["decorations"], false);
         assert_eq!(linux_window["transparent"], true);
+    }
+
+    #[test]
+    fn macos_window_config_repeats_base_window_and_allows_transparency() {
+        let base: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let macos: Value = serde_json::from_str(include_str!("../tauri.macos.conf.json")).unwrap();
+        let base_window = base["app"]["windows"][0].as_object().unwrap();
+        let macos_window = &macos["app"]["windows"][0];
+        for (key, value) in base_window {
+            assert_eq!(&macos_window[key], value, "{key} drifted");
+        }
+        assert_eq!(macos_window["label"], "main");
+        assert_eq!(macos_window["transparent"], true);
     }
 }
