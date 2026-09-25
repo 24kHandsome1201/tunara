@@ -14,6 +14,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 设置 → 终端新增「渲染器」：自动 / GPU / 兼容（默认自动）。自动模式先在隐藏终端里绘制中文、中文标点、Emoji、制表符、带重音拉丁字母和 ANSI 真彩色探针，比对 DOM 与 WebGL 的单元格尺寸并逐格检查字形墨迹、越界和颜色，通过后才启用 GPU（WebGL）渲染；自检失败、WebGL 不可用、初始化失败或运行中上下文丢失时回退并固定为 DOM 渲染。GPU 模式始终尝试 WebGL（保留原有逐终端回退），兼容模式始终使用 DOM。设置页会显示自检结果。
 - 终端基准新增 `renderer` 变体与 `scripts/benchmark-renderer.sh`：对同一构建分别以 WebGL 和 DOM 运行大输出吞吐、渲染排空与四窗格并发输出帧时间，输出可直接贴进发布记录的对比表。
 
+### 修复与优化
+- 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复
