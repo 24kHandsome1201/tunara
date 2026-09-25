@@ -47,6 +47,7 @@ export function ExplorerNav({
   onGoUp,
   currentPath,
   breadcrumbRoot,
+  breadcrumbHome,
   onNavigate,
   onRefresh,
 }: {
@@ -55,6 +56,7 @@ export function ExplorerNav({
   onGoUp: () => void;
   currentPath: string;
   breadcrumbRoot: string;
+  breadcrumbHome: string | null;
   onNavigate: (path: string) => void;
   onRefresh: () => void;
 }) {
@@ -70,7 +72,7 @@ export function ExplorerNav({
         <Icon icon={CaretLeft} size={14} />
       </PanelIconButton>
       <div className="explorer-breadcrumbs" title={currentPath}>
-        {breadcrumbSegments(currentPath, breadcrumbRoot).map((seg, idx, arr) => {
+        {breadcrumbSegments(currentPath, breadcrumbRoot, breadcrumbHome).map((seg, idx, arr) => {
           const isCurrent = seg.targetPath === currentPath;
           const showSeparator = idx < arr.length - 1;
           return (

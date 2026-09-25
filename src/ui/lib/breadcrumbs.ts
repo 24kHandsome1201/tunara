@@ -9,7 +9,13 @@ function rootDisplayLabel(rootDir: string): string {
   return rootDir;
 }
 
-export function breadcrumbSegments(currentPath: string, rootDir: string): BreadcrumbSegment[] {
+/** When `homeDir` contains `currentPath`, the trail starts at `~` instead of `/`. */
+export function breadcrumbSegments(currentPath: string, rootDir: string, homeDir: string | null = null): BreadcrumbSegment[] {
+  if (homeDir && homeDir !== "/" && homeDir.startsWith("/") && (currentPath === homeDir || currentPath.startsWith(homeDir + "/"))) {
+    const home = breadcrumbSegments(currentPath, homeDir);
+    if (home[0]?.targetPath === homeDir) home[0] = { label: "~", targetPath: homeDir };
+    return home;
+  }
   const rootedAtFilesystem = rootDir === "/";
   const rootSeg: BreadcrumbSegment = { label: rootDisplayLabel(rootDir), targetPath: rootDir };
 
