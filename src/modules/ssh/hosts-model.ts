@@ -27,6 +27,8 @@ export interface SshHostProfile {
   autoReconnect?: boolean;
   /** Per-host remote shell integration preference; missing means on. */
   injectShellIntegration?: boolean;
+  /** Typed into the remote shell after each (re)connect, e.g. `herdr`. */
+  postConnectCommand?: string;
 }
 
 // 后端用 snake_case（serde 默认），前端用 camelCase，在边界转换。
@@ -42,6 +44,7 @@ export interface RawHostProfile {
   proxy_jump_profile_id?: string;
   auto_reconnect?: boolean;
   shell_integration_disabled?: boolean;
+  post_connect_command?: string;
 }
 
 export function parseSshPort(raw: unknown): number | null {
@@ -72,6 +75,7 @@ export function toProfile(r: RawHostProfile): SshHostProfile {
     ...(r.proxy_jump_profile_id ? { proxyJumpProfileId: r.proxy_jump_profile_id } : {}),
     ...(r.auto_reconnect === true ? { autoReconnect: true } : {}),
     ...(r.shell_integration_disabled === true ? { injectShellIntegration: false } : {}),
+    ...(normalizePostConnectCommand(r.post_connect_command) ? { postConnectCommand: normalizePostConnectCommand(r.post_connect_command) } : {}),
   };
 }
 
@@ -88,7 +92,19 @@ export function toRaw(p: SshHostProfile): RawHostProfile {
     proxy_jump_profile_id: p.proxyJumpProfileId ?? "",
     auto_reconnect: p.autoReconnect === true,
     shell_integration_disabled: p.injectShellIntegration === false,
+    post_connect_command: normalizePostConnectCommand(p.postConnectCommand),
   };
+}
+
+const MAX_POST_CONNECT_COMMAND_LENGTH = 512;
+
+/** Single-line, bounded command; anything else is dropped rather than typed into a shell. */
+export function normalizePostConnectCommand(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const command = raw.trim();
+  if (!command || command.length > MAX_POST_CONNECT_COMMAND_LENGTH) return "";
+  if (/[\u0000-\u001f\u007f]/.test(command)) return "";
+  return command;
 }
 
 export function makeHostId(): string {

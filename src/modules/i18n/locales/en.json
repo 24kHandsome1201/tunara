@@ -97,6 +97,8 @@
   "ssh.injectIntegration": "Remote shell integration",
   "ssh.injectIntegrationHint": "On by default: injects a small bash/zsh helper for the current directory and command status. Ignored if unsupported. Uncheck to leave the remote shell unchanged.",
   "ssh.autoReconnect": "Automatically reopen a terminal after the network drops",
+  "ssh.postConnectCommand": "Run after connecting",
+  "ssh.postConnectCommandHint": "Typed into the shell after every connect and reconnect, e.g. herdr to reattach its session. Leave empty to skip.",
   "ssh.autoReconnectHint": "Off by default. Retries are limited, host keys are verified every time, and input is never replayed. One-time credentials must be entered again.",
   "ssh.forward.rebuildFailed": "SSH forward could not be recreated",
   "ssh.forward.snapshotFailed": "Could not save the current port-forward settings",

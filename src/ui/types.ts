@@ -153,6 +153,8 @@ export interface RemoteInfo {
   injectShellIntegration?: boolean;
   /** Explicit opt-in. Missing and false both disable automatic reconnect. */
   autoReconnect?: boolean;
+  /** Typed into the shell after every (re)connect, e.g. `herdr` to reattach. */
+  postConnectCommand?: string;
 }
 
 /** Transient form state for a new SSH connection or an in-place reconnect. */
@@ -167,6 +169,7 @@ export interface SshConnectPrefill {
   reconnectForwards?: ForwardReconnectIntent[];
   injectShellIntegration?: boolean;
   autoReconnect?: boolean;
+  postConnectCommand?: string;
   reconnectSessionId?: string;
 }
 
@@ -185,6 +188,7 @@ export function reconnectPrefillFromSession(session: Session): SshConnectPrefill
     ...(session.sshReconnectForwards !== undefined ? { reconnectForwards: session.sshReconnectForwards } : {}),
     injectShellIntegration: remote.injectShellIntegration,
     autoReconnect: remote.autoReconnect,
+    ...(remote.postConnectCommand ? { postConnectCommand: remote.postConnectCommand } : {}),
     reconnectSessionId: session.id,
   };
 }

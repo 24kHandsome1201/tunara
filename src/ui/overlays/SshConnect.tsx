@@ -24,6 +24,8 @@ import {
   type SshProfilesPanelModelV1,
 } from "@/modules/ssh/hosts-bridge";
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
+import { postConnectPendingInput } from "@/modules/ssh/post-connect";
+import { normalizePostConnectCommand } from "@/modules/ssh/hosts-model";
 import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort } from "@/modules/ssh/connect-target";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
@@ -181,6 +183,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const [password, setPassword] = useState("");
   const [injectIntegration, setInjectIntegration] = useState(prefill?.injectShellIntegration ?? true);
   const [autoReconnect, setAutoReconnect] = useState(prefill?.autoReconnect ?? false);
+  const [postConnectCommand, setPostConnectCommand] = useState(prefill?.postConnectCommand ?? "");
   const [panelModel, setPanelModel] = useState<SshProfilesPanelModelV1>(EMPTY_PANEL_MODEL);
   const forwardSnapshotInFlight = useRef(false);
   // Starts true: the mount effect loads profiles, and until it settles an empty
@@ -247,6 +250,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setJumpCertificateFile("");
     setJumpPassword("");
     setJumpKeyPassphrase("");
+    setInjectIntegration(true);
+    setAutoReconnect(false);
+    setPostConnectCommand("");
     setHighlight(-1);
     requestAnimationFrame(() => targetRef.current?.focus());
   };
@@ -311,6 +317,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setJumpAuthMethod(jump?.authMethod ?? "auto");
     setJumpIdentityFile(jump?.authMethod === "password" ? "" : jump?.identityFile ?? "");
     setJumpCertificateFile(jump?.authMethod === "password" ? "" : jump?.certificateFile ?? "");
+    setInjectIntegration(profile.injectShellIntegration ?? true);
+    setAutoReconnect(profile.autoReconnect ?? false);
+    setPostConnectCommand(profile.postConnectCommand ?? "");
     setAdvancedOpen(true);
     requestAnimationFrame(() => targetRef.current?.focus());
   };
@@ -499,6 +508,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       ...(sessionAuth === "key" && trimmedCertificate ? { certificateFile: trimmedCertificate } : {}),
       injectShellIntegration: injectIntegration,
       ...(autoReconnect ? { autoReconnect: true } : {}),
+      ...(normalizePostConnectCommand(postConnectCommand) ? { postConnectCommand: normalizePostConnectCommand(postConnectCommand) } : {}),
       ...(route ? { route } : {}),
     };
     const reconnectSessionId = prefill?.reconnectSessionId;
@@ -576,15 +586,14 @@ export function SshConnect({ onClose }: SshConnectProps) {
         completedAt: undefined,
         lastExitCode: undefined,
         terminalProgress: undefined,
-        pendingInput: undefined,
-        pendingInputSubmit: undefined,
+        ...postConnectPendingInput(remote),
         reconnectNonce,
         terminalMountNonce: reconnectNonce,
       });
       useSessionsStore.getState().handleConnectionEvent(existingSession.id, { type: "reconnectRequested" });
       useSessionsStore.getState().setActive(existingSession.id);
     } else {
-      addSession({ ...session, pendingSavedHost });
+      addSession({ ...session, ...postConnectPendingInput(remote), pendingSavedHost });
     }
     useUIStore.getState().showTerminal();
     setOverlay(null);
@@ -818,6 +827,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
               <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", fontSize: "var(--fs-secondary)" }}>
                 <input className="ui-choice" type="checkbox" checked={autoReconnect} onChange={(event) => setAutoReconnect(event.target.checked)} style={{ marginTop: 2 }} />
                 <span>{t("ssh.autoReconnect")}<span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>{t("ssh.autoReconnectHint")}</span></span>
+              </label>
+              <label htmlFor="ssh-post-connect-command" style={{ fontSize: "var(--fs-secondary)" }}>
+                {t("ssh.postConnectCommand")}
+                <input id="ssh-post-connect-command" className="ui-control" style={fieldStyle} value={postConnectCommand} onChange={(event) => setPostConnectCommand(event.target.value)} placeholder="herdr" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={512} />
+                <span style={{ display: "block", marginTop: 2, fontSize: "var(--fs-meta)", color: "var(--c-text-4)" }}>{t("ssh.postConnectCommandHint")}</span>
               </label>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer" }}>

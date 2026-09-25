@@ -3,7 +3,8 @@ import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
 import { sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
-import { toProfilesPanelModel } from "@/modules/ssh/hosts-model";
+import { normalizePostConnectCommand, toProfilesPanelModel } from "@/modules/ssh/hosts-model";
+import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { useSessionsStore } from "@/state/sessions";
 import type { Session } from "@/ui/types";
 
@@ -72,6 +73,28 @@ describe("save SSH host after connection success", () => {
     );
     expect(defaults).not.toHaveProperty("autoReconnect");
     expect(defaults).not.toHaveProperty("injectShellIntegration");
+  });
+
+  test("round-trips the post-connect command and types it once the PTY opens", () => {
+    const profile = sshHostProfileFromSuccessfulConnect(
+      { host: "prod.example", port: 22, user: "deploy", authMethod: "agent", postConnectCommand: "herdr" },
+      "deploy@prod.example",
+      [],
+    );
+    expect(profile).toMatchObject({ postConnectCommand: "herdr" });
+    const prefill = sshConnectPrefillFromProfile(profile, toProfilesPanelModel([profile], { imported: [], skipped: 0, diagnostics: [] }));
+    expect(prefill).toMatchObject({ postConnectCommand: "herdr" });
+    expect(postConnectPendingInput({ host: "h", port: 22, user: "u", postConnectCommand: " herdr " }))
+      .toEqual({ pendingInput: "herdr", pendingInputSubmit: true });
+    expect(postConnectPendingInput({ host: "h", port: 22, user: "u" }))
+      .toEqual({ pendingInput: undefined, pendingInputSubmit: undefined });
+  });
+
+  test("drops multi-line or control-character post-connect commands", () => {
+    expect(normalizePostConnectCommand("herdr\nrm -rf ~")).toBe("");
+    expect(normalizePostConnectCommand("herdr\u001b[A")).toBe("");
+    expect(normalizePostConnectCommand("x".repeat(513))).toBe("");
+    expect(normalizePostConnectCommand("  herdr session attach work ")).toBe("herdr session attach work");
   });
 
   test("saves only when the session reports ready, not when it fails", async () => {
