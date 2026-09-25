@@ -13,6 +13,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ### 稳定性
 - 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
 
+### 修复与优化
+- 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复
