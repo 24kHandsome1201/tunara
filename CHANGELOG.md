@@ -10,6 +10,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 修复
+- 终端启用 Unicode 15 字形簇宽度（`@xterm/addon-unicode-graphemes`，随终端懒加载）：emoji ZWJ 组合、旗帜、肤色修饰符和 emoji 呈现选择器按单个宽字符计算列宽，修复光标与列错位；CJK 与全角标点宽度不变，与禁用的标点压缩保持一致。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复
