@@ -89,6 +89,7 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSBitmapImageRep", "NSImage", "NSImageRep"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSData", "NSDictionary", "NSError", "NSObject", "NSString"] }
 objc2-web-kit = "0.3"
+window-vibrancy = "0.6"
 
 [profile.dev]
 incremental = true
