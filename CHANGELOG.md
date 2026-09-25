@@ -13,6 +13,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ### 修复
 - 终端启用 Unicode 15 字形簇宽度（`@xterm/addon-unicode-graphemes`，随终端懒加载）：emoji ZWJ 组合、旗帜、肤色修饰符和 emoji 呈现选择器按单个宽字符计算列宽，修复光标与列错位；CJK 与全角标点宽度不变，与禁用的标点压缩保持一致。
 
+### 修复与优化
+- 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
+
 ## [3.0.3] - 2026-09-16
 
 ### 修复
