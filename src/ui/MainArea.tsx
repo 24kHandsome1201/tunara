@@ -225,6 +225,7 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
       </div>
 
       <div
+        className="tunara-statusbar"
         style={{
           height: "var(--h-statusbar)",
           background: "var(--c-bg-1)",

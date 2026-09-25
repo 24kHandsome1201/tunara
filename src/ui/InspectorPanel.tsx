@@ -180,6 +180,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
       }}
     >
       <div
+        className="tunara-translucent-layer"
         style={{
           minHeight: "var(--h-titlebar)",
           background: "var(--c-bg-1)",
@@ -266,6 +267,7 @@ export function InspectorPanel({ session, onClose, filesOnly = false }: Inspecto
       />}
       {showContextBar && (
         <div
+          className="tunara-translucent-layer"
           id="inspector-context-bar"
           style={{
             minHeight: 28,

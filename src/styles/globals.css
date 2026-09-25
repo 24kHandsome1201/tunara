@@ -2001,10 +2001,16 @@ html[data-window-translucent] .tunara-shell,
 html[data-window-translucent] [data-terminal-canvas="workspace"] {
   background: transparent !important;
 }
-html[data-window-translucent] .tunara-titlebar {
+html[data-window-translucent] .tunara-titlebar,
+html[data-window-translucent] .tunara-statusbar {
   background: color-mix(in srgb, var(--c-bg-1) var(--window-bg-opacity), transparent) !important;
 }
 html[data-window-translucent] .tunara-sidebar > *,
 html[data-window-translucent] .tunara-panel > * {
   background: color-mix(in srgb, var(--c-bg-2) var(--window-bg-opacity), transparent) !important;
+}
+
+html[data-window-translucent] .tunara-translucent-layer,
+html[data-window-translucent] .xterm .xterm-viewport {
+  background: transparent !important;
 }
