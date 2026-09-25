@@ -55,7 +55,10 @@ export function TerminalSettings() {
         />
         <div style={SECTION_HINT}>{t("settings.terminal.renderer.hint")}</div>
         {terminalRenderer === "auto" && (
-          <div style={SECTION_HINT} data-testid="terminal-renderer-status">{t(rendererStatusKey(gpuHealth))}</div>
+          <div style={SECTION_HINT} data-testid="terminal-renderer-status">
+            {t(rendererStatusKey(gpuHealth))}
+            {gpuHealth.report?.reason && <code style={{ display: "block", marginTop: 4, wordBreak: "break-all" }}>{gpuHealth.report.reason}</code>}
+          </div>
         )}
       </div>
       <div className="settings-terminal-interactions" style={{ marginBottom: 24 }}>

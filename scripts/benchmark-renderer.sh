@@ -153,9 +153,21 @@ run_benchmark() {
     ' > "$result_dir/result.json"
   ln -sfn "$result_dir/result.json" "$RESULTS_ROOT/latest-$renderer.json"
   echo "Benchmark ($renderer) complete: $result_dir/result.json"
-  if [[ "$(jq -r '.terminal.passed' "$result_dir/result.json")" != "true" ]]; then
+  if [[ "$(jq -r '.terminal.correct' "$result_dir/result.json")" != "true" ]]; then
     echo "Renderer benchmark ($renderer) failed its correctness gate." >&2
     exit 6
+  fi
+  if [[ "$(jq -r '.terminal.passed' "$result_dir/result.json")" != "true" ]]; then
+    echo "Renderer benchmark ($renderer) exceeded the 4-pane frame p95 budget." >&2
+    BUDGET_MISSED=1
+  fi
+}
+
+BUDGET_MISSED=0
+finish() {
+  if (( BUDGET_MISSED )); then
+    echo "At least one renderer exceeded the frame budget; see the comparison table." >&2
+    exit 7
   fi
 }
 
@@ -172,13 +184,14 @@ compare() {
 
 case "$ACTION" in
   build) for renderer in $RENDERERS; do build_bundle "$renderer"; done ;;
-  run) for renderer in $RENDERERS; do run_benchmark "$renderer"; done ;;
+  run) for renderer in $RENDERERS; do run_benchmark "$renderer"; done; finish ;;
   compare) compare ;;
   stop) stop_bundle ;;
   all)
     for renderer in $RENDERERS; do build_bundle "$renderer"; done
     for renderer in $RENDERERS; do run_benchmark "$renderer"; done
     compare
+    finish
     ;;
   *)
     echo "Usage: $0 [all|build|run|compare|stop]" >&2

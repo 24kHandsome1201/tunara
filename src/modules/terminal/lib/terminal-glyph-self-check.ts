@@ -2,11 +2,13 @@ import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
   analyzeGlyphProbe,
+  alignGlyphProbeLayout,
   buildGlyphProbeLayout,
   compareRendererMetrics,
   PROBE_BACKGROUND,
   sampleColumnInk,
   type GlyphProbeAnalysis,
+  type ProbeBufferCell,
   type RendererCellMetrics,
 } from "./terminal-glyph-probe.ts";
 
@@ -63,6 +65,16 @@ function domCellMetrics(term: Terminal): RendererCellMetrics | null {
   return { cellWidth: rect.width / term.cols, cellHeight: rect.height / term.rows };
 }
 
+function readProbeBufferCells(term: Terminal): ProbeBufferCell[] {
+  const line = term.buffer.active.getLine(0);
+  const cells: ProbeBufferCell[] = [];
+  for (let column = 0; column < term.cols; column += 1) {
+    const cell = line?.getCell(column);
+    cells.push({ chars: cell?.getChars() ?? "", width: cell?.getWidth() ?? 1 });
+  }
+  return cells;
+}
+
 function findWebglCanvas(term: Terminal): { canvas: HTMLCanvasElement; gl: WebGL2RenderingContext } | null {
   for (const canvas of term.element?.querySelectorAll("canvas") ?? []) {
     try {
@@ -95,7 +107,7 @@ function hasAnyInk(pixels: Uint8ClampedArray, stride = 4): boolean {
 
 export async function runGlyphSelfCheck(options: GlyphSelfCheckOptions): Promise<GlyphSelfCheckReport> {
   const startedAt = performance.now();
-  const layout = buildGlyphProbeLayout();
+  let layout = buildGlyphProbeLayout();
   const maxRenderFrames = options.maxRenderFrames ?? 30;
   const host = options.container ?? document.body;
   const finish = (partial: Omit<GlyphSelfCheckReport, "durationMs">): GlyphSelfCheckReport => ({
@@ -147,6 +159,7 @@ export async function runGlyphSelfCheck(options: GlyphSelfCheckOptions): Promise
     term.open(container);
     await writeAndSettle(term, `\u001b[?25l${layout.text}`);
     await nextFrame();
+    layout = alignGlyphProbeLayout(layout, readProbeBufferCells(term));
     const dom = domCellMetrics(term);
     if (!dom) {
       return finish({ status: "unavailable", reason: "dom-metrics-unavailable", metrics: null, glyphs: null, framesWaited: 0 });

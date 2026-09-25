@@ -10,6 +10,7 @@ import {
   TERMINAL_RENDERER_PREFERENCES,
 } from "../src/modules/terminal/lib/terminal-renderer-policy.ts";
 import {
+  alignGlyphProbeLayout,
   analyzeGlyphProbe,
   buildGlyphProbeLayout,
   compareRendererMetrics,
@@ -96,6 +97,45 @@ test("probe layout covers CJK, CJK punctuation, emoji, box drawing, accented Lat
     expectedColumn += cell.width + 1;
   }
   assert.equal(layout.columns, expectedColumn + 1);
+});
+
+function bufferCellsFor(layout, widthOf) {
+  const cells = [];
+  for (const cell of layout.cells) {
+    const width = widthOf(cell);
+    cells.push({ chars: cell.glyph, width });
+    if (width === 2) cells.push({ chars: "", width: 0 });
+    cells.push({ chars: " ", width: 1 });
+  }
+  cells.push({ chars: " ", width: 1 });
+  return cells;
+}
+
+test("probe layout re-anchors to the columns xterm actually assigned when emoji is narrow", () => {
+  const layout = buildGlyphProbeLayout();
+  const unchanged = alignGlyphProbeLayout(layout, bufferCellsFor(layout, (cell) => cell.width));
+  assert.deepEqual(unchanged.cells.map((cell) => [cell.column, cell.width]), layout.cells.map((cell) => [cell.column, cell.width]));
+  assert.equal(unchanged.columns, layout.columns);
+
+  // xterm's default Unicode 6 tables give U+1F41F width 1, so everything after it moves left by one column.
+  const narrowEmoji = alignGlyphProbeLayout(layout, bufferCellsFor(layout, (cell) => (cell.label === "emoji" ? 1 : cell.width)));
+  const emoji = narrowEmoji.cells.find((cell) => cell.label === "emoji");
+  const box = narrowEmoji.cells.find((cell) => cell.label === "box-drawing");
+  const staticBox = layout.cells.find((cell) => cell.label === "box-drawing");
+  // The colour emoji still paints across the blank cell after it, so that column is not a separator.
+  assert.equal(emoji.width, 2);
+  assert.equal(emoji.inkHalves, "any");
+  assert.equal(box.column, staticBox.column - 1);
+  assert.equal(narrowEmoji.columns, layout.columns - 1);
+  const drawn = healthyColumns(narrowEmoji);
+  drawn[emoji.column + 1] = ink(0.56, { r: 200, g: 140, b: 60 });
+  assert.equal(analyzeGlyphProbe(narrowEmoji, drawn).passed, true);
+  drawn[emoji.column] = ink(0);
+  drawn[emoji.column + 1] = ink(0);
+  assert.equal(analyzeGlyphProbe(narrowEmoji, drawn).passed, false);
+
+  // A buffer that never shows the probe text (e.g. write not flushed) keeps the static layout.
+  assert.deepEqual(alignGlyphProbeLayout(layout, [{ chars: " ", width: 1 }]), layout);
 });
 
 function ink(coverage, color = { r: 255, g: 255, b: 255 }) {

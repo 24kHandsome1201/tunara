@@ -131,7 +131,8 @@ test("renderer comparison table reports throughput and four-pane frame time side
       frameP95BudgetMs: 33.4,
       referencesVisible: 4,
     },
-    passed: true,
+    correct: true,
+    passed: scale === 1,
   });
   const rows = compareRendererBenchmarkReports(report("webgl", 1), report("dom", 2));
   const byMetric = Object.fromEntries(rows.map((row) => [row.metric, row]));
@@ -139,6 +140,9 @@ test("renderer comparison table reports throughput and four-pane frame time side
   assert.equal(byMetric["large output throughput"].dom, "25.00 MiB/s (50 MiB in 2000 ms)");
   assert.equal(byMetric["4-pane frame p50 / p95 / max"].dom, "20.00 ms / 80.00 ms / 80.00 ms");
   assert.equal(byMetric["panes on requested renderer"].webgl, "4/4");
+  assert.equal(byMetric["4-pane frame p95 within budget"].webgl, "no (budget 33.40 ms)");
+  assert.equal(byMetric["4-pane frame p95 within budget"].dom, "no (budget 33.40 ms)");
+  assert.equal(byMetric["output correct"].dom, "yes");
   const markdown = renderRendererComparisonMarkdown(rows);
   assert.match(markdown, /^\| Metric \| WebGL \| DOM \|\n\| --- \| --- \| --- \|\n/);
   assert.equal(markdown.split("\n").length, rows.length + 2);

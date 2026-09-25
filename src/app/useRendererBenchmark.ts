@@ -146,6 +146,11 @@ async function runRendererBenchmark(readyIds: readonly string[]): Promise<Render
     frameP95BudgetMs: FRAME_P95_BUDGET_MS,
     referencesVisible,
   };
+  const correct = paneRenderers.every((mode) => mode === TERMINAL_BENCHMARK_RENDERER)
+    && throughput.sequenceValid
+    && throughput.referenceVisible
+    && paneOutputsValid
+    && referencesVisible === PANES;
   return {
     benchmark: "renderer",
     renderer: TERMINAL_BENCHMARK_RENDERER,
@@ -153,12 +158,8 @@ async function runRendererBenchmark(readyIds: readonly string[]): Promise<Render
     paneRenderers,
     throughput,
     fourPane,
-    passed: paneRenderers.every((mode) => mode === TERMINAL_BENCHMARK_RENDERER)
-      && throughput.sequenceValid
-      && throughput.referenceVisible
-      && paneOutputsValid
-      && referencesVisible === PANES
-      && fourPaneFrames.passed,
+    correct,
+    passed: correct && fourPaneFrames.passed,
   };
 }
 
@@ -190,6 +191,7 @@ export function useRendererBenchmark(ready: boolean): void {
           benchmark: "renderer",
           renderer: TERMINAL_BENCHMARK_RENDERER,
           timestamp: new Date().toISOString(),
+          correct: false,
           passed: false,
           error: String(reason),
         })}`);

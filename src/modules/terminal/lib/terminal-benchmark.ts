@@ -621,6 +621,9 @@ export interface RendererBenchmarkReport {
     frameP95BudgetMs: number;
     referencesVisible: number;
   };
+  /** Every pane used the requested renderer and all output arrived intact. */
+  correct: boolean;
+  /** `correct` and the 4-pane frame p95 stayed within budget. */
   passed: boolean;
 }
 
@@ -658,7 +661,11 @@ export function compareRendererBenchmarkReports(
     pick("4-pane frame p50 / p95 / max", (report) => `${formatMs(report.fourPane.frames.p50Ms)} / ${formatMs(report.fourPane.frames.p95Ms)} / ${formatMs(report.fourPane.frames.maxMs)}`),
     pick("4-pane wall time", (report) => `${Math.round(report.fourPane.elapsedMs)} ms for ${report.fourPane.panes} × ${Math.round(report.fourPane.bytesPerPane / 1024 / 1024)} MiB`),
     pick("4-pane references intact", (report) => `${report.fourPane.referencesVisible}/${report.fourPane.panes}`),
-    pick("passed", (report) => report.passed ? "yes" : "no"),
+    pick("4-pane frame p95 within budget", (report) => {
+      const p95 = report.fourPane.frames.p95Ms;
+      return p95 !== null && p95 <= report.fourPane.frameP95BudgetMs ? "yes" : `no (budget ${formatMs(report.fourPane.frameP95BudgetMs)})`;
+    }),
+    pick("output correct", (report) => report.correct ? "yes" : "no"),
   ];
 }
 

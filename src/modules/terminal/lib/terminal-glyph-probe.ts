@@ -14,6 +14,7 @@
  */
 export interface GlyphProbeCell {
   label: string;
+  glyph: string;
   column: number;
   width: 1 | 2;
   inkHalves: "both" | "any";
@@ -52,7 +53,7 @@ export function buildGlyphProbeLayout(): GlyphProbeLayout {
     if (sgr) text += `\u001b[${sgr}m`;
     text += glyph;
     if (sgr) text += "\u001b[0m";
-    cells.push({ label, column, width, inkHalves, color });
+    cells.push({ label, glyph, column, width, inkHalves, color });
     column += width;
     text += " ";
     column += 1;
@@ -67,6 +68,40 @@ export function buildGlyphProbeLayout(): GlyphProbeLayout {
   put("W", "latin-green", 1, "both", PROBE_GREEN, "38;2;0;255;0");
   put("g", "latin-blue", 1, "both", PROBE_BLUE, "38;2;0;0;255");
   return { text, cells, columns: column + 1 };
+}
+
+/** One xterm buffer cell of the rendered probe row: its characters and cell width. */
+export interface ProbeBufferCell {
+  chars: string;
+  width: number;
+}
+
+/**
+ * Re-anchor the static layout to the columns xterm actually assigned. The
+ * static table assumes emoji are wide, but xterm's default Unicode 6 tables
+ * (or a host-configured Unicode 11 provider) may disagree, which would shift
+ * every later glyph and make the analysis compare the wrong cells. The buffer
+ * is authoritative because both renderers draw the same buffer. A glyph the
+ * tables call narrow but the layout expects wide (colour emoji) is still
+ * drawn across the blank neighbour by both renderers, so it keeps two columns
+ * with relaxed halves instead of counting that overflow as bleed.
+ */
+export function alignGlyphProbeLayout(layout: GlyphProbeLayout, bufferCells: readonly ProbeBufferCell[]): GlyphProbeLayout {
+  const cells: GlyphProbeCell[] = [];
+  let cursor = 0;
+  let end = 0;
+  for (const cell of layout.cells) {
+    let index = cursor;
+    while (index < bufferCells.length && bufferCells[index].chars !== cell.glyph) index += 1;
+    if (index >= bufferCells.length) return layout;
+    const bufferWidth = bufferCells[index].width >= 2 ? 2 : 1;
+    const overflows = cell.width === 2 && bufferWidth === 1;
+    const width = overflows ? 2 : bufferWidth;
+    cells.push({ ...cell, column: index, width, inkHalves: overflows ? "any" : cell.inkHalves });
+    cursor = index + bufferWidth;
+    end = index + width;
+  }
+  return { text: layout.text, cells, columns: end + 2 };
 }
 
 /** Per-column ink statistics sampled from the rendered probe row. */
