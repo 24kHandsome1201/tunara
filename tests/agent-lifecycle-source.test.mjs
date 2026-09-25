@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+const readModule = (base) =>
+  [read(`${base}.rs`), ...readdirSync(resolve(root, base)).filter((name) => name.endsWith(".rs")).sort().map((name) => read(`${base}/${name}`))].join("\n");
 
 test("shell wrappers emit explicit lifecycle events and only inject settings when hooks are available", () => {
   for (const path of [
@@ -279,8 +281,8 @@ test("remote SSH integration emits per-turn lifecycle hooks without a host socke
   assert.match(remote, /base64 --decode[\s\S]*base64 -D/);
   assert.match(remote, /command "\$bin" --plugin-dir "\$runtime" "\$@"/);
   assert.match(remote, /merge-settings "\$user_settings" "\$settings" "\$merged"/);
-  const connection = read("src-tauri/src/modules/ssh/connection.rs");
-  assert.match(connection, /const AGENT_HOOK_HELPER: &str = include_str!\("\.\.\/agent\/scripts\/agent-hook\.sh"\)/);
+  const connection = readModule("src-tauri/src/modules/ssh/connection");
+  assert.match(connection, /const AGENT_HOOK_HELPER: &str = include_str!\("\.\.\/\.\.\/agent\/scripts\/agent-hook\.sh"\)/);
   assert.match(connection, /replace\("__TUNARA_AGENT_HOOK_B64__", &B64\.encode\(AGENT_HOOK_HELPER\)\)/);
   assert.doesNotMatch(remote, /trap '_tunara_r_preexec' DEBUG/);
   assert.match(remote, /BASH_VERSINFO[\s\S]*PS0=/);

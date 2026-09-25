@@ -3,6 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const readModule = (base) =>
+  [read(`${base}.rs`), ...fs.readdirSync(new URL(`../${base}`, import.meta.url)).filter((name) => name.endsWith(".rs")).sort().map((name) => read(`${base}/${name}`))].join("\n");
 
 test("Phase 2 local writes require a fingerprint and expose structured conflicts", () => {
   const backend = read("src-tauri/src/modules/fs/file.rs");
@@ -38,7 +40,7 @@ test("Phase 2 local safe-write Linux gate uses real fixtures, unprivileged failu
 });
 
 test("Phase 2 SSH writes preserve the local conflict-safe contract", () => {
-  const backend = read("src-tauri/src/modules/ssh/sftp.rs");
+  const backend = readModule("src-tauri/src/modules/ssh/sftp");
   const transaction = read("src-tauri/src/modules/ssh/safe_write.rs");
   const bridge = read("src/modules/ssh/remote-fs-bridge.ts");
   const reconcile = read("src/modules/ssh/ssh-write-reconcile.ts");
