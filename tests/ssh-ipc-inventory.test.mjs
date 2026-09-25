@@ -1,21 +1,31 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 const lib = await readFile(new URL("src-tauri/src/lib.rs", root), "utf8");
+
+// Content-contract checks look at the whole module directory: the backend
+// files were split into submodules, so read the root file plus every
+// submodule and assert against their concatenated source.
+const readModule = async (base) =>
+  (await Promise.all(
+    [`${base}.rs`, ...(await readdir(new URL(base, root))).filter((name) => name.endsWith(".rs")).sort().map((name) => `${base}/${name}`)].map(
+      (path) => readFile(new URL(path, root), "utf8"),
+    ),
+  )).join("\n");
 
 const mapped = {
   "mod.rs": {
     ssh_host_key_decision: "HostDecision",
     ssh_keyboard_interactive_response: "KeyboardInteractive",
   },
-  "hosts.rs": Object.fromEntries(["ssh_hosts_load", "ssh_hosts_save", "ssh_hosts_remove", "ssh_hosts_import_config"].map((name) => [name, "Hosts"])),
+  "hosts/profile.rs": Object.fromEntries(["ssh_hosts_load", "ssh_hosts_save", "ssh_hosts_remove"].map((name) => [name, "Hosts"])),
+  "hosts/import.rs": { ssh_hosts_import_config: "Hosts" },
   "known_hosts.rs": Object.fromEntries(["ssh_known_hosts_list_v1", "ssh_known_hosts_remove_v1", "ssh_known_hosts_refresh_v1"].map((name) => [name, "KnownHosts"])),
-  "sftp.rs": {
-    ssh_fs_read_dir: "SftpRead", ssh_fs_read_file: "SftpRead", ssh_fs_home: "SftpRead",
-    ssh_fs_write_text_file: "SftpWrite", ssh_fs_reconcile_text_write: "SftpWrite",
-  },
+  "sftp/browse.rs": { ssh_fs_read_dir: "SftpRead", ssh_fs_home: "SftpRead" },
+  "sftp/read.rs": { ssh_fs_read_file: "SftpRead" },
+  "sftp/write.rs": { ssh_fs_write_text_file: "SftpWrite", ssh_fs_reconcile_text_write: "SftpWrite" },
   "transfer/legacy.rs": { ssh_fs_download: "Transfer", ssh_fs_upload: "Transfer" },
   "transfer/engine.rs": { ssh_transfer_download: "Transfer", ssh_transfer_upload: "Transfer" },
   "transfer/manifest.rs": { validate_manifest: "Manifest" },
@@ -132,7 +142,7 @@ test("safe mapper has fixed output for every error class", async () => {
 });
 
 test("forward cancellation and late channel close never shut down the shared transport", async () => {
-  const connection = await readFile(new URL("src-tauri/src/modules/ssh/connection.rs", root), "utf8");
+  const connection = await readModule("src-tauri/src/modules/ssh/connection");
   const start = connection.indexOf("async fn close_forward_channel_owned");
   const end = connection.indexOf("#[derive(Debug)]\npub enum RoutedOpenError", start);
   const forwardingOwnership = connection.slice(start, end);
@@ -151,7 +161,7 @@ test("forward cancellation and late channel close never shut down the shared tra
 });
 
 test("multiplexed shell setup consumes cancellation and closes only its late channel", async () => {
-  const connection = await readFile(new URL("src-tauri/src/modules/ssh/connection.rs", root), "utf8");
+  const connection = await readModule("src-tauri/src/modules/ssh/connection");
   const ssh = await readFile(new URL("src-tauri/src/modules/ssh/mod.rs", root), "utf8");
 
   assert.match(connection, /open_from_shared\([\s\S]*cancel: watch::Receiver<bool>/);
@@ -196,7 +206,7 @@ test("transfer resume IPC accepts only a durable recovery ownership token", asyn
   const bridge = await readFile(new URL("src/modules/ssh/transfer-bridge.ts", root), "utf8");
   const backend = await readFile(new URL("src-tauri/src/modules/ssh/transfer/engine.rs", root), "utf8");
   const journal = await readFile(new URL("src-tauri/src/modules/ssh/transfer_journal.rs", root), "utf8");
-  const sftp = await readFile(new URL("src-tauri/src/modules/ssh/sftp.rs", root), "utf8");
+  const sftp = await readModule("src-tauri/src/modules/ssh/sftp");
 
   assert.match(bridge, /recoveryId\?: string/);
   assert.doesNotMatch(bridge, /\bresume(?:From|Partial)\b/);
