@@ -212,6 +212,13 @@ test("commandDetectedUpdate is skipped when an agent is active", () => {
   assert.equal(cmd, null, "commands should not be tracked when an agent owns the session");
 });
 
+test("commandDetectedUpdate ignores input typed inside a foreground multiplexer", () => {
+  const s = apply(baseSession(), commandDetectedUpdate(baseSession(), "herdr", NOW));
+  assert.equal(commandDetectedUpdate(s, "cd /tmp", NOW + 10), null);
+  const exited = apply(s, commandFinishedUpdate(s, 0, true, NOW + 20));
+  assert.equal(commandDetectedUpdate(exited, "ls", NOW + 30)?.patch.lastCommand, "ls");
+});
+
 test("commandFinishedUpdate on agent session only records exit code", () => {
   const s = apply(baseSession(), agentDetectedUpdate(baseSession(), "CC", NOW));
   const finished = commandFinishedUpdate(s, 0, true, NOW + 100);
