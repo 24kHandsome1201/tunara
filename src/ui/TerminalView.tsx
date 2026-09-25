@@ -32,7 +32,7 @@ import { registerTerminalOsc9Handler } from "@/modules/terminal/lib/terminal-osc
 import { parseTerminalNotificationOsc777 } from "@/modules/terminal/lib/terminal-notification"; import { observeTerminalResize } from "@/modules/terminal/lib/terminal-resize";
 import { createWebglAtlasRebuilder, recordTerminalAtlasOutputPressure, registerTerminalAtlasRebuilder, registerTerminalAtlasRefresh, requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback, tracksAgentActivity } from "@/modules/terminal/lib/agent-lifecycle";
-import { detectSshCommand } from "@/modules/terminal/lib/ssh-command-detect"; import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
+import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history";
@@ -339,11 +339,6 @@ function TerminalViewImpl({
               if (agent) {
                 markAgentDetected(agent, cmd);
               }
-              // OSC 133 path (not keystroke fallback): local sessions inject this by default.
-              const sshTarget = detectSshCommand(cmd);
-              if (sshTarget) {
-                useSessionsStore.getState().suggestSshConnect(sessionIdRef.current, sshTarget);
-              }
             }
           }
           osc133Active = false;
@@ -527,12 +522,6 @@ function TerminalViewImpl({
         if (!shouldScanTerminalInput(osc133Active, osc133InputFallback)) return;
         if (!currentAgent && trimmed && isMeaningfulCommand(trimmed)) {
           useSessionsStore.getState().handleCommandDetected(sessionIdRef.current, trimmed);
-        }
-        // 本地会话里手敲 ssh:提示「改用内置 SSH 打开远程文件」。
-        // suggestSshConnect 内部已守卫远程会话/已忽略 host,这里只做检测。
-        const sshTarget = detectSshCommand(submitted);
-        if (sshTarget) {
-          useSessionsStore.getState().suggestSshConnect(sessionIdRef.current, sshTarget);
         }
       };
       const dataDisposable = term.onData((data) => {
