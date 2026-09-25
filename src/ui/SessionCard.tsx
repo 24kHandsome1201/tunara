@@ -4,6 +4,7 @@ import { getAgentCircleStyle, getAgentIcon } from "./agents";
 import { sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { sessionCue } from "@/modules/session/session-attention";
 import { sidebarCwdLabel, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
+import { sessionTerminalMultiplexer, terminalMultiplexerLabel } from "@/modules/session/terminal-multiplexer";
 import { SessionCueDot } from "./SessionCueDot";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -147,17 +148,21 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const lifecycleLabel = session.agentActivity === "waiting_confirmation"
     ? t("agent.status.waiting_confirmation")
     : t(`sidebar.session.status.${displayRunState}`);
+  const multiplexer = sessionTerminalMultiplexer(session);
+  const multiplexerLabel = multiplexer ? terminalMultiplexerLabel(multiplexer) : "";
+  const multiplexerHint = multiplexer ? t("sidebar.session.multiplexer.hint", { name: multiplexerLabel }) : "";
   const connectionPhase = sshCardConnectionPhase(session);
   const connectionTone = connectionPhase ? sshConnectionPhaseTone(connectionPhase) : null;
   const accessibleLabel = [
     primary,
     lifecycleLabel,
     connectionPhase ? t(`connection.phase.${connectionPhase}`) : "",
+    multiplexerHint,
     session.unread ? t("sidebar.session.unread") : "",
     readerDirty ? t("sidebar.session.unsaved") : "",
     session.remote ? `${t("sidebar.session.remote")}, ${sshEndpointLabel(session.remote)}` : t("sidebar.session.local"),
   ].filter(Boolean).join(", ");
-  const detailTitle = [subtitle, session.lastCommand, session.shellTitle]
+  const detailTitle = [subtitle, session.lastCommand, session.shellTitle, multiplexerHint]
     .filter(Boolean)
     .join(" · ");
   const closeCountdown = useDestructiveConfirmCountdown(confirmClose ? confirmCloseAt : 0);
@@ -393,6 +398,24 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                 style={{ color: "var(--c-text-6)", fontSize: "var(--fs-meta)", flexShrink: 0, opacity: 0.85, fontFamily: "var(--font-mono)" }}
               >
                 ●
+              </span>
+            )}
+            {multiplexer && (
+              <span
+                data-multiplexer={multiplexer}
+                title={multiplexerHint}
+                style={{
+                  flexShrink: 0,
+                  borderRadius: "var(--r-badge-sm)",
+                  padding: "0 5px",
+                  fontSize: "var(--fs-meta)",
+                  fontWeight: 600,
+                  lineHeight: "16px",
+                  color: "var(--c-text-4)",
+                  background: "var(--c-bg-3)",
+                }}
+              >
+                {multiplexerLabel}
               </span>
             )}
             {connectionPhase && connectionTone && (
