@@ -166,9 +166,11 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           event.preventDefault(); event.stopPropagation(); focusActiveTerminal(session.id);
         }
       }}
+      className="tunara-translucent-layer"
       style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, background: "var(--c-bg-white)" }}
     >
       <div
+        className="tunara-translucent-layer"
         style={{
           height: 36,
           borderBottom: "1px solid var(--c-border-1)",
