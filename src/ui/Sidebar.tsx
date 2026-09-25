@@ -16,6 +16,8 @@ import {
   sessionMatchesSidebarSearch,
   sidebarGroupKey,
 } from "@/modules/session/sidebar-groups";
+import { sessionTerminalMultiplexer } from "@/modules/session/terminal-multiplexer";
+import { useHerdrStatusPolling } from "@/state/herdr-status";
 
 // Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
 interface DragState {
@@ -61,6 +63,7 @@ export function Sidebar({
   const collapsedDirs = useUIStore((s) => s.collapsedDirs);
   const toggleDirCollapsed = useUIStore((s) => s.toggleDirCollapsed);
   const hasSessions = sessions.length > 0;
+  useHerdrStatusPolling(sessions.some((s) => !s.remote && sessionTerminalMultiplexer(s) === "herdr"));
   const q = search.trim().toLowerCase();
   // Derived view of the session list. Memoized so an unrelated sessions-store
   // update (e.g. an agent heartbeat that rebuilds the sessions array) doesn't

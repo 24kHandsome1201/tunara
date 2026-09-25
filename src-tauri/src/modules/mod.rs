@@ -16,6 +16,8 @@ pub mod agent;
 pub mod editor;
 // §3.4 git 集成
 pub mod git;
+// HerdR socket status (read-only)
+pub mod herdr;
 // §ssh-client SSH 会话 + SFTP 文件
 pub mod ssh;
 pub mod workspace_store;

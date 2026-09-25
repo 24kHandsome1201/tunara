@@ -253,3 +253,23 @@ test("session card marks a running multiplexer and explains where pane status co
   expect(chip.getAttribute("title")).toMatch(/HerdR is running: Agent status/);
   expect(screen.getByRole("button", { name: /HerdR is running/ })).toBeTruthy();
 });
+
+test("local HerdR chip reflects blocked panes reported by the HerdR socket API", async () => {
+  mockIPC((cmd) => cmd === "herdr_status"
+    ? { panes: [
+      { paneId: "w1:p1", focused: true, agent: "claude", agentStatus: "blocked", cwd: "/repo" },
+      { paneId: "w1:p2", focused: false, agent: "codex", agentStatus: "working", cwd: "/repo" },
+    ] }
+    : null);
+  render(
+    <Sidebar
+      sessions={[localSession("herdr-local", "/repo", { runState: "running", lastCommand: "herdr" })]}
+      activeSessionId="herdr-local"
+      onSelectSession={vi.fn()}
+    />,
+  );
+
+  const chip = await screen.findByText("HerdR · 1 blocked");
+  expect(chip.getAttribute("data-herdr-blocked")).toBe("true");
+  expect(chip.getAttribute("title")).toBe("HerdR panes: 1 blocked, 1 working, 0 done. Focused pane: /repo");
+});
