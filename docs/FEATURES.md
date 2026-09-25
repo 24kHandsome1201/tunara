@@ -59,7 +59,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 安全粘贴 | 多行确认、bracketed paste、目标失效拒绝 | [`terminal-paste-protection.ts`](../src/modules/terminal/lib/terminal-paste-protection.ts) |
 | 右键与复制 | 智能右键：空闲时打开菜单，TUI 上报时把手势交给终端；Copy / Safe Paste 可配置 | [`TERMINAL_INTERACTIONS.md`](./TERMINAL_INTERACTIONS.md) |
 | 会话恢复 | serialize 快照 + 安全历史 | [`terminal-snapshot.ts`](../src/modules/terminal/lib/terminal-snapshot.ts) |
-| OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777（解析后丢弃提醒，避免与 Agent 确认抢注意力）、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
+| OSC | OSC 7 cwd、OSC 133 命令边界、OSC 8 链接、OSC 9 / 99 / 777（Agent 会话走确认提醒；非 Agent 会话如 HerdR/tmux 在后台时弹 toast + Dock 提醒）、OSC 9;4 进度、OSC 52 剪贴板 | [`src/modules/terminal/lib/`](../src/modules/terminal/lib/) |
 | 行内图片 | SIXEL / iTerm IIP | [`terminal-image.ts`](../src/modules/terminal/lib/terminal-image.ts) |
 | 配色 | 界面与终端同步：System / Light / Dark | [`useTerminalRuntimeSync.ts`](../src/ui/useTerminalRuntimeSync.ts) |
 
