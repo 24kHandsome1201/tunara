@@ -28,6 +28,7 @@ interface TerminalRuntimeSyncOptions {
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   screenReaderMode: boolean;
+  optionAsMeta: boolean;
   theme: ThemeType;
   accent: string;
 }
@@ -46,6 +47,7 @@ export function useTerminalRuntimeSync({
   cursorStyle,
   cursorBlink,
   screenReaderMode,
+  optionAsMeta,
   theme,
   accent,
 }: TerminalRuntimeSyncOptions) {
@@ -101,6 +103,7 @@ export function useTerminalRuntimeSync({
     term.options.cursorStyle = cursorStyle;
     term.options.cursorBlink = cursorBlink;
     term.options.screenReaderMode = screenReaderMode;
+    term.options.macOptionIsMeta = optionAsMeta;
     const resolvedTheme = theme === "system" ? (systemIsDark ? "dark" : "light") : theme;
     term.options.theme = getTerminalTheme(resolvedTheme, accent);
     term.options.minimumContrastRatio = getTerminalMinimumContrastRatio(resolvedTheme);
@@ -123,5 +126,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
+  }, [active, accent, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, optionAsMeta, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
 }

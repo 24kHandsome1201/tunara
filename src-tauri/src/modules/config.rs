@@ -37,6 +37,7 @@ pub struct AppearanceConfig {
     pub terminal_inline_images: bool,
     pub terminal_screen_reader_mode: bool,
     pub terminal_host_modifier: String,
+    pub terminal_option_as_meta: bool,
     pub language: String,
     pub global_shortcut: String,
 }
@@ -67,6 +68,7 @@ impl Default for AppearanceConfig {
                 "shift"
             }
             .into(),
+            terminal_option_as_meta: false,
             language: "system".into(),
             global_shortcut: "CmdOrCtrl+Shift+T".into(),
         }
@@ -295,7 +297,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 20] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 21] {
     [
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
@@ -326,6 +328,10 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
         (
             "terminal_host_modifier",
             value(config.terminal_host_modifier.clone()),
+        ),
+        (
+            "terminal_option_as_meta",
+            value(config.terminal_option_as_meta),
         ),
         ("language", value(config.language.clone())),
         ("global_shortcut", value(config.global_shortcut.clone())),
@@ -718,6 +724,7 @@ font_size = 15
         assert!(saved.contains("[keybindings]"));
         assert!(saved.contains("scrollback = 10000"));
         assert!(saved.contains("terminal_screen_reader_mode = false"));
+        assert!(saved.contains("terminal_option_as_meta = false"));
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));
 

@@ -17,6 +17,8 @@ export function TerminalSettings() {
   const setTerminalClipboardWrite = useUIStore((s) => s.setTerminalClipboardWrite);
   const terminalHostModifier = useUIStore((s) => s.terminalHostModifier);
   const setTerminalHostModifier = useUIStore((s) => s.setTerminalHostModifier);
+  const terminalOptionAsMeta = useUIStore((s) => s.terminalOptionAsMeta);
+  const setTerminalOptionAsMeta = useUIStore((s) => s.setTerminalOptionAsMeta);
   const externalEditor = useUIStore((s) => s.externalEditor);
   const setExternalEditor = useUIStore((s) => s.setExternalEditor);
 
@@ -38,6 +40,7 @@ export function TerminalSettings() {
         </label>
         <div style={SECTION_HINT}>{t("settings.appearance.host_modifier.hint")}</div>
       </div>
+      <ToggleRow label={t("settings.terminal.option_as_meta")} hint={t(terminalOptionAsMeta && terminalHostModifier === "alt" ? "settings.terminal.option_as_meta.conflict" : "settings.terminal.option_as_meta.hint")} checked={terminalOptionAsMeta} onChange={() => setTerminalOptionAsMeta(!terminalOptionAsMeta)} />
       <ToggleRow label={t("settings.appearance.bell_notification")} hint={t("settings.appearance.bell_notification.hint")} checked={bellNotification} onChange={setBellNotification} />
       <ToggleRow label={t("settings.appearance.clipboard_write")} hint={t("settings.appearance.clipboard_write.hint")} checked={terminalClipboardWrite} onChange={() => setTerminalClipboardWrite(!terminalClipboardWrite)} />
       <div style={{ marginTop: 24, marginBottom: 24 }}>
