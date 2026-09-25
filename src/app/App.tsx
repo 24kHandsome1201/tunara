@@ -1,7 +1,6 @@
 import { Titlebar } from "@/ui/Titlebar";
 import { Sidebar } from "@/ui/Sidebar";
 import { MainArea } from "@/ui/MainArea";
-import { InspectorPanel } from "@/ui/InspectorPanel";
 import { CommandPalette } from "@/ui/overlays/CommandPalette";
 import { HostKeyPromptDialog } from "@/ui/overlays/HostKeyPrompt";
 import { KeyboardInteractivePromptDialog } from "@/ui/overlays/KeyboardInteractivePrompt";
@@ -28,6 +27,7 @@ import { useAppServices } from "./useAppServices";
 import { Icon, Terminal } from "@/ui/icons";
 
 const Settings = lazy(() => import("@/ui/overlays/Settings").then((module) => ({ default: module.Settings })));
+const InspectorPanel = lazy(() => import("@/ui/InspectorPanel").then((module) => ({ default: module.InspectorPanel })));
 const SshConnect = lazy(() => import("@/ui/overlays/SshConnect").then((module) => ({ default: module.SshConnect })));
 
 // Module-level stable callbacks. These close over nothing render-scoped, so
@@ -475,7 +475,9 @@ export default function App() {
           >
             <>
               {presentedPanelVisible && !panelOverlay && <PanelResizeHandle />}
-              <InspectorPanel session={activeSession} onClose={() => useUIStore.getState().setPanelVisible(false)} />
+              <Suspense fallback={null}>
+                <InspectorPanel session={activeSession} onClose={() => useUIStore.getState().setPanelVisible(false)} />
+              </Suspense>
             </>
           </div>
         )}
