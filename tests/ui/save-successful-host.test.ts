@@ -2,6 +2,8 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
+import { sshConnectPrefillFromProfile } from "@/modules/ssh/hosts-prefill";
+import { toProfilesPanelModel } from "@/modules/ssh/hosts-model";
 import { useSessionsStore } from "@/state/sessions";
 import type { Session } from "@/ui/types";
 
@@ -52,6 +54,24 @@ describe("save SSH host after connection success", () => {
       proxyJumpProfileId: "jump",
     });
     expect(profile).not.toHaveProperty("password");
+  });
+
+  test("persists per-host reconnect and shell integration preferences", () => {
+    const profile = sshHostProfileFromSuccessfulConnect(
+      { host: "prod.example", port: 22, user: "deploy", authMethod: "agent", autoReconnect: true, injectShellIntegration: false },
+      "deploy@prod.example",
+      [],
+    );
+    expect(profile).toMatchObject({ autoReconnect: true, injectShellIntegration: false });
+    const prefill = sshConnectPrefillFromProfile(profile, toProfilesPanelModel([profile], { imported: [], skipped: 0, diagnostics: [] }));
+    expect(prefill).toMatchObject({ autoReconnect: true, injectShellIntegration: false });
+    const defaults = sshHostProfileFromSuccessfulConnect(
+      { host: "prod.example", port: 22, user: "deploy", authMethod: "agent", injectShellIntegration: true },
+      "deploy@prod.example",
+      [],
+    );
+    expect(defaults).not.toHaveProperty("autoReconnect");
+    expect(defaults).not.toHaveProperty("injectShellIntegration");
   });
 
   test("saves only when the session reports ready, not when it fails", async () => {

@@ -842,6 +842,8 @@
   "terminal.exited.disconnected": "SSH 连接已中断",
   "terminal.exited.history_readonly": "终端历史为只读",
   "terminal.exited.open_new_shell": "打开新 Shell",
+  "terminal.exited.enable_auto_reconnect": "此主机总是自动重连",
+  "terminal.exited.auto_reconnect_enabled": "已为此主机开启自动重连",
   "terminal.exited.close_session": "关闭会话",
   "terminal.restored_local": "Tunara 已恢复快照，下方为新的 Shell",
   "terminal.restored_remote": "Tunara 已恢复只读快照，正在重新连接此 SSH 会话",

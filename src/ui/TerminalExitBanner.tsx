@@ -8,6 +8,7 @@ import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 import { copyText } from "./lib/clipboard";
 import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
+import { enableSavedHostAutoReconnect } from "@/modules/ssh/save-successful-host";
 import { SessionRemediationNotice, useSessionRemediationAction } from "./SessionRemediationNotice";
 
 /**
@@ -63,6 +64,29 @@ function ConnectionDiagnosticButton({ session }: { session: Session }) {
       style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 6px", borderRadius: "var(--r-btn)", flexShrink: 0, whiteSpace: "nowrap" }}
     >
       {t("connection.diagnostics.copy")}
+    </button>
+  );
+}
+
+/** Opt a disconnected host into auto reconnect without reopening the SSH dialog. */
+function EnableAutoReconnectButton({ session }: { session: Session }) {
+  const t = useT();
+  const enable = () => {
+    const remote = session.remote;
+    if (!remote) return;
+    const next = { ...remote, autoReconnect: true };
+    useSessionsStore.getState().updateSession(session.id, { remote: next });
+    void enableSavedHostAutoReconnect(next);
+    useUIStore.getState().addToast({ sessionId: session.id, title: t("terminal.exited.auto_reconnect_enabled"), subtitle: "", variant: "success" });
+  };
+  return (
+    <button
+      type="button"
+      onClick={enable}
+      className="hover-bg"
+      style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 6px", borderRadius: "var(--r-btn)", flexShrink: 0, whiteSpace: "nowrap" }}
+    >
+      {t("terminal.exited.enable_auto_reconnect")}
     </button>
   );
 }
@@ -216,6 +240,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
       context={<SessionRemediationNotice session={session} compact showAction={false} />}
     >
       {isRemote && <ConnectionDiagnosticButton session={session} />}
+      {disconnected && !session.remote?.autoReconnect && <EnableAutoReconnectButton session={session} />}
       <CloseSessionButton session={session} />
       <AccentActionButton onClick={remediation?.run ?? restart} title={actionLabel} ariaLabel={actionLabel}>
         <RestartIcon size={10} />

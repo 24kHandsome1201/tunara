@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 import { expect, test } from "vitest";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -54,4 +56,26 @@ test("a displaced session that was closed meanwhile is not resurrected", () => {
   useSessionsStore.getState().removeSession(newcomer.id);
   expect(splitLayoutSessionIds(useUIStore.getState().split)).not.toContain(left.id);
   expect(useSessionsStore.getState().sessions.some((session) => session.id === left.id)).toBe(false);
+});
+
+test("a disconnected SSH pane can opt the host into auto reconnect", async () => {
+  const saved = { id: "host-1", label: "lab", host: "lab.example", port: 22, user: "deploy", auth_method: "agent", identity_file: "", certificate_file: "", proxy_jump_profile_id: "", auto_reconnect: false, shell_integration_disabled: false };
+  const saves: Array<{ auto_reconnect?: boolean }> = [];
+  mockIPC((command, payload) => {
+    if (command === "ssh_hosts_load") return [saved];
+    if (command === "ssh_hosts_save") {
+      const profile = (payload as { profile: { auto_reconnect?: boolean } }).profile;
+      saves.push(profile);
+      return [profile];
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  const dead: Session = { ...base, id: "ssh-dead", title: "lab", dir: "~", runState: "failed", remote: { host: "lab.example", port: 22, user: "deploy", authMethod: "agent" } };
+  useSessionsStore.setState({ sessions: [dead], activeSessionId: dead.id });
+
+  render(<TerminalExitBanner session={dead} exitCode={SSH_DISCONNECTED_EXIT_CODE} />);
+  fireEvent.click(screen.getByRole("button", { name: "Always auto-reconnect this host" }));
+
+  expect(useSessionsStore.getState().sessions[0].remote?.autoReconnect).toBe(true);
+  await waitFor(() => expect(saves).toEqual([expect.objectContaining({ auto_reconnect: true })]));
 });

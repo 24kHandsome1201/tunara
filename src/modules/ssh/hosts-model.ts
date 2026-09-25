@@ -23,6 +23,10 @@ export interface SshHostProfile {
   certificateFile?: string;
   /** Resolved single-hop route. The B1 UI must not open it as a direct host. */
   proxyJumpProfileId?: string;
+  /** Per-host reconnect preference; missing means off. */
+  autoReconnect?: boolean;
+  /** Per-host remote shell integration preference; missing means on. */
+  injectShellIntegration?: boolean;
 }
 
 // 后端用 snake_case（serde 默认），前端用 camelCase，在边界转换。
@@ -36,6 +40,8 @@ export interface RawHostProfile {
   identity_file: string;
   certificate_file?: string;
   proxy_jump_profile_id?: string;
+  auto_reconnect?: boolean;
+  shell_integration_disabled?: boolean;
 }
 
 export function parseSshPort(raw: unknown): number | null {
@@ -64,6 +70,8 @@ export function toProfile(r: RawHostProfile): SshHostProfile {
     identityFile: r.identity_file,
     ...(r.certificate_file ? { certificateFile: r.certificate_file } : {}),
     ...(r.proxy_jump_profile_id ? { proxyJumpProfileId: r.proxy_jump_profile_id } : {}),
+    ...(r.auto_reconnect === true ? { autoReconnect: true } : {}),
+    ...(r.shell_integration_disabled === true ? { injectShellIntegration: false } : {}),
   };
 }
 
@@ -78,6 +86,8 @@ export function toRaw(p: SshHostProfile): RawHostProfile {
     identity_file: p.identityFile,
     certificate_file: p.certificateFile ?? "",
     proxy_jump_profile_id: p.proxyJumpProfileId ?? "",
+    auto_reconnect: p.autoReconnect === true,
+    shell_integration_disabled: p.injectShellIntegration === false,
   };
 }
 

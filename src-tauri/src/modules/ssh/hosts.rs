@@ -38,6 +38,10 @@ pub struct SshHostProfile {
     pub certificate_file: String,
     /// Optional profile id for a statically resolved, single-hop jump host.
     pub proxy_jump_profile_id: String,
+    /// Reopen the terminal automatically after a transport drop.
+    pub auto_reconnect: bool,
+    /// Skip the remote bash/zsh integration script for this host.
+    pub shell_integration_disabled: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -484,6 +488,7 @@ fn literal_jump_profile(value: &str) -> Option<SshHostProfile> {
         identity_file: String::new(),
         certificate_file: String::new(),
         proxy_jump_profile_id: String::new(),
+        ..SshHostProfile::default()
     })
 }
 
@@ -2370,6 +2375,7 @@ fn resolve_config_with_lookup(
             identity_file: identity,
             certificate_file: certificate,
             proxy_jump_profile_id,
+            ..SshHostProfile::default()
         });
     }
     imported.splice(0..0, synthetic.into_values());
@@ -2532,6 +2538,7 @@ mod tests {
             identity_file: "~/.ssh/id_ed25519".into(),
             certificate_file: "~/.ssh/id_ed25519-cert.pub".into(),
             proxy_jump_profile_id: String::new(),
+            ..SshHostProfile::default()
         };
         write_hosts(&path, std::slice::from_ref(&p), &Revision::Missing).unwrap();
         let loaded = read_hosts(&path).unwrap();
@@ -2578,6 +2585,7 @@ mod tests {
             identity_file: "~/.ssh/id_ed25519".into(),
             certificate_file: "~/.ssh/id_ed25519-cert.pub".into(),
             proxy_jump_profile_id: String::new(),
+            ..SshHostProfile::default()
         };
 
         let mut valid = base();

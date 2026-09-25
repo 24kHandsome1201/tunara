@@ -842,6 +842,8 @@
   "terminal.exited.disconnected": "SSH connection interrupted",
   "terminal.exited.history_readonly": "Terminal history is read-only",
   "terminal.exited.open_new_shell": "Open new shell",
+  "terminal.exited.enable_auto_reconnect": "Always auto-reconnect this host",
+  "terminal.exited.auto_reconnect_enabled": "Auto reconnect is on for this host",
   "terminal.exited.close_session": "Close session",
   "terminal.restored_local": "Tunara restored the snapshot; a new shell is below",
   "terminal.restored_remote": "Tunara restored the read-only snapshot and is reconnecting this SSH session",
