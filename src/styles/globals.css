@@ -548,6 +548,25 @@ select.ui-control {
    connection form. The form owns vertical scrolling; source rows stay compact
    enough to compare endpoints without hiding their origin or route. */
 .ssh-connect-dialog { container: ssh-connect-dialog / inline-size; }
+.ssh-connect-fieldset { margin: 0; padding: 0; border: none; min-width: 0; }
+.ssh-connect-fieldset--boxed { padding: 10px; border: 1px solid var(--c-border-2); border-radius: var(--r-btn); }
+.ssh-connect-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ssh-connect-choice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-btn);
+  cursor: pointer;
+}
+.ssh-connect-choice[data-selected="true"] { border-color: var(--c-accent); }
+.ssh-connect-toggle { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: var(--fs-secondary); }
+.ssh-connect-toggle > input { margin-top: 2px; }
+.ssh-connect-field-label { font-size: var(--fs-secondary); }
+.ssh-connect-hint { display: block; margin-top: 2px; font-size: var(--fs-meta); color: var(--c-text-4); }
+.ssh-connect-message { margin: 0; font-size: var(--fs-meta); color: var(--c-warning-text); }
+.ssh-connect-message[data-tone="error"] { color: var(--c-error); }
 .ssh-connect-body {
   display: grid;
   grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
