@@ -399,11 +399,10 @@ pub(super) async fn open_with(
 }
 
 pub(super) async fn open(params: ConnectParams) -> (SshSession, EventLog) {
-    let description = format!("{}:{} ({})", params.host, params.port, params.session_id);
     let (result, log) = open_with(params, Responder::default()).await;
     match result {
         Ok(session) => (session, log),
-        Err(error) => panic!("open {description} failed: {error}\n  {}", log.describe()),
+        Err(error) => panic!("open failed: {error}\n  {}", log.describe()),
     }
 }
 
