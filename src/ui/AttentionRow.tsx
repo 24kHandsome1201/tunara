@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { Session } from "./types";
-import { deriveAttentionRow, nextAttentionSessionId } from "@/modules/session/session-attention";
+import { deriveAttentionRow, dockBadgeCount, nextAttentionSessionId, type HerdrAttention } from "@/modules/session/session-attention";
+import { sessionTerminalMultiplexer } from "@/modules/session/terminal-multiplexer";
+import { useHerdrStatusStore } from "@/state/herdr-status";
 import { useT } from "@/modules/i18n";
 import { revealSessionAttention } from "@/modules/terminal/lib/terminal-action-registry";
 import { sessionDisplayTitle } from "@/modules/session/default-title";
@@ -16,7 +18,16 @@ interface AttentionRowProps {
  */
 export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
   const t = useT();
-  const row = useMemo(() => deriveAttentionRow(sessions), [sessions]);
+  const herdrBlocked = useHerdrStatusStore((s) => s.summary?.blocked ?? 0);
+  const herdrSessionId = useMemo(
+    () => sessions.find((s) => !s.remote && sessionTerminalMultiplexer(s) === "herdr")?.id ?? null,
+    [sessions],
+  );
+  const herdr = useMemo<HerdrAttention | null>(
+    () => (herdrSessionId && herdrBlocked > 0 ? { sessionId: herdrSessionId, blocked: herdrBlocked } : null),
+    [herdrSessionId, herdrBlocked],
+  );
+  const row = useMemo(() => deriveAttentionRow(sessions, herdr), [sessions, herdr]);
 
   if (!row.kind) return null;
 
@@ -24,10 +35,11 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
     ? t("attention.row.needs_you", { count: row.count })
     : t("attention.row.running", { count: row.count });
   const emphasized = row.kind === "needs-you";
-  const targetId = nextAttentionSessionId(sessions, null)
+  const targetId = nextAttentionSessionId(sessions, null, herdr)
     ?? (row.kind === "running" ? [...sessions].filter((s) => s.agentActivity === "running" || s.agentActivity === "starting").sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id : null);
   const target = sessions.find((s) => s.id === targetId);
-  const reason = target && emphasized ? t(target.connection?.phase === "disconnected" || target.connection?.phase === "failed" || target.connection?.phase === "needsUserAction"
+  const herdrTarget = Boolean(herdr) && dockBadgeCount(sessions) === 0;
+  const reason = target && emphasized ? herdrTarget ? t("attention.reason.herdr") : t(target.connection?.phase === "disconnected" || target.connection?.phase === "failed" || target.connection?.phase === "needsUserAction"
     ? "attention.reason.connection" : target.agentActivity === "waiting_confirmation" ? "attention.reason.confirmation" : "attention.reason.failure") : "";
 
   return (

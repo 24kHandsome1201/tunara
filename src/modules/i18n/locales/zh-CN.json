@@ -1,6 +1,7 @@
 {
   "attention.reason.confirmation": "等待确认",
   "attention.reason.connection": "连接需要处理",
+  "attention.reason.herdr": "HerdR Agent 被阻塞",
   "attention.reason.failure": "命令失败",
   "reader.surface": "阅读面板",
   "reader.return_terminal": "返回终端",

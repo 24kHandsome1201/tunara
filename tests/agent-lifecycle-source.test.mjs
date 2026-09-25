@@ -571,7 +571,7 @@ test("UI keeps only explicit terminal progress in the sidebar", () => {
   assert.match(card, /function TerminalProgressBar/);
   assert.match(card, /session\.terminalProgress && <TerminalProgressBar/);
   assert.doesNotMatch(card, /BusyProgress|showBusyProgress|agentBusyProgress/);
-  assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
+  assert.match(attentionRow, /deriveAttentionRow\(sessions(, herdr)?\)/);
   assert.doesNotMatch(attentionRow, /agentResumePendingInput|gbar\.action\.review/);
   assert.doesNotMatch(main, /AgentStatusBar/);
   assert.doesNotMatch(diff, /session\.runState !== "running"/);

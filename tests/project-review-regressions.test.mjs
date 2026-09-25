@@ -77,7 +77,7 @@ test("terminal chrome permanently omits agent status and command block surfaces"
   assert.doesNotMatch(main, /SshSuggestionBar/);
   assert.doesNotMatch(main, /PreviewSuggestionBar/);
   assert.doesNotMatch(main, /ReviewChangesBar/);
-  assert.match(attentionRow, /deriveAttentionRow\(sessions\)/);
+  assert.match(attentionRow, /deriveAttentionRow\(sessions(, herdr)?\)/);
   assert.match(chrome, /\{search\.searchOpen &&/);
   assert.match(chrome, /onKeyDown=\{handleMenuKeyDown\}/);
   assert.match(chrome, /\{menu && \(/);
