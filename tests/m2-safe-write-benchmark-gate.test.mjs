@@ -3,6 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const readModule = (base) =>
+  [read(`${base}.rs`), ...fs.readdirSync(new URL(`../${base}`, import.meta.url)).filter((name) => name.endsWith(".rs")).sort().map((name) => read(`${base}/${name}`))].join("\n");
 
 test("M2 safe-write fault control is a non-default, feature-only plugin", () => {
   const cargo = read("src-tauri/Cargo.toml");
@@ -29,9 +31,9 @@ test("M2 safe-write fault control is a non-default, feature-only plugin", () => 
 });
 
 test("the injected release failure is compiled out of ordinary SFTP writes", () => {
-  const sftp = read("src-tauri/src/modules/ssh/sftp.rs");
+  const sftp = readModule("src-tauri/src/modules/ssh/sftp");
   assert.match(sftp, /#\[cfg\(feature = "m2-safe-write-benchmark"\)\]\s+session_id: u32/);
-  assert.match(sftp, /#\[cfg\(feature = "m2-safe-write-benchmark"\)\]\s+if super::m2_safe_write_benchmark::take_release_failure/);
+  assert.match(sftp, /\[cfg\(feature = "m2-safe-write-benchmark"\)\]\s+if super::super::m2_safe_write_benchmark::take_release_failure/);
 });
 
 test("the M2 runner drives real file, save, reconnect, and reconcile surfaces", () => {
