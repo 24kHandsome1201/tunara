@@ -2031,6 +2031,9 @@ html[data-window-translucent] .tunara-panel > * {
 }
 
 html[data-window-translucent] .tunara-translucent-layer,
+html[data-window-translucent] [data-file-preview-root],
+html[data-window-translucent] .file-editor-paper,
+html[data-window-translucent] .notebook-preview,
 html[data-window-translucent] .explorer-nav,
 html[data-window-translucent] .explorer-search-row,
 html[data-window-translucent] .explorer-tools,
@@ -2038,6 +2041,11 @@ html[data-window-translucent] .tunara-statusbar,
 html[data-window-translucent] .xterm .xterm-viewport,
 html[data-window-translucent] .xterm .xterm-scrollable-element {
   background: transparent !important;
+}
+html[data-window-translucent] .file-editor-header,
+html[data-window-translucent] .file-editor-lines,
+html[data-window-translucent] .file-editor-footer {
+  background: color-mix(in srgb, var(--c-bg-1) var(--window-bg-opacity), transparent) !important;
 }
 /* Scroll-edge covers paint the panel colour at full alpha; fade to transparent so they don't read as solid strips. */
 html[data-window-translucent] .scroll-fade-y {
