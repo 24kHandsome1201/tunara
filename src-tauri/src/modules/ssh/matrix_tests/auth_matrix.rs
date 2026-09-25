@@ -60,7 +60,7 @@ async fn password_rejects_wrong_secret() {
     let fixture = Fixture::load();
     let (result, log) = open_with(
         fixture.target(
-            fixture.password_auth("definitely-not-it"),
+            fixture.password_auth(&fixture.wrong_secret()),
             &unique("auth-bad-pw"),
         ),
         Responder::default(),
@@ -122,7 +122,7 @@ async fn keyboard_interactive_rejects_wrong_response() {
     let fixture = Fixture::load();
     let (result, log) = open_with(
         fixture.target(fixture.keyboard_interactive_auth(), &unique("auth-kbd-bad")),
-        Responder::keyboard_interactive("definitely-not-it"),
+        Responder::keyboard_interactive(&fixture.wrong_secret()),
     )
     .await;
     let error = result

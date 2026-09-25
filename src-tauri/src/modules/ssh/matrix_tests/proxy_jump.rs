@@ -77,7 +77,7 @@ async fn proxy_jump_failure_names_jump_hop() {
     let session_id = unique("jump-bad-jump");
     let (result, log) = open_via_jump_with(
         fixture.target_via_jump(fixture.ed25519_auth(), &session_id),
-        fixture.jump(fixture.password_auth("definitely-not-it"), &session_id),
+        fixture.jump(fixture.password_auth(&fixture.wrong_secret()), &session_id),
         Responder::default(),
     )
     .await;
@@ -103,7 +103,7 @@ async fn proxy_jump_failure_names_target_hop() {
     let fixture = Fixture::load();
     let session_id = unique("jump-bad-target");
     let (result, log) = open_via_jump_with(
-        fixture.target_via_jump(fixture.password_auth("definitely-not-it"), &session_id),
+        fixture.target_via_jump(fixture.password_auth(&fixture.wrong_secret()), &session_id),
         fixture.jump(fixture.ed25519_auth(), &session_id),
         Responder::default(),
     )

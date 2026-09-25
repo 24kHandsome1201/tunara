@@ -79,8 +79,8 @@ impl Fixture {
             target_port: port("TUNARA_SSH_MATRIX_TARGET_PORT", "2201"),
             jump_port: port("TUNARA_SSH_MATRIX_JUMP_PORT", "2202"),
             keys_dir,
-            pw_password: env_or("TUNARA_SSH_MATRIX_PW_PASSWORD", "tunara-matrix-pw"),
-            kbd_password: env_or("TUNARA_SSH_MATRIX_KBD_PASSWORD", "tunara-matrix-kbd"),
+            pw_password: require_env("TUNARA_SSH_MATRIX_PW_PASSWORD"),
+            kbd_password: require_env("TUNARA_SSH_MATRIX_KBD_PASSWORD"),
             grep_budget: Duration::from_millis(
                 env_or("TUNARA_SSH_MATRIX_GREP_BUDGET_MS", "3000")
                     .parse()
@@ -122,6 +122,11 @@ impl Fixture {
             key_passphrase: None,
             password: None,
         }
+    }
+
+    /// A secret that is guaranteed not to match either fixture user.
+    pub fn wrong_secret(&self) -> String {
+        format!("{}{}-wrong", self.pw_password, self.kbd_password)
     }
 
     pub fn password_auth(&self, password: &str) -> AuthOptions {
@@ -394,10 +399,7 @@ pub(super) async fn open_with(
 }
 
 pub(super) async fn open(params: ConnectParams) -> (SshSession, EventLog) {
-    let description = format!(
-        "{}@{}:{} via {:?}",
-        params.auth.user, params.host, params.port, params.auth.method
-    );
+    let description = format!("{}:{} ({})", params.host, params.port, params.session_id);
     let (result, log) = open_with(params, Responder::default()).await;
     match result {
         Ok(session) => (session, log),
