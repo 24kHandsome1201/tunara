@@ -2020,3 +2020,7 @@ html[data-window-translucent] .xterm .xterm-viewport,
 html[data-window-translucent] .xterm .xterm-scrollable-element {
   background: transparent !important;
 }
+/* Scroll-edge covers paint the panel colour at full alpha; fade to transparent so they don't read as solid strips. */
+html[data-window-translucent] .scroll-fade-y {
+  --scroll-fade-bg: transparent;
+}
