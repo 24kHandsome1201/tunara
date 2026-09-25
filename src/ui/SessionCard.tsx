@@ -152,7 +152,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
     : t(`sidebar.session.status.${displayRunState}`);
   const multiplexer = sessionTerminalMultiplexer(session);
   const activity = multiplexer ? "" : sidebarActivityLabel(session);
-  const paneSummary = useMultiplexerSummary(session.remote ? null : statusMultiplexer(multiplexer));
+  const paneSummary = useMultiplexerSummary(!session.remote && statusMultiplexer(multiplexer) ? session.id : null);
   const multiplexerLabel = !multiplexer ? ""
     : paneSummary?.blocked ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_blocked", { count: paneSummary.blocked })}`
       : paneSummary?.working ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_working", { count: paneSummary.working })}`

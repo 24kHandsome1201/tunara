@@ -18,11 +18,11 @@ interface AttentionRowProps {
  */
 export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
   const t = useT();
-  const herdrBlocked = useMultiplexerStatusStore((s) => s.summaries.herdr?.blocked ?? 0);
   const herdrSessionId = useMemo(
     () => sessions.find((s) => !s.remote && sessionTerminalMultiplexer(s) === "herdr")?.id ?? null,
     [sessions],
   );
+  const herdrBlocked = useMultiplexerStatusStore((s) => (herdrSessionId ? s.summaries[herdrSessionId]?.blocked ?? 0 : 0));
   const herdr = useMemo<HerdrAttention | null>(
     () => (herdrSessionId && herdrBlocked > 0 ? { sessionId: herdrSessionId, blocked: herdrBlocked } : null),
     [herdrSessionId, herdrBlocked],

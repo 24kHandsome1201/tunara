@@ -82,7 +82,7 @@ function SwitcherButton({
 export function InspectorPanel({ session: terminalSession, onClose, filesOnly = false }: InspectorPanelProps) {
   const t = useT();
   const paneCwd = useMultiplexerSummary(
-    terminalSession.remote ? null : statusMultiplexer(sessionTerminalMultiplexer(terminalSession)),
+    !terminalSession.remote && statusMultiplexer(sessionTerminalMultiplexer(terminalSession)) ? terminalSession.id : null,
   )?.focusedCwd ?? null;
   const session = useMemo(
     () => (paneCwd ? { ...terminalSession, dir: paneCwd } : terminalSession),

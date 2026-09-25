@@ -11,7 +11,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ## [Unreleased]
 
 ### 产品与体验
-- 本地 tmux / Zellij 会话获得与 HerdR 相同的 pane 状态支持：侧栏会话卡片显示前台 Agent 数量，Inspector 跟随当前 pane 的工作目录。状态通过只读 CLI（`tmux list-panes`、`zellij action dump-layout`）获取，带超时与字段上限，从不向 pane 发送按键；tmux / Zellij 只能识别前台 Agent 进程，无法区分运行中与等待输入。
+- 本地 tmux / Zellij 会话获得与 HerdR 相同的 pane 状态支持：侧栏会话卡片显示前台 Agent 数量，Inspector 跟随当前 pane 的工作目录。状态通过只读 CLI（`tmux list-clients` / `list-panes`、`zellij action dump-layout`）获取，并绑定到各自标签页的会话（tmux 按客户端 tty，Zellij 按会话名），带超时与字段上限，从不向 pane 发送按键；在 pane 内启动 Agent 不会再把外层会话标记为 Agent；tmux / Zellij 只能识别前台 Agent 进程，无法区分运行中与等待输入。
 
 ## [3.0.3] - 2026-09-16
 

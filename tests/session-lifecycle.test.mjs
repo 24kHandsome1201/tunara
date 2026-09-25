@@ -219,6 +219,15 @@ test("commandDetectedUpdate ignores input typed inside a foreground multiplexer"
   assert.equal(commandDetectedUpdate(exited, "ls", NOW + 30)?.patch.lastCommand, "ls");
 });
 
+test("agents started inside a foreground multiplexer do not take over the host session", () => {
+  for (const multiplexer of ["herdr", "tmux", "zellij"]) {
+    const s = apply(baseSession(), commandDetectedUpdate(baseSession(), `${multiplexer} attach`, NOW));
+    assert.equal(agentDetectedUpdate(s, "CC", NOW + 10), null, multiplexer);
+    const exited = apply(s, commandFinishedUpdate(s, 0, true, NOW + 20));
+    assert.equal(agentDetectedUpdate(exited, "CC", NOW + 30)?.patch.agent, "CC", multiplexer);
+  }
+});
+
 test("commandFinishedUpdate on agent session only records exit code", () => {
   const s = apply(baseSession(), agentDetectedUpdate(baseSession(), "CC", NOW));
   const finished = commandFinishedUpdate(s, 0, true, NOW + 100);

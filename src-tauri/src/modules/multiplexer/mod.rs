@@ -17,6 +17,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use super::pty::PtyState;
 use super::resolver::ResolverState;
 
 pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
@@ -54,12 +55,22 @@ pub struct MultiplexerStatus {
     pub panes: Vec<MultiplexerPane>,
 }
 
+/// The Tunara tab a status query is for: the tty of its local PTY and, for
+/// Zellij, the session name the tab shows in its terminal title.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct MultiplexerTarget {
+    pub tty: Option<String>,
+    pub session_name: Option<String>,
+}
+
 pub(crate) trait MultiplexerAdapter {
     const KIND: MultiplexerKind;
     const PROGRAM: &'static str;
 
-    /// `None` when no server/session is reachable or the output is unrecognized.
-    async fn collect(program: &Path) -> Option<Vec<MultiplexerPane>>;
+    /// Panes of the multiplexer session attached in `target`'s tab. `None`
+    /// when no server/session is reachable, the tab cannot be bound to one
+    /// session, or the output is unrecognized.
+    async fn collect(program: &Path, target: &MultiplexerTarget) -> Option<Vec<MultiplexerPane>>;
 }
 
 /// Non-empty, length-capped, control-character-free text.
@@ -96,9 +107,12 @@ pub(crate) async fn run_read_only(program: &Path, args: &[&str]) -> Option<Vec<u
     }
 }
 
-async fn status_for<A: MultiplexerAdapter>(resolver: &ResolverState) -> Option<MultiplexerStatus> {
+async fn status_for<A: MultiplexerAdapter>(
+    resolver: &ResolverState,
+    target: &MultiplexerTarget,
+) -> Option<MultiplexerStatus> {
     let program = resolver.resolve(A::PROGRAM).path?;
-    let mut panes = A::collect(&program).await?;
+    let mut panes = A::collect(&program, target).await?;
     panes.truncate(MAX_PANES);
     Some(MultiplexerStatus {
         kind: A::KIND,
@@ -106,17 +120,28 @@ async fn status_for<A: MultiplexerAdapter>(resolver: &ResolverState) -> Option<M
     })
 }
 
-/// `None` when the multiplexer is not installed, not running, or its output is
-/// not recognizable.
+/// Status for the Tunara tab whose local PTY is `pty_id`. `None` when the
+/// multiplexer is not installed, not running, not bound to that tab, or its
+/// output is not recognizable.
 #[tauri::command]
 pub async fn multiplexer_status(
     kind: MultiplexerKind,
+    pty_id: Option<u32>,
+    session_name: Option<String>,
     resolver: tauri::State<'_, ResolverState>,
+    pty: tauri::State<'_, PtyState>,
 ) -> Result<Option<MultiplexerStatus>, String> {
+    let target = MultiplexerTarget {
+        tty: pty_id
+            .and_then(|id| pty.get(id))
+            .and_then(|session| session.tty_name())
+            .and_then(|path| path.to_str().and_then(bounded_str)),
+        session_name: session_name.as_deref().and_then(bounded_str),
+    };
     Ok(match kind {
-        MultiplexerKind::Herdr => status_for::<herdr::Herdr>(&resolver).await,
-        MultiplexerKind::Tmux => status_for::<tmux::Tmux>(&resolver).await,
-        MultiplexerKind::Zellij => status_for::<zellij::Zellij>(&resolver).await,
+        MultiplexerKind::Herdr => status_for::<herdr::Herdr>(&resolver, &target).await,
+        MultiplexerKind::Tmux => status_for::<tmux::Tmux>(&resolver, &target).await,
+        MultiplexerKind::Zellij => status_for::<zellij::Zellij>(&resolver, &target).await,
     })
 }
 

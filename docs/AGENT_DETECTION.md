@@ -248,22 +248,26 @@ interactive session that can be resumed.
 ## Multiplexer panes (HerdR / tmux / Zellij)
 
 When a local, non-Agent session's foreground command is `herdr`, `tmux` or
-`zellij`, the Sidebar polls `multiplexer_status({ kind })` every 3 s
-(`src/state/multiplexer-status.ts`). The Rust side
+`zellij`, the Sidebar polls `multiplexer_status({ kind, ptyId, sessionName })`
+every 3 s for that tab (`src/state/multiplexer-status.ts`); summaries are keyed
+by Tunara session id, so separate tabs get separate summaries. The Rust side
 (`src-tauri/src/modules/multiplexer/`) has one `MultiplexerAdapter` per kind;
-each runs a read-only CLI query (2 s timeout per call, 1 MiB output cap, at
+each runs read-only CLI queries (2 s timeout per call, 1 MiB output cap, at
 most 128 panes, fields ≤ 1024 bytes with no control characters) and returns
 `{ kind, panes: [{ paneId, sessionId, windowId, focused, agent, agentStatus, cwd }] }`.
 Adapters never send keys or write to a pane; remote (SSH) sessions are not polled.
 
-| Kind | Query | Agent status | Known limits |
+| Kind | Query and tab binding | Agent status | Known limits |
 |---|---|---|---|
-| HerdR | `herdr api snapshot` | HerdR's own `idle / working / blocked / done` | blocked panes join the "needs you" row |
-| tmux | `tmux list-panes -a -F …` (default server) | `running` when `pane_current_command` matches a registry `commands` entry | only sessions with an attached client; focus = active pane of the most recently active attached session; cannot tell working from waiting for input; node-wrapped CLIs whose process name is `node` are not matched |
-| Zellij | `zellij list-sessions --no-formatting`, then `zellij --session <name> action dump-layout` | `running` when the layout's pane `command` matches the registry | no pane ids in the CLI, ids are synthesized `<session>:<tab>:<pane>`; `focus` only exists while a client is attached; first 4 live sessions; 3 s total deadline |
+| HerdR | `herdr api snapshot` (one server per user) | HerdR's own `idle / working / blocked / done` | blocked panes join the "needs you" row |
+| tmux | `tmux list-clients -F '#{client_tty}\|#{session_id}'` finds the client on the tab's PTY tty, then `tmux list-panes -s -t <session> -F …` | `running` when `pane_current_command` matches a registry `commands` entry | default server only (`-L`/`-S` sockets are not queried); focus = active pane of the session's active window; cannot tell working from waiting for input; node-wrapped CLIs whose process name is `node` are not matched |
+| Zellij | `zellij list-sessions --no-formatting`, then `zellij --session <name> action dump-layout` for the tab's session: the name from `-s`/`attach <name>` on the command line, else the one Zellij writes into the terminal title (`name \| pane title`), else the only live session | `running` when the layout's pane `command` matches the registry | the CLI does not map clients to ttys, so a tab with no known name is not bound when several sessions are live; no pane ids, ids are synthesized `<session>:<tab>:<pane>`; `focus` only exists while a client is attached; 3 s total deadline |
 
 The summary (`blocked / working / running / done / focusedCwd`) drives the
 session-card chip, and the Inspector follows `focusedCwd` for all three kinds.
+While a multiplexer is in the foreground, typed commands, agent OSC/hook
+events and typed agent launches belong to its panes: they do not mark the
+host tab as an Agent session (`commandDetectedUpdate` / `agentDetectedUpdate`).
 
 ## Preflight & resolution
 

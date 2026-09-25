@@ -1,23 +1,26 @@
 //! Zellij adapter: `zellij list-sessions --no-formatting`, then
-//! `zellij --session <name> action dump-layout` (KDL) for each live session.
+//! `zellij --session <name> action dump-layout` (KDL) for the one session the
+//! Tunara tab is bound to.
+//!
+//! Binding: Zellij's CLI does not map clients to ttys, so the tab is bound by
+//! the session name Zellij writes into the outer terminal title (or passes on
+//! the command line); without a known name, only a sole live session binds.
 //!
 //! Limits: Zellij's CLI has no pane ids, so ids are synthesized as
 //! `<session>:<tab>:<pane>` from layout order and may shift when panes move.
 //! Commands come from the serialized layout (the pane's start command or the
 //! detected foreground process); agent status is `running` on a registry
-//! match. `focus=true` is only emitted while a client is attached; the first
-//! listed session with a focused pane wins. At most [`MAX_SESSIONS`] sessions
-//! are queried per poll.
+//! match. `focus=true` is only emitted while a client is attached.
 
 use std::path::Path;
 use std::time::Duration;
 
 use super::{
     absolute_cwd, agent_for_process, bounded_str, run_read_only, MultiplexerAdapter,
-    MultiplexerKind, MultiplexerPane,
+    MultiplexerKind, MultiplexerPane, MultiplexerTarget,
 };
 
-const MAX_SESSIONS: usize = 4;
+const MAX_SESSIONS: usize = 64;
 const MAX_SESSION_NAME_LEN: usize = 128;
 const POLL_DEADLINE: Duration = Duration::from_secs(3);
 
@@ -27,30 +30,18 @@ impl MultiplexerAdapter for Zellij {
     const KIND: MultiplexerKind = MultiplexerKind::Zellij;
     const PROGRAM: &'static str = "zellij";
 
-    async fn collect(program: &Path) -> Option<Vec<MultiplexerPane>> {
+    async fn collect(program: &Path, target: &MultiplexerTarget) -> Option<Vec<MultiplexerPane>> {
         tokio::time::timeout(POLL_DEADLINE, async {
             let sessions = parse_session_names(
                 &run_read_only(program, &["list-sessions", "--no-formatting"]).await?,
             );
-            if sessions.is_empty() {
-                return None;
-            }
-            let mut panes = Vec::new();
-            for session in sessions {
-                let args = ["--session", session.as_str(), "action", "dump-layout"];
-                if let Some(layout) = run_read_only(program, &args).await {
-                    panes.extend(parse_dump_layout(&session, &layout));
-                }
-                if panes.len() >= super::MAX_PANES {
-                    break;
-                }
-            }
+            let session = bound_session(&sessions, target.session_name.as_deref())?;
+            let args = ["--session", session, "action", "dump-layout"];
+            let mut panes = parse_dump_layout(session, &run_read_only(program, &args).await?);
             let mut focused_seen = false;
             for pane in &mut panes {
-                if pane.focused {
-                    pane.focused = !focused_seen;
-                    focused_seen = true;
-                }
+                pane.focused &= !focused_seen;
+                focused_seen |= pane.focused;
             }
             Some(panes)
         })
@@ -58,6 +49,17 @@ impl MultiplexerAdapter for Zellij {
         .ok()
         .flatten()
     }
+}
+
+/// The live session named by the tab, else the only live session.
+fn bound_session<'a>(sessions: &'a [String], name: Option<&str>) -> Option<&'a str> {
+    let named = name.and_then(|name| sessions.iter().find(|session| *session == name));
+    match (named, sessions) {
+        (Some(session), _) => Some(session),
+        (None, [only]) => Some(only),
+        _ => None,
+    }
+    .map(String::as_str)
 }
 
 /// Live session names; resurrectable (`EXITED`) sessions are skipped.
@@ -360,9 +362,23 @@ mod tests {
 
     #[test]
     fn session_list_skips_exited_and_suspicious_names() {
-        let raw = b"work [Created 3s ago] \nold [Created 1h ago] (EXITED - attach to resurrect)\n--help [Created 1s ago]\na\nb\nc\nd\ne\n";
-        assert_eq!(parse_session_names(raw), vec!["work", "a", "b", "c"]);
+        let raw = b"work [Created 3s ago] \nold [Created 1h ago] (EXITED - attach to resurrect)\n--help [Created 1s ago]\na\nb\n";
+        assert_eq!(parse_session_names(raw), vec!["work", "a", "b"]);
+        let many = "s\n".repeat(MAX_SESSIONS + 5);
+        assert_eq!(parse_session_names(many.as_bytes()).len(), MAX_SESSIONS);
         assert!(parse_session_names(b"").is_empty());
+    }
+
+    #[test]
+    fn tab_binds_to_named_session_or_the_only_live_one() {
+        let two = vec!["work".to_string(), "play".to_string()];
+        assert_eq!(bound_session(&two, Some("play")), Some("play"));
+        assert_eq!(bound_session(&two, Some("gone")), None);
+        assert_eq!(bound_session(&two, None), None);
+        let one = vec!["work".to_string()];
+        assert_eq!(bound_session(&one, None), Some("work"));
+        assert_eq!(bound_session(&one, Some("stale-title")), Some("work"));
+        assert_eq!(bound_session(&[], Some("work")), None);
     }
 
     #[test]

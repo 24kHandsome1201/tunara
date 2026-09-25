@@ -32,8 +32,6 @@ export interface MultiplexerStatusSummary {
   focusedCwd: string | null;
 }
 
-export const STATUS_MULTIPLEXERS: readonly StatusMultiplexer[] = ["herdr", "tmux", "zellij"];
-
 export function statusMultiplexer(multiplexer: TerminalMultiplexer | null): StatusMultiplexer | null {
   return multiplexer === "herdr" || multiplexer === "tmux" || multiplexer === "zellij" ? multiplexer : null;
 }

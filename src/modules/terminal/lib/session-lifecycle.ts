@@ -16,6 +16,8 @@ export function agentDetectedUpdate(
   now = Date.now(),
 ): SessionLifecycleUpdate | null {
   if (!session || session.agent === agent) return null;
+  // An agent started inside a foreground multiplexer runs in one of its panes.
+  if (sessionTerminalMultiplexer(session)) return null;
   return {
     patch: {
       agent,

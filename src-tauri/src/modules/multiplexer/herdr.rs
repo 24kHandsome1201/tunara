@@ -1,5 +1,6 @@
 //! HerdR adapter: `herdr api snapshot` (JSON) from the local HerdR server.
 //! HerdR tracks agent lifecycle itself, so its `agent_status` is passed through.
+//! HerdR runs one server per user, so the query target is not used.
 
 use std::path::Path;
 
@@ -7,6 +8,7 @@ use serde_json::Value;
 
 use super::{
     absolute_cwd, bounded_str, run_read_only, MultiplexerAdapter, MultiplexerKind, MultiplexerPane,
+    MultiplexerTarget,
 };
 
 pub struct Herdr;
@@ -15,7 +17,7 @@ impl MultiplexerAdapter for Herdr {
     const KIND: MultiplexerKind = MultiplexerKind::Herdr;
     const PROGRAM: &'static str = "herdr";
 
-    async fn collect(program: &Path) -> Option<Vec<MultiplexerPane>> {
+    async fn collect(program: &Path, _target: &MultiplexerTarget) -> Option<Vec<MultiplexerPane>> {
         parse_snapshot(&run_read_only(program, &["api", "snapshot"]).await?)
     }
 }
