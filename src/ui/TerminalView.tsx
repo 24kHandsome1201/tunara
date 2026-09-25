@@ -145,6 +145,7 @@ function TerminalViewImpl({
       cleanups.push(registerTerminalActions(sessionIdRef.current, {
         terminal: term,
         openSearch: search.openSearch,
+        getBlocks: blocks.getBlocks,
         revealAttention: () => {
           const current = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
           if (current?.runState === "failed" && !current.agent && (!current.remote || current.connection?.phase === "ready")) blocks.revealFailedCommand(current.lastCommand, current.lastExitCode);

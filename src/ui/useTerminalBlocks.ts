@@ -220,8 +220,11 @@ export function useTerminalBlocks(termRef: RefObject<Terminal | null>) {
     return true;
   }, [navigateBlock]);
 
+  const getBlocks = useCallback((): readonly TerminalCommandBlock[] => blocksRef.current, []);
+
   return {
     blockAtPixel,
+    getBlocks,
     beginBlock,
     finishBlock,
     updateActiveBlockEnd,
