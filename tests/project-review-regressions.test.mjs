@@ -1681,10 +1681,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // Keep these hotspots focused (they were split out of a monolith). Bumped
   // from 500→520 for TerminalView when it gained React.memo + the ptyReady gate
   // that fixed the double-submit bug; 520→526 for the WebGL atlas-rebuild
-  // wiring that fixed idle-garble; 526→540 for the manual-ssh detection wiring
-  // (the parsing lives in ssh-command-detect.ts; the detect+suggest call is
-  // wired on BOTH command-detection paths — the OSC 133 path that local
-  // sessions use by default, and the keystroke fallback). 540→550 for the
+  // wiring that fixed idle-garble; 526→540 for manual-ssh detection wiring
+  // (since removed with the SSH suggestion bar). 540→550 for the
   // post-exit inputToPtyEnabled gate + deferred DA handler registration.
   // The 580 ceiling left room for generation publication and inert SSH
   // restore. 580→625 covers input ownership plus binding-aware terminal

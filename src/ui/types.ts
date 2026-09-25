@@ -98,11 +98,6 @@ export interface Session {
   // 活动 PTY 的物理 id（运行时字段，不持久化）。远程会话的 SFTP 文件操作
   // 需要它来定位后端的 SSH 连接。
   ptyId?: number;
-  // 用户在本地会话里手敲 ssh 时弹出的「改用内置 SSH 打开远程文件」建议
-  // （运行时字段，不持久化）。null/缺省表示当前无建议。
-  sshSuggestion?: SshConnectSuggestion | null;
-  // 本会话内被用户忽略过的 ssh 目标，避免重复打扰（运行时字段，不持久化）。
-  dismissedSshHosts?: string[];
   /** Runtime-only: Preview URLs the user dismissed or already opened. */
   dismissedPreviewKeys?: string[];
   /** Runtime-only: OSC 133 A/B/C/D was observed on this PTY. */
@@ -160,18 +155,11 @@ export interface RemoteInfo {
   autoReconnect?: boolean;
 }
 
-/**
- * 检测到用户手敲 ssh 后给出的连接建议。只含命令行能读到的字段，
- * 用于预填新建 SSH 会话对话框——密码/口令绝不来自这里。
- */
-export interface SshConnectSuggestion {
+/** Transient form state for a new SSH connection or an in-place reconnect. */
+export interface SshConnectPrefill {
   host: string;
   user?: string;
   port?: number;
-}
-
-/** Transient form state for a new SSH connection or an in-place reconnect. */
-export interface SshConnectPrefill extends SshConnectSuggestion {
   authMethod?: SshAuthMethod;
   identityFile?: string;
   certificateFile?: string;
