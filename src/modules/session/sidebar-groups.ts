@@ -48,6 +48,14 @@ export function sidebarCwdLabel(session: Pick<Session, "dir" | "remote">): strin
   return parts[parts.length - 1] || cwd;
 }
 
+/** Program name of the running foreground command, e.g. `vim` for `sudo vim /etc/hosts`. */
+export function sidebarActivityLabel(session: Pick<Session, "agent" | "runState" | "lastCommand">): string {
+  if (session.agent || session.runState !== "running") return "";
+  const tokens = session.lastCommand?.trim().split(/\s+/) ?? [];
+  const program = tokens.find((token) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(token) && token !== "sudo" && token !== "exec" && token !== "command");
+  return program?.split("/").pop() ?? "";
+}
+
 export function groupSessionsForSidebar(sessions: readonly Session[]): SidebarGroup[] {
   const groups = new Map<string, SidebarGroup>();
   for (const session of sessions) {

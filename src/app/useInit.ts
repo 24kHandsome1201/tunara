@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useSessionsStore } from "@/state/sessions";
+import { dedupeDefaultTitles, useSessionsStore } from "@/state/sessions";
 import { loadUserConfig, useUIStore } from "@/state/ui";
 import {
   loadWorkspaceSnapshot,
@@ -108,10 +108,10 @@ export function useInit() {
 
       const snapshot = result.snapshot;
 
-      const restored = snapshot.sessions.map((p) => ({
+      const restored = dedupeDefaultTitles(snapshot.sessions.map((p) => ({
         ...fromPersistedSession(p),
         agentResume: snapshot.agentResume[p.id],
-      }));
+      })));
 
       const merged = current.sessions.length === 0
         ? restored
