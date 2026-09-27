@@ -152,7 +152,7 @@ html[data-chrome="borderless"] {
   --scroll-fade-bg: var(--c-bg-2-glass);
 }
 
-/* Tunara animations — response-only. No idle loops except attentionBreathe. */
+/* Tunara animations — response-only. No idle loops. */
 @keyframes loadPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.38; } }
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(calc(-1 * var(--motion-distance-md))); }
@@ -191,9 +191,9 @@ html[data-chrome="borderless"] {
   from { opacity: 0; transform: translateY(calc(-1 * var(--motion-distance-sm))); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes attentionBreathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+@keyframes attentionIn {
+  from { opacity: 0.3; transform: scale(1.4); }
+  to { opacity: 1; transform: scale(1); }
 }
 @keyframes sidebarDrawerIn {
   from { transform: translateX(calc(-1 * var(--motion-distance-lg))); }
@@ -1949,11 +1949,10 @@ select:focus-visible {
 .session-state-dot[data-tone="unread"] { background: var(--c-text-5); }
 .session-state-dot[data-tone="attention"] {
   background: var(--c-accent);
-  animation: attentionBreathe 2.4s var(--ease-in-out) infinite;
+  animation: attentionIn var(--dur-slow) var(--ease-out);
 }
 .attention-row-button[data-kind="needs-you"] {
   color: var(--c-accent);
-  animation: attentionBreathe 2.4s var(--ease-in-out) infinite;
 }
 .workspace-empty-actions {
   position: relative;
