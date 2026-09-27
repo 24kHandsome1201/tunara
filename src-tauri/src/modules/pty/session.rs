@@ -136,6 +136,17 @@ impl Session {
         }
     }
 
+    /// Slave tty of a local PTY (e.g. `/dev/ttys012`); `None` for SSH.
+    pub fn tty_name(&self) -> Option<std::path::PathBuf> {
+        match self {
+            #[cfg(unix)]
+            Session::Local(s) => s.master.lock().tty_name(),
+            #[cfg(not(unix))]
+            Session::Local(_) => None,
+            Session::Ssh(_) => None,
+        }
+    }
+
     /// Terminate the session. For local that's killing the child; for SSH it
     /// closes the channel (the connection drops with the SshSession). Both
     /// variants propagate their teardown error so callers log failures

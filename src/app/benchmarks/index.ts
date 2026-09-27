@@ -3,6 +3,7 @@ import { useM2NativeCloseBenchmark } from "../useM2NativeCloseBenchmark";
 import { useM2SafeWriteBenchmark } from "../useM2SafeWriteBenchmark";
 import { usePhase3RestartBenchmark } from "../usePhase3RestartBenchmark";
 import { usePhase3TunnelBenchmark } from "../usePhase3TunnelBenchmark";
+import { useRendererBenchmark } from "../useRendererBenchmark";
 import { useTerminalBenchmark } from "../useTerminalBenchmark";
 
 /** Mounts every GUI benchmark harness. Loaded only when VITE_TUNARA_BENCHMARK is set. */
@@ -13,4 +14,5 @@ export function useBenchmarks(ready: boolean): void {
   useM2SafeWriteBenchmark(ready);
   useM2LocalSafeWriteBenchmark(ready);
   useM2NativeCloseBenchmark(ready);
+  useRendererBenchmark(ready);
 }

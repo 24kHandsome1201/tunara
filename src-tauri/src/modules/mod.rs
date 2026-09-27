@@ -16,8 +16,8 @@ pub mod agent;
 pub mod editor;
 // §3.4 git 集成
 pub mod git;
-// HerdR socket status (read-only)
-pub mod herdr;
+// HerdR / tmux / Zellij pane status (read-only)
+pub mod multiplexer;
 // §ssh-client SSH 会话 + SFTP 文件
 pub mod ssh;
 pub mod window_effects;

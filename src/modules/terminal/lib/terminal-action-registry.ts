@@ -8,11 +8,14 @@ import { pasteWithCapturedBracketedMode, requestProtectedTerminalPaste } from ".
 import { bindingAwareAsyncAction, issueFocusReturnToken, recordTerminalFocusIntent, type BindingAwareAsyncAction } from "./binding-aware-async-action";
 import { findKeybindingConflict, matchesKeybinding, TERMINAL_KEYBINDING_ACTIONS, type TerminalKeybindingAction } from "@/modules/config/keybindings";
 import { isMac } from "@/ui/lib/platform";
+import type { TerminalCommandBlock } from "./terminal-blocks";
+import { stringOffsetToCellColumn, type TerminalSearchSource } from "./cross-session-search";
 
 interface TerminalActions {
   terminal: Terminal;
   openSearch: () => void;
   revealAttention?: () => void;
+  getBlocks?: () => readonly TerminalCommandBlock[];
 }
 
 const actions = new Map<string, TerminalActions>();
@@ -68,6 +71,50 @@ export function copyActiveTerminal(sessionId: string): boolean {
 
 export function searchActiveTerminal(sessionId: string): void {
   actions.get(sessionId)?.openSearch();
+}
+
+/**
+ * Read-only views over every mounted terminal's in-memory normal buffer
+ * (scrollback lives there even while a TUI owns the alternate screen).
+ */
+export function listTerminalSearchSources(): TerminalSearchSource[] {
+  return [...actions.entries()].map(([sessionId, registration]) => {
+    const buffer = registration.terminal.buffer.normal;
+    return {
+      sessionId,
+      lineCount: buffer.length,
+      readLine: (row: number) => buffer.getLine(row)?.translateToString(true),
+      blocks: registration.getBlocks?.() ?? [],
+    };
+  });
+}
+
+/** Explicit navigation only: activates, scrolls and selects; never writes to the PTY. */
+export function revealTerminalSearchMatch(sessionId: string, row: number, start: number, end: number): boolean {
+  const registration = actions.get(sessionId);
+  if (!registration) return false;
+  useSessionsStore.getState().setActive(sessionId);
+  useUIStore.getState().showTerminal();
+  const reveal = () => {
+    const current = actions.get(sessionId);
+    if (!current) return;
+    const { terminal } = current;
+    const line = terminal.buffer.normal.getLine(row);
+    if (!line) return;
+    const cell = terminal.buffer.normal.getNullCell();
+    const getCell = (column: number) => {
+      const found = line.getCell(column, cell);
+      return found ? { chars: found.getChars(), width: found.getWidth() } : null;
+    };
+    const startColumn = stringOffsetToCellColumn(terminal.cols, getCell, start);
+    const endColumn = Math.max(startColumn + 1, stringOffsetToCellColumn(terminal.cols, getCell, end));
+    terminal.scrollToLine(Math.max(0, row - Math.floor(terminal.rows / 2)));
+    terminal.select(startColumn, row, endColumn - startColumn);
+    focusActiveTerminal(sessionId);
+  };
+  // The target pane may only become visible after the activation re-render.
+  requestAnimationFrame(() => requestAnimationFrame(reveal));
+  return true;
 }
 
 /** Explicit navigation only: never executes or pastes terminal input. */

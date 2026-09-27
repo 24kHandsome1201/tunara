@@ -148,6 +148,15 @@ pub fn agent_preflight_invalidate(agent: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Registry `cliBin` of the agent whose command matches a foreground process
+/// name (e.g. tmux `pane_current_command`), if any.
+pub(crate) fn agent_for_command(command: &str) -> Option<&'static str> {
+    AGENT_REGISTRY
+        .iter()
+        .find(|entry| entry.commands.iter().any(|known| known == command))
+        .map(|entry| entry.cli_bin.as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{agent_bin, agent_registry_entries};

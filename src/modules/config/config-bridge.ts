@@ -20,6 +20,7 @@ export interface RawAppearanceConfig {
   terminal_screen_reader_mode: boolean;
   terminal_host_modifier: "shift" | "meta" | "alt";
   terminal_option_as_meta: boolean;
+  terminal_renderer: string;
   background_opacity: number;
   background_blur: boolean;
   language: string;

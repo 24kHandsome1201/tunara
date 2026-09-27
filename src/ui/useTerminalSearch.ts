@@ -72,7 +72,7 @@ export function useTerminalSearch(sessionId: string) {
   }, [getSearchOptions, sessionId]);
 
   const handleCustomKeyEvent = useCallback((e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "f" && e.type === "keydown") {
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLocaleLowerCase() === "f" && e.type === "keydown") {
       openSearch();
       return false;
     }

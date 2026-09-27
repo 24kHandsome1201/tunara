@@ -32,6 +32,7 @@ import { setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-awa
 import { pushRecentCommand } from "./recent-commands";
 import { localTerminalCwdFromSession, splitTerminalContextFromSession } from "@/modules/session/local-terminal-cwd";
 import { sidebarGroupKey } from "@/modules/session/sidebar-groups";
+import { sessionTerminalMultiplexer } from "@/modules/session/terminal-multiplexer";
 import { duplicateRemoteSessionFields } from "@/modules/ssh/connection-share";
 import { requestDirtyDraftAction } from "@/modules/editor/dirty-draft-guard";
 import {
@@ -693,6 +694,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   handleAgentDetected: (id, agent, command) => {
     const session = get().sessions.find((s) => s.id === id);
+    if (session && sessionTerminalMultiplexer(session)) return;
     const update = agentDetectedUpdate(session, agent);
     const agentResume = reconcileAgentResumeIntent(
       session?.agentResume,

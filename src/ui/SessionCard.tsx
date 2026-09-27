@@ -5,7 +5,8 @@ import { sessionDisplayRunState } from "@/modules/terminal/lib/agent-lifecycle";
 import { sessionCue } from "@/modules/session/session-attention";
 import { sidebarActivityLabel, sidebarCwdLabel, CONNECTION_TONE_COLORS, sshCardConnectionPhase, sshConnectionPhaseTone, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import { sessionTerminalMultiplexer, terminalMultiplexerLabel } from "@/modules/session/terminal-multiplexer";
-import { useHerdrStatusStore } from "@/state/herdr-status";
+import { statusMultiplexer } from "@/modules/session/multiplexer-status";
+import { useMultiplexerSummary } from "@/state/multiplexer-status";
 import { SessionCueDot } from "./SessionCueDot";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -151,14 +152,16 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
     : t(`sidebar.session.status.${displayRunState}`);
   const multiplexer = sessionTerminalMultiplexer(session);
   const activity = multiplexer ? "" : sidebarActivityLabel(session);
-  const herdrSummary = useHerdrStatusStore((s) => (multiplexer === "herdr" && !session.remote ? s.summary : null));
+  const paneSummary = useMultiplexerSummary(!session.remote && statusMultiplexer(multiplexer) ? session.id : null);
   const multiplexerLabel = !multiplexer ? ""
-    : herdrSummary?.blocked ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_blocked", { count: herdrSummary.blocked })}`
-      : herdrSummary?.working ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_working", { count: herdrSummary.working })}`
-        : terminalMultiplexerLabel(multiplexer);
+    : paneSummary?.blocked ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_blocked", { count: paneSummary.blocked })}`
+      : paneSummary?.working ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.herdr_working", { count: paneSummary.working })}`
+        : paneSummary?.running ? `${terminalMultiplexerLabel(multiplexer)} · ${t("sidebar.session.multiplexer.agents_running", { count: paneSummary.running })}`
+          : terminalMultiplexerLabel(multiplexer);
   const multiplexerHint = !multiplexer ? ""
-    : herdrSummary ? t("sidebar.session.multiplexer.herdr_summary", { blocked: herdrSummary.blocked, working: herdrSummary.working, done: herdrSummary.done, cwd: herdrSummary.focusedCwd ?? "—" })
-      : t("sidebar.session.multiplexer.hint", { name: terminalMultiplexerLabel(multiplexer) });
+    : paneSummary && multiplexer === "herdr" ? t("sidebar.session.multiplexer.herdr_summary", { blocked: paneSummary.blocked, working: paneSummary.working, done: paneSummary.done, cwd: paneSummary.focusedCwd ?? "—" })
+      : paneSummary ? t("sidebar.session.multiplexer.pane_summary", { name: terminalMultiplexerLabel(multiplexer), count: paneSummary.running, cwd: paneSummary.focusedCwd ?? "—" })
+        : t("sidebar.session.multiplexer.hint", { name: terminalMultiplexerLabel(multiplexer) });
   const connectionPhase = sshCardConnectionPhase(session);
   const connectionTone = connectionPhase ? sshConnectionPhaseTone(connectionPhase) : null;
   const accessibleLabel = [
@@ -411,7 +414,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             {multiplexer && (
               <span
                 data-multiplexer={multiplexer}
-                data-herdr-blocked={herdrSummary?.blocked ? "true" : undefined}
+                data-herdr-blocked={paneSummary?.blocked ? "true" : undefined}
                 title={multiplexerHint}
                 style={{
                   flexShrink: 0,
@@ -420,8 +423,8 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
                   fontSize: "var(--fs-meta)",
                   fontWeight: 600,
                   lineHeight: "16px",
-                  color: herdrSummary?.blocked ? "var(--c-warning-text)" : "var(--c-text-4)",
-                  background: herdrSummary?.blocked ? "var(--c-warning-bg)" : "var(--c-bg-3)",
+                  color: paneSummary?.blocked ? "var(--c-warning-text)" : "var(--c-text-4)",
+                  background: paneSummary?.blocked ? "var(--c-warning-bg)" : "var(--c-bg-3)",
                 }}
               >
                 {multiplexerLabel}

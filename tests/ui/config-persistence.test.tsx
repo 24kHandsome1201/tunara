@@ -307,3 +307,43 @@ test("background opacity and blur hydrate clamped and persist", async () => {
   await waitFor(() => expect(saved).toMatchObject({ appearance: { background_opacity: 0.85, background_blur: true } }));
   useUIStore.setState({ configLoaded: false });
 });
+
+test("terminal renderer preference defaults to auto, loads from config and persists", async () => {
+  expect(DEFAULT_SETTINGS.terminalRenderer).toBe("auto");
+  let saved: unknown;
+  mockIPC((command, payload) => {
+    if (command === "load_config") {
+      return {
+        path: "/tmp/tunara-config.toml",
+        config: { appearance: { terminal_renderer: "compat" } },
+        error: null,
+      };
+    }
+    if (command === "save_config") {
+      saved = (payload as { config: unknown }).config;
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useUIStore.setState({ configLoaded: false, terminalRenderer: "auto" });
+
+  await loadUserConfig();
+  expect(useUIStore.getState().terminalRenderer).toBe("compat");
+
+  useUIStore.getState().setTerminalRenderer("gpu");
+  await waitFor(() => expect(saved).toMatchObject({ appearance: { terminal_renderer: "gpu" } }));
+
+  useUIStore.setState({ configLoaded: false });
+  mockIPC((command) => {
+    if (command === "load_config") {
+      return {
+        path: "/tmp/tunara-config.toml",
+        config: { appearance: { terminal_renderer: "webgl" } },
+        error: null,
+      };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  await loadUserConfig();
+  expect(useUIStore.getState().terminalRenderer).toBe("auto");
+});
