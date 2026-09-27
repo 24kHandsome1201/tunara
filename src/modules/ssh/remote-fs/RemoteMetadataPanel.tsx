@@ -109,7 +109,7 @@ export function RemoteMetadataPanel({ binding, path, host }: RemoteMetadataPanel
   return (
     <section aria-labelledby="remote-metadata-title" style={{ display: "grid", gap: 12, padding: 12, minHeight: 0, overflow: "auto" }}>
       <h2 id="remote-metadata-title">{t("remote_fs.metadata.title")}</h2>
-      <div><strong>{t("remote_fs.metadata.host")}:</strong> {host}</div>
+      <div><strong>{t("common.host")}:</strong> {host}</div>
       <div style={{ overflowWrap: "anywhere" }}><strong>{t("remote_fs.metadata.path")}:</strong> <code>{path}</code></div>
       {!metadata && !error && <div role="status">{t("remote_fs.metadata.loading")}</div>}
       {metadata && (

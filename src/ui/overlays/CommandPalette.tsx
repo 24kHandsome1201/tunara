@@ -143,7 +143,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "new-terminal",
-      label: t("palette.cmd.new_terminal"),
+      label: t("common.new_terminal"),
       shortcut: formatShortcut(keybindings.newTerminal),
       icon: <PaletteIcon icon={Plus} />,
       section: section.terminal,
@@ -644,7 +644,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "settings",
-      label: t("palette.cmd.settings"),
+      label: t("common.settings"),
       shortcut: formatShortcut(keybindings.openSettings),
       icon: <PaletteIcon icon={Gear} />,
       section: section.app,

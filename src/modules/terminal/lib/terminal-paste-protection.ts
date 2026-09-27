@@ -70,7 +70,7 @@ export function analyzeTerminalPaste(text: string): TerminalPasteWarning | null 
 
 export function terminalPasteWarningMessage(warning: TerminalPasteWarning): string {
   const parts = [];
-  if (warning.multiline) parts.push(t("paste.warning.lines", { count: warning.lineCount }));
+  if (warning.multiline) parts.push(t("common.lines", { count: warning.lineCount }));
   if (warning.large) parts.push(t("paste.warning.chars", { count: warning.charCount }));
   if (warning.controlCharacters) parts.push(t("paste.warning.controls"));
   const summary = parts.join(", ") || t("paste.warning.summary_default");

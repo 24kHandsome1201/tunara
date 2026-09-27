@@ -30,7 +30,7 @@ export const INSPECTOR_TAB_DESCRIPTORS: Record<InspectorTab, InspectorTabDescrip
   files: { id: "files", scope: "transport-binding", titleKey: "inspector.tab.files", descriptionKey: "inspector.scope.description.transport_binding" },
   transfers: { id: "transfers", scope: "logical-session", titleKey: "inspector.tab.transfers", descriptionKey: "inspector.scope.description.logical_session" },
   forwarding: { id: "forwarding", scope: "transport-binding", titleKey: "inspector.tab.forwarding", descriptionKey: "inspector.scope.description.transport_binding" },
-  preview: { id: "preview", scope: "logical-session", titleKey: "inspector.tab.preview", descriptionKey: "inspector.scope.description.logical_session" },
+  preview: { id: "preview", scope: "logical-session", titleKey: "common.preview", descriptionKey: "inspector.scope.description.logical_session" },
 };
 
 export function bindingIdentity(binding: SessionBindingV1 | null): string | null {

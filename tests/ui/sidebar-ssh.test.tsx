@@ -148,7 +148,7 @@ test("SSH connecting phase is visible on the card and not in the attention bar",
     />,
   );
 
-  expect(screen.getByText("Connecting to host")).toBeTruthy();
+  expect(screen.getByText("Connecting to host…")).toBeTruthy();
   expect(screen.queryByText("Needs attention")).toBeNull();
 });
 
@@ -271,5 +271,5 @@ test("local HerdR chip reflects blocked panes reported by the HerdR socket API",
 
   const chip = await screen.findByText("HerdR · 1 blocked");
   expect(chip.getAttribute("data-herdr-blocked")).toBe("true");
-  expect(chip.getAttribute("title")).toBe("HerdR panes: 1 blocked, 1 working, 0 done. Focused pane: /repo");
+  expect(chip.getAttribute("title")).toBe("HerdR panes: 1 blocked, 1 working, 0 done. Focused pane: /repo.");
 });

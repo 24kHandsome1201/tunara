@@ -42,6 +42,36 @@ export function loadLocaleKeys(root, file) {
   return new Set(flattenKeys(parsed));
 }
 
+export function loadLocaleValues(root, file) {
+  const parsed = JSON.parse(readFileSync(join(root, file), "utf8"));
+  const values = new Map();
+  const walk = (node, prefix) => {
+    for (const [name, child] of Object.entries(node)) {
+      const path = prefix ? `${prefix}.${name}` : name;
+      if (child && typeof child === "object" && !Array.isArray(child)) walk(child, path);
+      else values.set(path, child);
+    }
+  };
+  walk(parsed, "");
+  return values;
+}
+
+const DUPLICATE_VALUE_MIN_KEYS = 3;
+
+function duplicateValueGroups(values) {
+  const byValue = new Map();
+  for (const [key, value] of values) {
+    if (typeof value !== "string") continue;
+    const list = byValue.get(value);
+    if (list) list.push(key);
+    else byValue.set(value, [key]);
+  }
+  return [...byValue.entries()]
+    .filter(([, keys]) => keys.length >= DUPLICATE_VALUE_MIN_KEYS)
+    .map(([value, keys]) => ({ value, keys: keys.sort() }))
+    .sort((a, b) => b.keys.length - a.keys.length || a.value.localeCompare(b.value));
+}
+
 function isI18nModule(specifier) {
   return /(?:^|\/)i18n(?:\/|$)/.test(specifier.replaceAll("\\", "/"));
 }
@@ -320,6 +350,10 @@ export function auditI18n(root = DEFAULT_ROOT) {
   const zhFile = "src/modules/i18n/locales/zh-CN.json";
   const enKeys = loadLocaleKeys(root, enFile);
   const zhKeys = loadLocaleKeys(root, zhFile);
+  const duplicateValues = {
+    en: duplicateValueGroups(loadLocaleValues(root, enFile)),
+    "zh-CN": duplicateValueGroups(loadLocaleValues(root, zhFile)),
+  };
   const allLocaleKeys = new Set([...enKeys, ...zhKeys]);
 
   const staticRefs = new Set();
@@ -436,6 +470,7 @@ export function auditI18n(root = DEFAULT_ROOT) {
     onlyInEn,
     onlyInZhCN,
     missing: [...missing].sort(),
+    duplicateValues,
     rustRefs,
     scanned: { srcFiles: srcFiles.length, rustFiles: rustFiles.length },
   };
@@ -478,6 +513,16 @@ export function formatReport(result) {
   lines.push("Referenced but missing:");
   if (result.missing.length === 0) lines.push("  (none)");
   else for (const key of result.missing) lines.push(`  ${key}`);
+  lines.push("");
+  lines.push(`Duplicate values (>= ${DUPLICATE_VALUE_MIN_KEYS} keys; consider common.* keys):`);
+  for (const locale of ["en", "zh-CN"]) {
+    const groups = result.duplicateValues[locale];
+    lines.push(`  ${locale}: ${groups.length}`);
+    for (const group of groups) {
+      const shown = group.value.length > 48 ? `${group.value.slice(0, 45)}…` : group.value;
+      lines.push(`    ${JSON.stringify(shown)}: ${group.keys.join(", ")}`);
+    }
+  }
   if (result.rustRefs.length > 0) {
     lines.push("");
     lines.push("Rust-side key refs:");

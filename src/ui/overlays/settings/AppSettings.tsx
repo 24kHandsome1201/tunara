@@ -71,7 +71,7 @@ export function AppSettings({ appVersion, updateStatus, updateVersion, updatePro
               className={canInstallUpdate ? "hover-primary" : "hover-bg"}
               style={{ padding: "7px 12px", borderRadius: "var(--r-btn)", border: canInstallUpdate ? "none" : "1px solid var(--c-border-2)", background: canInstallUpdate ? "var(--c-btn-primary-bg)" : "var(--c-bg-white)", color: canInstallUpdate ? "var(--c-btn-primary-text)" : "var(--c-text-2)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: updateBusy ? "wait" : "pointer" }}
             >
-              {updateStatus === "restartReady" ? t("settings.app.updates.restart") : canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("settings.app.updates.retry") : t("settings.app.updates.check")}
+              {updateStatus === "restartReady" ? t("settings.app.updates.restart") : canInstallUpdate ? t("settings.app.updates.install") : updateStatus === "error" ? t("common.retry") : t("settings.app.updates.check")}
             </button>
           </div>
         </div>

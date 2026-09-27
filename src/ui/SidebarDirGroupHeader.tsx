@@ -60,7 +60,7 @@ export function DirGroupHeader({
 }) {
   const t = useT();
   const groupName = kind === "ssh" ? label : workspace?.repositoryName || label;
-  const newTerminalLabel = kind === "ssh" ? t("sidebar.session.duplicate_host") : t("dir_group.new_terminal");
+  const newTerminalLabel = kind === "ssh" ? t("sidebar.session.duplicate_host") : t("common.new_terminal_here");
   const closeAllTitle = confirmClose
     ? t("session.close.all_running_hint")
     : kind === "ssh"

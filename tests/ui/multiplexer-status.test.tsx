@@ -116,7 +116,7 @@ test("local tmux chip shows foreground agents and the focused pane cwd", async (
   expect(chip.getAttribute("data-multiplexer")).toBe("tmux");
   expect(chip.getAttribute("data-herdr-blocked")).toBeNull();
   expect(chip.getAttribute("title")).toBe(
-    "tmux panes: 2 with an Agent in the foreground (status inside the Agent is not visible). Focused pane: /repo/web",
+    "tmux panes: 2 with an Agent in the foreground (status inside the Agent is not visible). Focused pane: /repo/web.",
   );
 });
 

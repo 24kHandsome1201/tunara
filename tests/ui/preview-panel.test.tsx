@@ -65,9 +65,9 @@ test("renders the source URL and opens only an eligible source", async () => {
   expect(screen.getByText(eligible.sourceUrl)).toBeTruthy();
   expect(screen.queryByText("repo-a")).toBeNull();
   expect(screen.queryByText("session-a:0")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Open Preview" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
   await waitFor(() => expect(calls).toContainEqual({ command: "preview_open", payload: { source: eligible } }));
-  expect(screen.getByRole("button", { name: "Focus Preview" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Focus preview" })).toBeTruthy();
   expect(screen.getByText("Ready")).toBeTruthy();
 });
 
@@ -81,7 +81,7 @@ test("keeps SSH, stale, and fallback sources visibly blocked", () => {
 
   expect(screen.getAllByText("Closed").length).toBe(3);
   expect(screen.getByText("Source terminal exited")).toBeTruthy();
-  for (const button of screen.getAllByRole("button", { name: "Open Preview" })) {
+  for (const button of screen.getAllByRole("button", { name: "Open preview" })) {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   }
 });
@@ -206,7 +206,7 @@ test("terminal exit keeps close available but blocks refresh and a new internal 
   render(<PreviewPanel session={session([source({ state: "stale", staleReason: "terminal-exited" })])} />);
 
   expect(await screen.findByText("Source terminal exited")).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Focus Preview" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Focus preview" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Close" }) as HTMLButtonElement).disabled).toBe(false);
 });

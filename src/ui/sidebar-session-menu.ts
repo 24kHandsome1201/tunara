@@ -49,7 +49,7 @@ export function buildSessionMenuItems({
       ? [{ id: "session:copy-cwd", label: t("sidebar.session.copy_remote_cwd"), icon: "copy" as const, action: () => { void copyText(remoteCwd); } }]
       : []),
     null,
-    { id: "session:close", label: t("sidebar.session.close"), icon: "close", danger: true, action: () => { onCloseSession?.(session.id); } },
+    { id: "session:close", label: t("common.close_session"), icon: "close", danger: true, action: () => { onCloseSession?.(session.id); } },
   );
   return items;
 }

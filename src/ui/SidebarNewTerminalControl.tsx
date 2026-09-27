@@ -37,7 +37,7 @@ export function SidebarNewTerminalControl({
           <button
             type="button"
             onClick={onNewTerminal}
-            title={t("sidebar.new_terminal")}
+            title={t("common.new_terminal")}
             className="hover-bg"
             style={{
               flex: 1,
@@ -57,7 +57,7 @@ export function SidebarNewTerminalControl({
             }}
           >
             <Icon icon={Plus} size={12} weight="bold" />
-            <span>{t("sidebar.new_terminal")}</span>
+            <span>{t("common.new_terminal")}</span>
           </button>
           <button
             type="button"
