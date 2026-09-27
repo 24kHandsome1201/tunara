@@ -6,10 +6,11 @@ import { AgentBadge } from "./agents";
 import { CloseIcon } from "./shared";
 import { Check, CopySimple, Icon, Warning } from "@/ui/icons";
 import { copyText } from "./lib/clipboard";
+import { motionDurationMs } from "./lib/motion";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 
-const DEFAULT_TOAST_DURATION = 4000;
-const ERROR_TOAST_DURATION = 12000;
+const DEFAULT_TOAST_DURATION_MS = 4_000;
+const ERROR_TOAST_DURATION_MS = 12_000;
 
 function ToastItem({ toast }: { toast: Toast }) {
   const t = useT();
@@ -21,7 +22,9 @@ function ToastItem({ toast }: { toast: Toast }) {
   const copyRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const duration = toast.durationMs ?? (toast.variant === "error" ? ERROR_TOAST_DURATION : DEFAULT_TOAST_DURATION);
+  const duration = toast.durationMs ?? (toast.variant === "error"
+    ? motionDurationMs("--dur-toast-long", ERROR_TOAST_DURATION_MS)
+    : motionDurationMs("--dur-toast", DEFAULT_TOAST_DURATION_MS));
   const remainRef = useRef(duration);
   const startRef = useRef(Date.now());
   const dismissedRef = useRef(false);
@@ -282,7 +285,7 @@ export function ToastContainer() {
       position: "fixed",
       top: "calc(var(--h-titlebar) + 8px)",
       right: 12,
-      zIndex: 300,
+      zIndex: "var(--z-toast)",
       display: "flex",
       flexDirection: "column",
       gap: 8,

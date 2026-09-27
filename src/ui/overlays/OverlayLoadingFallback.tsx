@@ -14,7 +14,7 @@ export function OverlayLoadingFallback({ label }: { label: string }) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 300,
+        zIndex: "var(--z-overlay)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

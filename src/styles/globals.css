@@ -57,7 +57,7 @@ html[data-chrome="borderless"] {
    these hit targets above app overlays and the titlebar drag region. */
 .window-resize-handle {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-system);
   touch-action: none;
   -webkit-app-region: no-drag;
 }
@@ -155,40 +155,40 @@ html[data-chrome="borderless"] {
 /* Tunara animations — response-only. No idle loops except attentionBreathe. */
 @keyframes loadPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.38; } }
 @keyframes toastIn {
-  from { opacity: 0; transform: translateY(-8px); }
+  from { opacity: 0; transform: translateY(calc(-1 * var(--motion-distance-md))); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes overlayIn {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
+  from { opacity: 0; transform: translate(-50%, -50%) scale(var(--motion-scale-in)); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 @keyframes paletteIn {
-  from { opacity: 0; transform: translateX(-50%) scale(0.98); }
+  from { opacity: 0; transform: translateX(-50%) scale(var(--motion-scale-in)); }
   to { opacity: 1; transform: translateX(-50%) scale(1); }
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes contentIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(var(--motion-distance-sm)); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes ctxMenuIn {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  from { opacity: 0; transform: translateY(calc(-1 * var(--motion-distance-sm))) scale(var(--motion-scale-in)); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes slideInRight {
-  from { opacity: 0; transform: translateX(12px); }
+  from { opacity: 0; transform: translateX(var(--motion-distance-lg)); }
   to { opacity: 1; transform: translateX(0); }
 }
 @keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-12px); }
+  from { opacity: 0; transform: translateX(calc(-1 * var(--motion-distance-lg))); }
   to { opacity: 1; transform: translateX(0); }
 }
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.98); }
+  from { opacity: 0; transform: scale(var(--motion-scale-in)); }
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes statusBarSlideIn {
-  from { opacity: 0; transform: translateY(-6px); }
+  from { opacity: 0; transform: translateY(calc(-1 * var(--motion-distance-sm))); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes attentionBreathe {
@@ -196,11 +196,11 @@ html[data-chrome="borderless"] {
   50% { opacity: 0.45; }
 }
 @keyframes sidebarDrawerIn {
-  from { transform: translateX(-12px); }
+  from { transform: translateX(calc(-1 * var(--motion-distance-lg))); }
   to { transform: translateX(0); }
 }
 @keyframes panelDrawerIn {
-  from { transform: translateX(12px); }
+  from { transform: translateX(var(--motion-distance-lg)); }
   to { transform: translateX(0); }
 }
 
@@ -266,13 +266,13 @@ select.ui-control {
 .ui-button:active:not(:disabled),
 .settings-action-button:active:not(:disabled) {
   background: var(--c-bg-3);
-  transform: scale(var(--scale-press-soft));
+  transform: scale(var(--press-scale));
   transition-duration: var(--dur-fast);
 }
 .hover-bg:active,
 .ui-button:active:not(:disabled),
 .settings-action-button:active:not(:disabled) {
-  transform: scale(var(--scale-press-soft));
+  transform: scale(var(--press-scale));
 }
 .ui-control:focus-visible,
 .ui-button:focus-visible,
@@ -1193,7 +1193,7 @@ button.explorer-listing-action {
 .file-editor-find button:active,
 .file-editor-alert button:active,
 .file-editor-close-confirm button:active,
-.file-editor-footer button:active { transform: scale(var(--scale-press-soft)); }
+.file-editor-footer button:active { transform: scale(var(--press-scale)); }
 .file-editor-mode button {
   min-height: 28px;
   padding: 0 9px;
@@ -1497,9 +1497,9 @@ button.explorer-listing-action {
   color: var(--c-text-5);
   font-size: var(--fs-secondary);
 }
-.image-preview-surface:focus-visible { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+.image-preview-surface:focus-visible { outline: var(--focus-ring-w) solid var(--focus-ring-color); outline-offset: calc(-1 * var(--focus-ring-offset)); }
 .image-preview-surface img { display: block; object-fit: contain; user-select: none; }
-.image-preview-fullscreen { position: fixed; inset: 0; z-index: 10020; display: flex; flex-direction: column; background: var(--c-bg-white); }
+.image-preview-fullscreen { position: fixed; inset: 0; z-index: var(--z-system); display: flex; flex-direction: column; background: var(--c-bg-white); }
 .image-preview-fullscreen .image-preview-surface { min-height: 0; }
 
 .file-editor-footer {
@@ -1573,8 +1573,8 @@ button.explorer-listing-action {
   outline: none;
 }
 :focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 button:focus-visible,
 [role="button"]:focus-visible,
@@ -1582,14 +1582,14 @@ button:focus-visible,
 [role="option"]:focus-visible,
 [role="tab"]:focus-visible,
 [role="listitem"] :focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 2px;
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Preview controls deliberately inherit the same compact surface treatment as
@@ -1643,7 +1643,7 @@ select:focus-visible {
   background: var(--c-bg-hover);
   color: var(--c-text-primary);
 }
-.preview-source-card button:active:not(:disabled) { transform: scale(var(--scale-press-soft)); }
+.preview-source-card button:active:not(:disabled) { transform: scale(var(--press-scale)); }
 .preview-source-card button:disabled {
   cursor: default;
   opacity: .45;
@@ -1938,8 +1938,8 @@ select:focus-visible {
   opacity: 1;
 }
 .session-state-dot {
-  width: 6px;
-  height: 6px;
+  width: var(--dot-sm);
+  height: var(--dot-sm);
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -1978,7 +1978,7 @@ select:focus-visible {
   animation: fadeIn var(--dur-fast) var(--ease-out);
 }
 .overlay-loading-fallback {
-  animation: fadeIn var(--dur-base) var(--ease-out) 200ms both;
+  animation: fadeIn var(--dur-base) var(--ease-out) var(--delay-loading-fallback) both;
 }
 .overlay-sheet {
   animation: overlayIn var(--dur-base) var(--ease-out) both;
@@ -1990,27 +1990,18 @@ select:focus-visible {
   animation: toastIn var(--dur-base) var(--ease-out) both;
 }
 
-html.reduce-motion,
-html.reduce-motion.dark {
-  --dur-fast: 0ms;
-  --dur-base: 0ms;
-  --dur-slow: 0ms;
+/* Reduced motion: useTheme writes html[data-reduce-motion] from the
+   prefers-reduced-motion media query; tokens.css zeroes the motion scale
+   under it. Animations that bypass --dur-* are stopped here explicitly. */
+html[data-reduce-motion] .session-state-dot[data-tone="attention"],
+html[data-reduce-motion] .attention-row-button[data-kind="needs-you"],
+html[data-reduce-motion] .loading-dot {
+  animation: none;
 }
-@media (prefers-reduced-motion: reduce) {
-  :root,
-  .dark {
-    --dur-fast: 0ms;
-    --dur-base: 0ms;
-    --dur-slow: 0ms;
-  }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0ms !important;
-  }
+html[data-reduce-motion] .loading-dot { opacity: 0.6; }
+
+.loading-dot {
+  animation: loadPulse var(--dur-loading) var(--ease-in-out) infinite;
 }
 
 /* macOS background opacity (Ghostty-style): window surfaces get alpha, text and overlays stay opaque. */

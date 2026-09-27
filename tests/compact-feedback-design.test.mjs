@@ -6,7 +6,7 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 
 test("error feedback remains readable and is not an interactive-role container", () => {
   const toast = read("src/ui/Toast.tsx");
-  assert.match(toast, /ERROR_TOAST_DURATION = 12000/);
+  assert.match(toast, /motionDurationMs\("--dur-toast-long"/);
   assert.match(toast, /role=\{toast\.variant === "error" \? "alert" : "status"\}/);
   assert.doesNotMatch(toast, /role="button"/);
   assert.match(toast, /className="toast-primary-action"/);

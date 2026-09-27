@@ -92,8 +92,6 @@ export function Settings({ onClose }: SettingsProps) {
       labelledBy="settings-title"
       onRequestClose={onClose}
       initialFocus="container"
-      backdropZIndex={200}
-      zIndex={201}
       className="settings-dialog"
       style={{ width: 620, maxWidth: "calc(100vw - 32px)", overflow: "hidden", display: "flex", flexDirection: "column", height: "min(82dvh, 760px)", maxHeight: "min(82dvh, 760px)" }}
     >

@@ -18,6 +18,7 @@ import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 import { copyText } from "./lib/clipboard";
+import { reduceMotionEnabled } from "./lib/motion";
 import { useSessionsStore } from "@/state/sessions";
 import {
   cancelDirtyDraftAction,
@@ -200,7 +201,7 @@ function MarkdownPreview({ content, fill = false, findQuery = "", activeFindInde
 function focusMarkdownAnchor(id: string) {
   const target = document.getElementById(id);
   if (!target) return;
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const reduceMotion = reduceMotionEnabled();
   target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   target.focus({ preventScroll: true });
 }
@@ -1890,7 +1891,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         </div>
       ) : !result ? (
         <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--c-text-5)", animation: "loadPulse 1.2s var(--ease-in-out) infinite", flexShrink: 0 }} />
+          <div className="loading-dot" style={{ width: "var(--dot-sm)", height: "var(--dot-sm)", borderRadius: "50%", background: "var(--c-text-5)", flexShrink: 0 }} />
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("preview.reading")}</span>
         </div>
       ) : headResult?.kind === "binary" ? (

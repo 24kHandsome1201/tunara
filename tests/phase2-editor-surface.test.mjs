@@ -52,7 +52,8 @@ test("the editor ships a line-numbered paper surface with narrow and reduced-mot
   assert.match(preview, /<textarea/);
   assert.match(styles, /\.file-editor-code \{ display: grid; grid-template-columns: 46px minmax\(0, 1fr\)/);
   assert.match(styles, /@container file-editor \(max-width: 460px\)/);
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  // Reduced motion is token-driven: useTheme writes html[data-reduce-motion].
+  assert.match(styles, /html\[data-reduce-motion\]/);
   assert.doesNotMatch(styles, /transition:\s*all/);
 });
 

@@ -8,6 +8,13 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
+## [Unreleased]
+
+### 内部
+- 设计令牌地基：新增控件高度（`--h-btn-*`、`--h-control*`）、图标与状态点、菜单圆角、层级（`--z-raised`…`--z-system`）、动效（`--dur-*`、`--ease-*`、`--motion-distance-*`、`--press-scale*`）与焦点环（`--focus-ring-*`）刻度；移除 `--duration-*`、`--ease-out-*`/`--ease-smooth`、`--scale-press*` 别名令牌；组件中的数字 zIndex 与字面时长（`1.2s`、200ms、toast 4000/12000ms）全部改为令牌引用。
+- Reduced motion 收敛为单一真相源：`useTheme` 按系统 `prefers-reduced-motion` 写入 `html[data-reduce-motion]`，`tokens.css` 清零动效刻度；移除失效的 `html.reduce-motion` 类与 `@media` 全量覆盖。
+- 新增 `tests/design-tokens.test.mjs`：CI 强制组件不出现字面 `ms`/`s` 时长与 ≥10 的数字 zIndex。
+
 ## [3.1.0] - 2026-09-25
 
 ### 产品与体验

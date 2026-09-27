@@ -66,7 +66,7 @@ export function RemoteFsMutationDialog({
 
   return (
     <>
-      <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 320 }} />
+      <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
       <div
         ref={dialogRef}
         role="dialog"
@@ -80,7 +80,7 @@ export function RemoteFsMutationDialog({
         style={{
           position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
           width: 520, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)",
-          borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: 321,
+          borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: "var(--z-overlay)",
           color: "var(--c-text-primary)", outline: "none", overflow: "hidden",
         }}
       >

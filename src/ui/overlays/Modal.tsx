@@ -145,8 +145,8 @@ interface ModalProps {
   bindingKey?: string | null;
   currentBindingKey?: string | null;
   closeOnBackdrop?: boolean;
-  backdropZIndex?: number;
-  zIndex?: number;
+  backdropZIndex?: CSSProperties["zIndex"];
+  zIndex?: CSSProperties["zIndex"];
   className?: string;
   style?: CSSProperties;
 }
@@ -163,8 +163,8 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
   bindingKey,
   currentBindingKey,
   closeOnBackdrop = true,
-  backdropZIndex = 300,
-  zIndex = 301,
+  backdropZIndex = "var(--z-overlay)",
+  zIndex = "var(--z-overlay)",
   className,
   style,
 }, forwardedRef) {

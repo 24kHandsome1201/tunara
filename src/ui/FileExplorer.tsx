@@ -1323,7 +1323,7 @@ export function FileExplorer({
             : items[Math.max(idx - 1, 0)];
           next?.focus();
         }}
-        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--duration-normal) var(--ease-out-expo)` : undefined }}
+        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--dur-base) var(--ease-out)` : undefined }}
         className="no-scrollbar scroll-fade-y"
       >
         {isSearching ? (
@@ -1508,13 +1508,13 @@ export function FileExplorer({
 
       {mutationComposer && (
         <>
-          <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 318 }} />
+          <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
           <div
             ref={mutationComposerRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="remote-mutation-name-title"
-            style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 420, maxWidth: "calc(100vw - 32px)", padding: 18, zIndex: 319, background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", display: "grid", gap: 12 }}
+            style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 420, maxWidth: "calc(100vw - 32px)", padding: 18, zIndex: "var(--z-overlay)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", display: "grid", gap: 12 }}
           >
             <strong id="remote-mutation-name-title">{t(`explorer.mutation.${mutationComposer.kind}`)}</strong>
             <label>
