@@ -20,6 +20,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { openInEditorWithToast } from "./lib/open-in-editor";
+import { errorToast } from "./lib/error-toast";
 import { useT } from "@/modules/i18n";
 import { ExplorerNav, ExplorerRemoteTools, ExplorerSearchRow } from "./file-explorer/chrome";
 import { copyText } from "./lib/clipboard";
@@ -114,7 +115,7 @@ export function FileExplorer({
     const ok = await copyText(path);
     useUIStore.getState().addToast({
       sessionId,
-      title: t(ok ? "clipboard.copy_success" : "clipboard.copy_failed"),
+      title: t(ok ? "clipboard.copy_success" : "common.copy_failed"),
       subtitle: "",
       variant: ok ? "success" : "error",
     });
@@ -138,12 +139,12 @@ export function FileExplorer({
         conflict: "replace",
       });
     } catch (error) {
-      useUIStore.getState().addToast({
+      useUIStore.getState().addToast(errorToast({
         sessionId,
         title: t("explorer.download.failed"),
-        subtitle: t(downloadFailureKey(error)),
-        variant: "error",
-      });
+        next: t(downloadFailureKey(error)),
+        error,
+      }));
     } finally {
       if (downloadChooserPendingRef.current === chooser) downloadChooserPendingRef.current = null;
     }
@@ -173,12 +174,12 @@ export function FileExplorer({
       });
       useTransferStore.getState().enqueueBatch(plan.requests);
     } catch (error) {
-      useUIStore.getState().addToast({
+      useUIStore.getState().addToast(errorToast({
         sessionId,
         title: t("explorer.download.failed"),
-        subtitle: error instanceof Error ? error.message : t("explorer.download.batch_prepare_failed"),
-        variant: "error",
-      });
+        next: t("explorer.download.batch_prepare_failed"),
+        error,
+      }));
     }
   };
   // Local and remote both start at the session cwd and can browse up to `/`.
@@ -376,12 +377,12 @@ export function FileExplorer({
         setDropHighlightPath(null);
         void queueLocalPaths(event.payload.paths, destination.path).catch((error: unknown) => {
           setDropMessage(t("explorer.drop.failed"));
-          useUIStore.getState().addToast({
+          useUIStore.getState().addToast(errorToast({
             sessionId,
             title: t("explorer.drop.failed"),
-            subtitle: error instanceof Error ? error.message : String(error),
-            variant: "error",
-          });
+            next: t("explorer.upload.failed_hint"),
+            error,
+          }));
         });
       }
     };
@@ -406,14 +407,14 @@ export function FileExplorer({
           multiple: true,
         });
       } catch {
-        useUIStore.getState().addToast({ sessionId, title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
+        useUIStore.getState().addToast(errorToast({ sessionId, title: t("explorer.upload.failed"), next: t("explorer.upload.failed_hint") }));
         return;
       }
       const paths = selected === null ? [] : Array.isArray(selected) ? selected : [selected];
       try {
         await queueLocalPaths(paths, directory);
       } catch {
-        useUIStore.getState().addToast({ sessionId, title: t("explorer.drop.failed"), subtitle: t("explorer.mutation.prepare_failed"), variant: "error" });
+        useUIStore.getState().addToast(errorToast({ sessionId, title: t("explorer.drop.failed"), next: t("explorer.mutation.prepare_failed") }));
       }
       return;
     }
@@ -432,7 +433,7 @@ export function FileExplorer({
       try {
         await queueLocalPaths([path], directory);
       } catch {
-        useUIStore.getState().addToast({ sessionId, title: t("explorer.drop.failed"), subtitle: t("explorer.mutation.prepare_failed"), variant: "error" });
+        useUIStore.getState().addToast(errorToast({ sessionId, title: t("explorer.drop.failed"), next: t("explorer.mutation.prepare_failed") }));
       }
     }
   };
@@ -802,7 +803,7 @@ export function FileExplorer({
             { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
           ]
         : [
-            { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(node.path) },
+            { id: "dir:new-terminal", label: t("common.new_terminal_here"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(node.path) },
             { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => openEditor(node.path) },
             { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
           ];
@@ -812,13 +813,13 @@ export function FileExplorer({
           { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
           { id: "file:open-editor", label: t("preview.editor.external_remote"), icon: "editor", disabled: remoteDisconnected || !binding, action: () => {
             if (!binding) return;
-            void openRemoteInExternalEditor({ sessionId, binding, remotePath: node.path, editor: externalEditor }).catch(() => {
-              useUIStore.getState().addToast({
+            void openRemoteInExternalEditor({ sessionId, binding, remotePath: node.path, editor: externalEditor }).catch((error: unknown) => {
+              useUIStore.getState().addToast(errorToast({
                 sessionId,
                 title: t("preview.editor.external_remote"),
-                subtitle: t("preview.editor.external_remote_open_failed"),
-                variant: "error",
-              });
+                next: t("preview.editor.external_remote_open_failed"),
+                error,
+              }));
             });
           } },
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext, error: undefined }); } },
@@ -934,12 +935,11 @@ export function FileExplorer({
       selectionAnchorRef.current = null;
     } catch {
       if (treeRequestContextRef.current === requestContext) {
-        useUIStore.getState().addToast({
+        useUIStore.getState().addToast(errorToast({
           sessionId,
           title: t("explorer.download.failed"),
-          subtitle: t("explorer.download.batch_prepare_failed"),
-          variant: "error",
-        });
+          next: t("explorer.download.batch_prepare_failed"),
+        }));
       }
     } finally {
       if (treeRequestContextRef.current === requestContext) setBatchDownloadPreparing(false);
@@ -1168,7 +1168,7 @@ export function FileExplorer({
           {t("explorer.read_dir_failed")}
         </span>
         <button type="button" tabIndex={-1} className="ui-button" onClick={() => expandDirectory(row.parentPath)}>
-          {t("explorer.search_retry")}
+          {t("common.retry")}
         </button>
       </div>
     );
@@ -1296,7 +1296,7 @@ export function FileExplorer({
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
             </span>
-            <button type="button" onClick={directUpload.cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("explorer.upload.cancel")}</button>
+            <button type="button" onClick={directUpload.cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("common.cancel")}</button>
           </div>
           <progress className="ui-progress" aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
         </div>
@@ -1333,7 +1333,7 @@ export function FileExplorer({
             ) : searchError ? (
               <>
                 <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-                <SearchRetryButton label={t("explorer.search_retry")} onRetry={search.retrySearch} />
+                <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
               </>
             ) : grepHits.length === 0 ? (
               <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
@@ -1377,7 +1377,7 @@ export function FileExplorer({
           ) : searchError ? (
             <>
               <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-              <SearchRetryButton label={t("explorer.search_retry")} onRetry={search.retrySearch} />
+              <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
             </>
           ) : searchHits.length === 0 ? (
             <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
@@ -1428,7 +1428,7 @@ export function FileExplorer({
               kind: "error",
               label: t("explorer.read_dir_failed"),
               detail: currentPath,
-              retryLabel: t("explorer.search_retry"),
+              retryLabel: t("common.retry"),
               onRetry: refresh,
             }} />
           </div>

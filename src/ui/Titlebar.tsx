@@ -136,8 +136,8 @@ function WindowControls() {
       <button
         type="button"
         onClick={() => win.close()}
-        title={t("titlebar.window.close")}
-        aria-label={t("titlebar.window.close")}
+        title={t("common.close")}
+        aria-label={t("common.close")}
         className="hover-close"
         style={btnBase}
       >
@@ -180,6 +180,7 @@ function TitlebarImpl({
   }, [sessions, activeSessionId]);
   const trafficLightWidth = useUIStore((s) => s.trafficLightWidth);
   const newTerminalShortcut = useUIStore((s) => s.keybindings.newTerminal);
+  const togglePanelShortcut = useUIStore((s) => s.keybindings.togglePanel);
   const [newTerminalMenu, setNewTerminalMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -198,7 +199,7 @@ function TitlebarImpl({
         ? { x: event.clientX, y: event.clientY }
         : { x: rect.left, y: rect.bottom },
       items: [
-        { id: "new-terminal", label: t("titlebar.new_terminal"), icon: "terminal", action: onNewTerminal },
+        { id: "new-terminal", label: t("common.new_terminal"), icon: "terminal", action: onNewTerminal },
         { id: "new-terminal-directory", label: t("titlebar.new_terminal_in_directory"), icon: "folder", action: onNewTerminalInDirectory },
         null,
         { id: "new-ssh-session", label: t("titlebar.new_ssh_session"), icon: "ssh", action: () => useUIStore.getState().openSshConnect() },
@@ -211,8 +212,8 @@ function TitlebarImpl({
     setWorkspaceMenu({
       position: { x: rect.right, y: rect.bottom },
       items: [
-        { id: "toggle-panel", label: panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show"), action: onTogglePanel },
-        { id: "settings", label: t("titlebar.settings"), action: onOpenSettings },
+        { id: "toggle-panel", label: panelVisible ? t("titlebar.panel.hide") : t("titlebar.panel.show"), shortcut: formatShortcut(togglePanelShortcut), action: onTogglePanel },
+        { id: "settings", label: t("common.settings"), action: onOpenSettings },
       ],
     });
   };
@@ -320,7 +321,7 @@ function TitlebarImpl({
         <button
           onClick={openNewTerminalMenu}
           onContextMenu={openNewTerminalMenu}
-          title={`${t("titlebar.new_menu")} · ${t("titlebar.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
+          title={`${t("titlebar.new_menu")} · ${t("common.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
           aria-label={t("titlebar.new_menu")}
           aria-haspopup="menu"
           aria-expanded={Boolean(newTerminalMenu)}

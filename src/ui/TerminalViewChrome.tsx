@@ -8,6 +8,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { canSplitLayout } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { errorToast } from "./lib/error-toast";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import { terminalUploadDestination } from "@/modules/ssh/remote-cwd";
 import { classifyTransferDrop, expandFolderTransfer } from "@/modules/ssh/transfer-intent";
@@ -168,14 +169,14 @@ export function TerminalViewChrome({
         }
         if (requests.length === 0) return;
         useTransferStore.getState().enqueueBatch(requests);
-      })().catch(() => {
+      })().catch((error: unknown) => {
         const hasCwd = terminalUploadDestination(cwd, "file") !== null;
-        useUIStore.getState().addToast({
+        useUIStore.getState().addToast(errorToast({
           sessionId,
           title: t("term.drop.upload"),
-          subtitle: t(hasCwd ? "explorer.drop.failed" : "term.drop.no_cwd"),
-          variant: "error",
-        });
+          next: t(hasCwd ? "explorer.upload.failed_hint" : "term.drop.no_cwd"),
+          error,
+        }));
       });
     };
     try {
