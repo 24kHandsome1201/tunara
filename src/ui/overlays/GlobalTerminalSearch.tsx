@@ -203,7 +203,7 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
         aria-hidden="true"
         onClick={onClose}
         className="overlay-backdrop"
-        style={{ position: "fixed", inset: 0, zIndex: "var(--z-palette)", background: "var(--backdrop-color)" }}
+        style={{ position: "fixed", inset: 0, zIndex: "var(--z-palette)", background: "var(--backdrop-color)", userSelect: "none" }}
       />
       <div
         ref={dialogRef}
@@ -255,7 +255,6 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
               flex: 1,
               border: "none",
               background: "transparent",
-              outline: "none",
               fontSize: "var(--fs-body)",
               color: "var(--c-text-primary)",
               fontFamily: "var(--font-ui)",
@@ -267,7 +266,8 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
             aria-pressed={regex}
             title={t("term.search.regex")}
             aria-label={t("term.search.regex")}
-            onClick={() => setRegex((value) => !value)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => { setRegex((value) => !value); inputRef.current?.focus(); }}
             style={toggleStyle(regex)}
           >
             .*
@@ -278,7 +278,8 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
             aria-pressed={caseSensitive}
             title={t("term.search.case_sensitive")}
             aria-label={t("term.search.case_sensitive")}
-            onClick={() => setCaseSensitive((value) => !value)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => { setCaseSensitive((value) => !value); inputRef.current?.focus(); }}
             style={toggleStyle(caseSensitive)}
           >
             Aa
