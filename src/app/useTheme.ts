@@ -40,7 +40,6 @@ export function useTheme() {
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-
   const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
   const backgroundBlur = useUIStore((s) => s.backgroundBlur);
   useEffect(() => {
