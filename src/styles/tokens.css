@@ -20,14 +20,22 @@
   --c-text-7: oklch(51% 0.007 48);
 
   /* ── 面/底 ── */
+  /* -solid twins repeat the opaque literal (not a var() alias, to avoid a circular
+     reference when overlays re-pin --c-bg-*). globals.css swaps --c-bg-* to an alpha
+     color-mix when html[data-window-translucent] is set. */
   --c-bg-white: oklch(99.4% 0.003 55);
+  --c-bg-white-solid: oklch(99.4% 0.003 55);
   --c-bg-white-glass: var(--c-bg-white);
   --c-bg-1: oklch(97.8% 0.005 55);
+  --c-bg-1-solid: oklch(97.8% 0.005 55);
   --c-bg-1-glass: var(--c-bg-1);
   --c-bg-2: oklch(94.8% 0.008 55);
+  --c-bg-2-solid: oklch(94.8% 0.008 55);
   --c-bg-2-glass: var(--c-bg-2);
   --c-bg-3: oklch(91.8% 0.009 55);
+  --c-bg-3-solid: oklch(91.8% 0.009 55);
   --c-bg-hover: oklch(92.8% 0.011 55);
+  --c-bg-hover-solid: oklch(92.8% 0.011 55);
 
   /* ── 线/边框 ── */
   --c-border-1: oklch(89.8% 0.008 55);
@@ -103,9 +111,10 @@
   --c-shell-error: #dc2626;
 
   /* ── Diff 配色 ── */
-  --c-diff-del-bg: #fcebec;
+  /* Diff row fills are tints, not opaque paints, so they layer over a translucent panel. */
+  --c-diff-del-bg: color-mix(in srgb, var(--c-error) 8%, transparent);
   --c-diff-del-text: #b03a46;
-  --c-diff-add-bg: #e8f6ef;
+  --c-diff-add-bg: color-mix(in srgb, var(--c-success) 11%, transparent);
   --c-diff-add-text: #1a7a4f;
 
   /* ── 字体族 ── */
@@ -283,13 +292,18 @@ html[data-reduce-motion] {
   --c-file-log: oklch(72% 0.07 55);
 
   --c-bg-white: oklch(15.5% 0.008 55);
+  --c-bg-white-solid: oklch(15.5% 0.008 55);
   --c-bg-white-glass: var(--c-bg-white);
   --c-bg-1: oklch(18% 0.009 55);
+  --c-bg-1-solid: oklch(18% 0.009 55);
   --c-bg-1-glass: var(--c-bg-1);
   --c-bg-2: oklch(21% 0.009 55);
+  --c-bg-2-solid: oklch(21% 0.009 55);
   --c-bg-2-glass: var(--c-bg-2);
   --c-bg-3: oklch(25% 0.009 55);
+  --c-bg-3-solid: oklch(25% 0.009 55);
   --c-bg-hover: oklch(28% 0.011 55);
+  --c-bg-hover-solid: oklch(28% 0.011 55);
 
   --c-border-1: oklch(25% 0.009 55);
   --c-border-2: oklch(31% 0.01 55);
@@ -353,9 +367,9 @@ html[data-reduce-motion] {
   --c-shell-prompt: #4ade80;
   --c-shell-error: #f87171;
 
-  --c-diff-del-bg: #2e1a1a;
+  --c-diff-del-bg: color-mix(in srgb, var(--c-error) 13%, transparent);
   --c-diff-del-text: #f87171;
-  --c-diff-add-bg: #1a2e22;
+  --c-diff-add-bg: color-mix(in srgb, var(--c-success) 16%, transparent);
   --c-diff-add-text: #4ade80;
 
   --c-state-ok: oklch(68% 0.038 155);

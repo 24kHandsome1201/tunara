@@ -2004,24 +2004,43 @@ html[data-reduce-motion] .loading-dot { opacity: 0.6; }
   animation: loadPulse var(--dur-loading) var(--ease-in-out) infinite;
 }
 
-/* macOS background opacity (Ghostty-style): window surfaces get alpha, text and overlays stay opaque. */
+/* macOS background opacity (Ghostty-style): window surfaces get alpha, text and overlays stay opaque.
+   Layer rule instead of a per-surface whitelist: every --c-bg-* surface token carries the window alpha,
+   so anything painted with a surface token — titlebar, sidebar, inspector, SSH dashboard, file viewers —
+   is translucent, and overlays re-pin the tokens to their -solid variants to stay opaque. */
 html[data-window-translucent],
 html[data-window-translucent] body,
 html[data-window-translucent] #root,
 html[data-window-translucent] .tunara-shell {
   background: transparent !important;
 }
-html[data-window-translucent] [data-terminal-canvas="workspace"] {
-  background: color-mix(in srgb, var(--c-bg-white) var(--window-bg-opacity), transparent) !important;
-}
-html[data-window-translucent] .tunara-titlebar {
-  background: color-mix(in srgb, var(--c-bg-1) var(--window-bg-opacity), transparent) !important;
+html[data-window-translucent] {
+  --c-bg-white: color-mix(in srgb, var(--c-bg-white-solid) var(--window-bg-opacity), transparent);
+  --c-bg-1: color-mix(in srgb, var(--c-bg-1-solid) var(--window-bg-opacity), transparent);
+  --c-bg-2: color-mix(in srgb, var(--c-bg-2-solid) var(--window-bg-opacity), transparent);
+  --c-bg-3: color-mix(in srgb, var(--c-bg-3-solid) var(--window-bg-opacity), transparent);
+  --c-bg-hover: color-mix(in srgb, var(--c-bg-hover-solid) var(--window-bg-opacity), transparent);
 }
 html[data-window-translucent] .tunara-sidebar > *,
 html[data-window-translucent] .tunara-panel > * {
-  background: color-mix(in srgb, var(--c-bg-2) var(--window-bg-opacity), transparent) !important;
+  background: var(--c-bg-2) !important;
 }
 
+/* Overlays never show the desktop through: sheets, menus and toasts restore the solid tokens. */
+html[data-window-translucent] .overlay-sheet,
+html[data-window-translucent] .overlay-palette,
+html[data-window-translucent] .settings-dialog,
+html[data-window-translucent] .toast-item,
+html[data-window-translucent] [role="menu"],
+html[data-window-translucent] [role="listbox"] {
+  --c-bg-white: var(--c-bg-white-solid);
+  --c-bg-1: var(--c-bg-1-solid);
+  --c-bg-2: var(--c-bg-2-solid);
+  --c-bg-3: var(--c-bg-3-solid);
+  --c-bg-hover: var(--c-bg-hover-solid);
+}
+
+/* Elements whose content must stay clean (text, canvas, gutter) punch transparent holes. */
 html[data-window-translucent] .tunara-translucent-layer,
 html[data-window-translucent] [data-file-preview-root],
 html[data-window-translucent] .file-editor-paper,
@@ -2037,7 +2056,7 @@ html[data-window-translucent] .xterm .xterm-scrollable-element {
 html[data-window-translucent] .file-editor-header,
 html[data-window-translucent] .file-editor-lines,
 html[data-window-translucent] .file-editor-footer {
-  background: color-mix(in srgb, var(--c-bg-1) var(--window-bg-opacity), transparent) !important;
+  background: var(--c-bg-1) !important;
 }
 /* Scroll-edge covers paint the panel colour at full alpha; fade to transparent so they don't read as solid strips. */
 html[data-window-translucent] .scroll-fade-y {
