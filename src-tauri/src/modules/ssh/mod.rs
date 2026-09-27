@@ -36,6 +36,8 @@ pub mod known_hosts;
 pub(crate) mod local_safe_write;
 #[cfg(feature = "m2-safe-write-benchmark")]
 pub(crate) mod m2_safe_write_benchmark;
+#[cfg(all(test, feature = "ssh-matrix"))]
+mod matrix_tests;
 pub mod remote_fs;
 pub mod remote_git;
 pub mod reverse_forward;

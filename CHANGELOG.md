@@ -13,6 +13,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ### 稳定性
 - 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
 
+### 测试与 CI
+- 新增真实 SSH 回归矩阵（`tests/ssh-matrix/` + cargo feature `ssh-matrix`）：在 Ubuntu CI 新增 `ssh-matrix (docker)` 任务，用两台 Docker OpenSSH 容器（target + jump）驱动生产 russh 客户端，覆盖 ed25519/RSA 公钥、密码、keyboard-interactive、ssh-agent 认证，bash/zsh 远端 shell 集成，首连 host key 的 TOFU 接受与不匹配拒绝，ProxyJump 成功及按跳点归因的失败，被动断开后按 generation 隔离重连，以及约 1 万文件目录上的 SFTP 列表/读取/安全写/上传/下载与远程 grep 延迟断言。普通 `cargo test --lib` 不编译该模块，保持无外部依赖。
+
 ### 修复与优化
 - 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
 
