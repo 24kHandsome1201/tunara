@@ -41,7 +41,7 @@ export function KnownHostsPanel() {
         titleId="known-hosts-title"
         title={snapshot ? t("known_hosts.count", { count: snapshot.entries.length }) : t("known_hosts.title")}
       >
-        {expanded && <PanelActionButton onClick={() => load(true)}>{t("known_hosts.refresh")}</PanelActionButton>}
+        {expanded && <PanelActionButton onClick={() => load(true)}>{t("common.refresh")}</PanelActionButton>}
         <PanelIconButton
           aria-expanded={expanded}
           aria-controls="known-hosts-content"

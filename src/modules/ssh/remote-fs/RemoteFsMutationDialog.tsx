@@ -89,7 +89,7 @@ export function RemoteFsMutationDialog({
         </div>
         <div style={{ padding: 18, display: "grid", gap: 12 }}>
           <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "72px 1fr", gap: "7px 10px" }}>
-            <dt>{t("remote_fs.mutation.host")}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{host}</dd>
+            <dt>{t("common.host")}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{host}</dd>
             <dt>{t("remote_fs.mutation.kind")}</dt><dd style={{ margin: 0 }}>{sourceKind}</dd>
             {paths.map((path, index) => (
               <div key={path} style={{ display: "contents" }}>

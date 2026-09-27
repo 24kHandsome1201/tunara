@@ -148,7 +148,7 @@ export function HostKeyPromptDialog() {
               fontSize: "var(--fs-body)",
             }}
           >
-            {t("ssh.hostKey.reject")}
+            {t("common.cancel")}
           </button>
           <button
             onClick={() => { void decide(true); }}

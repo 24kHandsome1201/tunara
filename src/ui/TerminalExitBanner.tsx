@@ -100,7 +100,7 @@ function CloseSessionButton({ session }: { session: Session }) {
       className="hover-bg"
       style={{ border: "1px solid var(--c-border-1)", background: "transparent", color: "var(--c-text-3)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "4px 8px", borderRadius: "var(--r-btn)", flexShrink: 0, whiteSpace: "nowrap" }}
     >
-      {t("terminal.exited.close_session")}
+      {t("common.close_session")}
     </button>
   );
 }
@@ -228,7 +228,7 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
     ? `${label} · ${t("terminal.exited.history_readonly")}`
     : label;
   const actionLabel = remediation?.label ?? (isRemote
-    ? disconnected ? t("terminal.exited.reconnect") : t("terminal.exited.open_new_shell")
+    ? disconnected ? t("common.reconnect") : t("terminal.exited.open_new_shell")
     : t("terminal.exited.restart"));
 
   return (
@@ -270,7 +270,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const phase = session.connection?.failedAtPhase;
   const phaseLabel = phase ? t(`connection.phase.${phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
-  const retryLabel = remediation?.label ?? t("pty.error.retry");
+  const retryLabel = remediation?.label ?? t("common.retry");
 
   const retry = () => {
     if (isRemote) {
@@ -317,7 +317,7 @@ export function ConnectingOverlay({
 }) {
   const t = useT();
   const label = t(`connection.phase.${phase ?? "connecting"}`);
-  const cancelLabel = t("ssh.connecting.close_session");
+  const cancelLabel = t("common.close_session");
   return (
     <div
       role="status"

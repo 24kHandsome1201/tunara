@@ -114,7 +114,7 @@ export function WorkspaceEmptyState({
                         {entry.label}
                       </span>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-                        {t("app.empty.open_here")}
+                        {t("common.new_terminal_here")}
                       </span>
                     </button>
                   ))}
@@ -141,7 +141,7 @@ export function WorkspaceEmptyState({
                         {repo.name}
                       </span>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-                        {t("app.empty.open_here")}
+                        {t("common.new_terminal_here")}
                       </span>
                     </button>
                   ))}

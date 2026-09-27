@@ -50,7 +50,7 @@ export function buildDirGroupMenuItems({
   const dir = groupSessions[0]?.dir ?? "";
   const localDirItems: MenuEntry[] = dirGroupHasLocalFilesystem(groupSessions)
     ? [
-        { id: "dir:new-terminal", label: t("sidebar.dir.new_terminal"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
+        { id: "dir:new-terminal", label: t("common.new_terminal_here"), icon: "terminal", action: () => useSessionsStore.getState().newTerminalInDir(dir) },
         { id: "dir:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor", action: () => { void openInEditorWithToast(externalEditor, dir); } },
       ]
     : [];

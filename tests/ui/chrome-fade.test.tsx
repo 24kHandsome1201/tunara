@@ -122,8 +122,8 @@ test("command palette keeps mouse-free terminal recovery actions", () => {
   const input = screen.getByRole("combobox");
   fireEvent.change(input, { target: { value: "Copy terminal selection" } });
   expect(screen.getByText("Copy terminal selection")).toBeTruthy();
-  fireEvent.change(input, { target: { value: "Safe Paste into terminal" } });
-  expect(screen.getByText("Safe Paste into terminal")).toBeTruthy();
+  fireEvent.change(input, { target: { value: "Safe paste into terminal" } });
+  expect(screen.getByText("Safe paste into terminal")).toBeTruthy();
   fireEvent.change(input, { target: { value: "Open terminal shortcut menu" } });
   expect(screen.getByText("Open terminal shortcut menu")).toBeTruthy();
 });

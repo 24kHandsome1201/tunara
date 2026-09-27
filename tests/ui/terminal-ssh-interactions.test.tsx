@@ -507,7 +507,7 @@ test.each([
   fireEvent.keyDown(surface, key);
 
   expect(screen.getByRole("menu")).toBeTruthy();
-  expect(screen.getByRole("menuitem", { name: "Safe Paste" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Safe paste" })).toBeTruthy();
 });
 
 test("closing a context menu restores focus to the terminal trigger", async () => {

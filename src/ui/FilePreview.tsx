@@ -654,7 +654,7 @@ function LargeFileHeadControls({
         </select>
       </label>
       {loading
-        ? <button className="ui-button" onClick={onCancel}>{t("preview.head.cancel")}</button>
+        ? <button className="ui-button" onClick={onCancel}>{t("common.cancel")}</button>
         : <button className="ui-button ui-button--primary" onClick={onView}>{window === "tail" ? t("preview.head.view_end") : t("preview.head.view")}</button>}
       {window === "tail" ? (
         <label className="large-file-line-limit" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -1375,7 +1375,7 @@ function EditorSurface({
           ) : (
             <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
               <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
-              {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
+              {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("common.preview")}</button>}
             </div>
           )}
           <SiblingNav sessionId={sessionId ?? undefined} filePath={filePath} previous={siblings.previous} next={siblings.next} active={active} />
@@ -1501,7 +1501,7 @@ function EditorSurface({
 
       <div className="file-editor-footer">
         <span className="file-editor-status" data-state={saveState}>{statusLabel}</span>
-        <span>{t("preview.editor.lines", { count: lines.length })}</span>
+        <span>{t("common.lines", { count: lines.length })}</span>
         <span>{formatSize(byteLength)}</span>
         <div className="file-editor-footer-actions">
           {isRemote ? (
@@ -1860,7 +1860,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         <div role="status" style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <span style={{ flex: 1 }}>{t("reader.disconnected")}</span>
           {remoteSession?.remote ? (
-            <button type="button" className="ui-button" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+            <button type="button" className="ui-button" onClick={reconnectRemote}>{t("common.reconnect")}</button>
           ) : null}
         </div>
       ) : null}
@@ -1883,9 +1883,9 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
           <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" className="ui-button" onClick={retryRead}>{t("preview.retry")}</button>
+            <button type="button" className="ui-button" onClick={retryRead}>{t("common.retry")}</button>
             {readError.kind === "disconnected" && remoteSession?.remote ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("common.reconnect")}</button>
             ) : null}
           </div>
         </div>
