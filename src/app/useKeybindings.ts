@@ -97,6 +97,9 @@ export function useKeybindings() {
         case "commandPalette":
           ui.setOverlay("command-palette");
           break;
+        case "globalTerminalSearch":
+          ui.setOverlay("terminal-search");
+          break;
         case "fontSizeUp":
           ui.setFontSize(ui.fontSize + 1);
           break;

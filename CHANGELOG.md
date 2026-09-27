@@ -10,6 +10,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 产品与体验
+- 新增跨会话终端搜索（默认 ⌘⇧F / Ctrl+Shift+F，也可从命令面板打开，可在配置文件 `[keybindings] global_terminal_search` 中修改）：在所有已打开的本地与 SSH 终端的内存回滚中搜索，支持纯文本、正则与大小写切换，按会话分组显示行上下文与所属命令块；选中结果会切换到该会话、滚动到对应行并高亮匹配。搜索分片让出主线程、新查询取消旧查询并限制结果数量；不建立索引，也不写入磁盘。
+
 ### 稳定性
 - 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
 

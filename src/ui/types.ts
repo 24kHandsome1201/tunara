@@ -204,7 +204,7 @@ export interface ChangedFile {
 }
 
 /** 覆盖层类型 */
-export type OverlayType = null | "settings" | "command-palette" | "ssh";
+export type OverlayType = null | "settings" | "command-palette" | "terminal-search" | "ssh";
 
 /** 主题：浅色 / 深色 / 跟随系统。已删除的命名终端配色回退为 system。 */
 export type ThemeType = "light" | "dark" | "system";

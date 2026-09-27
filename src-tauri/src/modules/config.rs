@@ -193,6 +193,7 @@ fn default_keybindings_for(is_macos: bool) -> BTreeMap<String, String> {
     }
     bindings.insert("terminal_menu".into(), "".into());
     bindings.insert("focus_latest_attention".into(), "Mod+Enter".into());
+    bindings.insert("global_terminal_search".into(), "Mod+Shift+F".into());
     bindings.insert(
         "copy_selection".into(),
         if is_macos { "Mod+C" } else { "Ctrl+Shift+C" }.into(),
@@ -591,6 +592,7 @@ mod tests {
             ("split_horizontal", "Mod+D"),
             ("command_palette", "Mod+K"),
             ("focus_latest_attention", "Mod+Enter"),
+            ("global_terminal_search", "Mod+Shift+F"),
         ] {
             assert_eq!(macos.get(key).map(String::as_str), Some(expected));
         }

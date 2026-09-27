@@ -24,6 +24,7 @@ import {
   HardDrives,
   Icon,
   List,
+  MagnifyingGlass,
   NotePencil,
   Plus,
   PushPin,
@@ -167,6 +168,20 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         uiStore.getState().recordCommandUse("new-terminal-directory");
         onClose();
         void openNewTerminalDirectoryDialog();
+      },
+    });
+
+    cmds.push({
+      id: "global-terminal-search",
+      label: t("palette.cmd.global_terminal_search"),
+      shortcut: formatShortcut(keybindings.globalTerminalSearch),
+      icon: <PaletteIcon icon={MagnifyingGlass} />,
+      section: section.terminal,
+      scopes: ["action", "terminal"],
+      originalIndex: idx++,
+      action: () => {
+        uiStore.getState().recordCommandUse("global-terminal-search");
+        uiStore.getState().setOverlay("terminal-search");
       },
     });
 

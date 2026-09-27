@@ -962,5 +962,17 @@
   "remote_fs.mutation.absent": "path does not exist",
   "remote_fs.mutation.safety": "Tunara will re-check this item and its folder before continuing. Deletes and copies are not recursive. If this is interrupted, refresh and check the result.",
   "remote_fs.mutation.reconciled": " (rechecked after a lost reply; not run again)",
-  "remote_fs.mutation.checking": "Checking…"
+  "remote_fs.mutation.checking": "Checking…",
+  "palette.cmd.global_terminal_search": "Search all open terminals",
+  "terminal_search.title": "Search all terminals",
+  "terminal_search.placeholder": "Search scrollback in all open terminals…",
+  "terminal_search.loading": "Opening terminal search…",
+  "terminal_search.hint": "Searches the in-memory scrollback of every open local and SSH terminal. Nothing is indexed or saved.",
+  "terminal_search.searching": "Searching…",
+  "terminal_search.no_results": "No matches",
+  "terminal_search.invalid_regex": "Invalid regular expression",
+  "terminal_search.summary": "{{count}} matches in {{sessions}} terminals",
+  "terminal_search.summary_capped": "Showing the first {{count}} matches in {{sessions}} terminals (limit {{max}})",
+  "terminal_search.line": "L{{line}}",
+  "terminal_search.block": "$ {{command}}"
 }
