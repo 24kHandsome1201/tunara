@@ -370,7 +370,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const jumpOptions = useMemo(() => allProfiles.filter((profile) => !profile.proxyJumpProfileId), [allProfiles]);
   const effectivePortText = parsedPort != null ? String(parsedPort) : port;
   const portText = effectivePortText.trim();
-  const portInvalid = sshTargetHasInvalidPort(target) || (portText.length > 0 && parseSshPort(portText) === null);
+  const targetPortInvalid = sshTargetHasInvalidPort(target);
+  const portFieldInvalid = portText.length > 0 && parseSshPort(portText) === null;
+  const showPortErrorNearTarget = targetPortInvalid || (portFieldInvalid && !advancedOpen);
 
   const manualResolution = useMemo<SshProfileRouteResolutionV1 | null>(() => {
     if (!jumpProfileId) return null;
@@ -691,7 +693,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          outline: "none",
         }}
       >
         <div className="ssh-connect-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--c-border-2)", flexShrink: 0 }}>
@@ -713,8 +714,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
             style={fieldStyle}
             value={target}
             placeholder={t("ssh.target_placeholder")}
-            aria-invalid={portInvalid}
-            aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined}
+            aria-invalid={showPortErrorNearTarget}
+            aria-describedby={showPortErrorNearTarget ? "ssh-connect-port-error" : undefined}
             onChange={(event) => {
               setTarget(event.target.value);
               setHighlight(-1);
@@ -730,7 +731,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             aria-autocomplete="list"
             aria-controls="ssh-connect-suggestions"
           />
-          {portInvalid && (
+          {showPortErrorNearTarget && (
             <span id="ssh-connect-port-error" role="alert" className="ssh-connect-message" data-tone="warning">
               {t("ssh.port_invalid")}
             </span>
@@ -761,7 +762,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <div className="ssh-connect-form" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
               <div>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portInvalid} aria-describedby={portInvalid ? "ssh-connect-port-error" : undefined} onChange={(event) => { setPort(event.target.value); setPassword(""); setKeyPassphrase(""); }} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { setPort(event.target.value); setPassword(""); setKeyPassphrase(""); }} />
+                {portFieldInvalid && (
+                  <span id="ssh-connect-port-field-error" role="alert" className="ssh-connect-message" data-tone="warning">
+                    {t("ssh.port_invalid")}
+                  </span>
+                )}
               </div>
               <fieldset className="ssh-connect-fieldset">
                 <legend style={labelStyle}>{t("ssh.auth.method")}</legend>

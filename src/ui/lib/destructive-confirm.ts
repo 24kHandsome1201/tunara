@@ -49,24 +49,26 @@ export function isDestructiveConfirmPending(
 /**
  * Returns true when the action should proceed (second click within the window).
  * Returns false on the first click and arms the confirmation timer.
+ * onChange runs on arm, confirm, and expiry so callers can re-render pending state.
  */
 export function requestDestructiveConfirm(
   store: Map<string, number>,
   key: string,
-  onExpire: () => void,
+  onChange: () => void,
 ): boolean {
   const now = Date.now();
   const last = store.get(key) ?? 0;
   if (last > 0 && now - last <= DESTRUCTIVE_CONFIRM_WINDOW_MS) {
     store.delete(key);
-    onExpire();
+    onChange();
     return true;
   }
   store.set(key, now);
+  onChange();
   setTimeout(() => {
     if (store.get(key) === now) {
       store.delete(key);
-      onExpire();
+      onChange();
     }
   }, DESTRUCTIVE_CONFIRM_WINDOW_MS);
   return false;
