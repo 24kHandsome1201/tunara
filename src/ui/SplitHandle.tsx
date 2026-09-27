@@ -121,7 +121,7 @@ export function SplitHandle({ direction, path, ratio, nodeRect, containerRef }: 
       className={`split-handle ${isHorizontal ? "split-handle-h" : "split-handle-v"}`}
       style={{
         position: "absolute",
-        zIndex: 10,
+        zIndex: "var(--z-raised)",
         ...(isHorizontal
           ? {
               left: `calc(${boundary * 100}% - 2.5px)`,

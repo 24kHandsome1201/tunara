@@ -146,7 +146,7 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 12em", minWidth: 0 }}>
-        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: tone, flexShrink: 0 }} />
+        <span aria-hidden="true" style={{ width: "var(--dot-md)", height: "var(--dot-md)", borderRadius: "50%", background: tone, flexShrink: 0 }} />
         <span
           title={label}
           style={{
@@ -337,7 +337,7 @@ export function ConnectingOverlay({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--c-accent)" }} />
+        <div style={{ width: "var(--dot-md)", height: "var(--dot-md)", borderRadius: "50%", background: "var(--c-accent)" }} />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
           {label}
         </span>

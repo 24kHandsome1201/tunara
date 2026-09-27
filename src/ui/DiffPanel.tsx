@@ -393,7 +393,7 @@ const chevronIcon = (expanded: boolean) => (
     size={10}
     weight="bold"
     color="var(--c-text-5)"
-    style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--duration-normal) var(--ease-out-back)" }}
+    style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform var(--dur-base) var(--ease-out)" }}
   />
 );
 

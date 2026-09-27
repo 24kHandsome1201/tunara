@@ -26,6 +26,21 @@ export function useTheme() {
     apply(theme === "dark");
   }, [theme, accent]);
 
+  // Single reduced-motion source: the system media query writes
+  // html[data-reduce-motion], and tokens.css zeroes the motion scale under it.
+  useEffect(() => {
+    const root = document.documentElement;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = (reduce: boolean) => {
+      if (reduce) root.dataset.reduceMotion = "";
+      else delete root.dataset.reduceMotion;
+    };
+    apply(mq.matches);
+    const on = (e: MediaQueryListEvent) => apply(e.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
   const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
   const backgroundBlur = useUIStore((s) => s.backgroundBlur);
   useEffect(() => {

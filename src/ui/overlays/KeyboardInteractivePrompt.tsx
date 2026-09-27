@@ -55,7 +55,7 @@ export function KeyboardInteractivePromptDialog() {
         aria-hidden="true"
         onClick={() => { void decide(null); }}
         className="overlay-backdrop"
-        style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 340 }}
+        style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }}
       />
       <div
         ref={dialogRef}
@@ -83,7 +83,7 @@ export function KeyboardInteractivePromptDialog() {
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
-          zIndex: 341,
+          zIndex: "var(--z-overlay)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

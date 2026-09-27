@@ -67,7 +67,7 @@ export function TerminalSearchBar({
         right: 12,
         left: 12,
         maxWidth: "max-content",
-        zIndex: 30,
+        zIndex: "var(--z-sticky)",
         background: "var(--c-bg-white)",
         border: "1px solid var(--c-control-border)",
         borderRadius: "var(--r-input)",

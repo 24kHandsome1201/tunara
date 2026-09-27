@@ -634,7 +634,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   return (
     <>
-      <div aria-hidden="true" onClick={cancelConnect} className="overlay-backdrop" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: 200 }} />
+      <div aria-hidden="true" onClick={cancelConnect} className="overlay-backdrop" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
       <div
         ref={containerRef}
         role="dialog"
@@ -687,7 +687,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
-          zIndex: 201,
+          zIndex: "var(--z-overlay)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

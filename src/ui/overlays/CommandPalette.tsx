@@ -793,7 +793,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         className="overlay-backdrop"
         style={{
-          position: "fixed", inset: 0, zIndex: 999,
+          position: "fixed", inset: 0, zIndex: "var(--z-palette)",
           background: "var(--backdrop-color)",
         }}
       />
@@ -815,7 +815,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           border: "1px solid var(--c-control-border)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
-          zIndex: 1000,
+          zIndex: "var(--z-palette)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",

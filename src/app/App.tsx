@@ -194,7 +194,7 @@ function ResizeHandle({ edge, getWidth, setWidth, minWidth, getMaxWidth, default
         bottom: 0,
         width: 5,
         cursor: "col-resize",
-        zIndex: 10,
+        zIndex: "var(--z-raised)",
       }}
     />
   );
@@ -391,7 +391,7 @@ export default function App() {
             style={{
               position: "absolute",
               inset: 0,
-              zIndex: 75,
+              zIndex: "var(--z-shell)",
               background: "var(--backdrop-color)",
             }}
           />
@@ -412,7 +412,7 @@ export default function App() {
             top: sidebarOverlay ? 0 : undefined,
             left: sidebarOverlay ? 0 : undefined,
             bottom: sidebarOverlay ? 0 : undefined,
-            zIndex: sidebarOverlay ? 80 : undefined,
+            zIndex: sidebarOverlay ? "var(--z-shell)" : undefined,
             boxShadow: sidebarOverlay && presentedSidebarVisible ? "var(--shadow-overlay)" : undefined,
           }}
         >
@@ -466,7 +466,7 @@ export default function App() {
               top: panelOverlay ? 0 : undefined,
               right: panelOverlay ? 0 : undefined,
               bottom: panelOverlay ? 0 : undefined,
-              zIndex: panelOverlay ? 80 : undefined,
+              zIndex: panelOverlay ? "var(--z-shell)" : undefined,
               boxShadow: panelOverlay && presentedPanelVisible ? "var(--shadow-overlay)" : undefined,
               width: panelEffectiveWidth,
               display: "flex",

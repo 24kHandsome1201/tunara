@@ -203,7 +203,7 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
         aria-hidden="true"
         onClick={onClose}
         className="overlay-backdrop"
-        style={{ position: "fixed", inset: 0, zIndex: 999, background: "var(--backdrop-color)" }}
+        style={{ position: "fixed", inset: 0, zIndex: "var(--z-palette)", background: "var(--backdrop-color)" }}
       />
       <div
         ref={dialogRef}
@@ -223,7 +223,7 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
           border: "1px solid var(--c-control-border)",
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
-          zIndex: 1000,
+          zIndex: "var(--z-palette)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
