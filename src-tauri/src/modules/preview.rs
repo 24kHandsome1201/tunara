@@ -617,6 +617,27 @@ fn safe_source_url(raw: &str) -> String {
     url.to_string()
 }
 
+fn preview_window_title(source: &PreviewSource) -> String {
+    let raw = source
+        .remote_source_url
+        .as_deref()
+        .unwrap_or(&source.source_url);
+    let display = match raw.parse::<tauri::Url>() {
+        Ok(url) => match url.host_str() {
+            Some(host) => {
+                let port = url
+                    .port()
+                    .map(|port| format!(":{port}"))
+                    .unwrap_or_default();
+                format!("{host}{port}{}", url.path())
+            }
+            None => safe_source_url(raw),
+        },
+        Err(_) => "<invalid-url>".to_string(),
+    };
+    format!("Preview · {display}")
+}
+
 fn secure_random_id() -> Result<String, String> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| "Preview random ID unavailable".to_string())?;
@@ -1198,19 +1219,7 @@ pub fn preview_open(app: AppHandle, source: PreviewSource) -> Result<String, Str
         return Ok(label);
     }
 
-    let title = format!(
-        "Preview · repo={} · worktree={} · session={} · terminal={} · remote={} · local={}",
-        source.repository_id,
-        source.worktree_id,
-        source.session_id,
-        source.terminal_id,
-        source
-            .remote_source_url
-            .as_deref()
-            .map(safe_source_url)
-            .unwrap_or_else(|| "local".into()),
-        safe_source_url(&source.source_url)
-    );
+    let title = preview_window_title(&source);
     let window_generation = app.state::<PreviewWindowState>().next_generation()?;
     let mut runtime_source = source.clone();
     if runtime_source
@@ -1700,6 +1709,20 @@ mod tests {
             ssh_port: Some(22),
             ssh_user: Some("mawei".into()),
             ..source("http://localhost:4173/")
+        }
+    }
+
+    #[test]
+    fn preview_window_title_uses_host_port_path_not_internal_ids() {
+        let mut src = source("http://localhost:4173/app/index.html?token=x#frag");
+        assert_eq!(
+            preview_window_title(&src),
+            "Preview · localhost:4173/app/index.html"
+        );
+        src.remote_source_url = Some("http://127.0.0.1:53124/app?q=1#two".into());
+        assert_eq!(preview_window_title(&src), "Preview · 127.0.0.1:53124/app");
+        for id in ["repo-a", "worktree-a", "session-a", "session-a:0"] {
+            assert!(!preview_window_title(&src).contains(id), "leaked {id}");
         }
     }
 
