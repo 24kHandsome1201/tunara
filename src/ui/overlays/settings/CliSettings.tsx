@@ -125,7 +125,7 @@ export function CliSettings({ resolvedClis, cliError, overrideError, preflights,
                       spellCheck={false}
                       data-modal-escape="local"
                       placeholder={t("settings.cli.override_placeholder")}
-                      style={{ flex: 1, minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)", outline: "none" }}
+                      style={{ flex: 1, minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-secondary)" }}
                     />
                     <button
                       onClick={() => saveOverride(code, cliBin, overrideDraft)}

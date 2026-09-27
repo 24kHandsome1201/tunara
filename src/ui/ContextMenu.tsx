@@ -230,7 +230,6 @@ export function ContextMenu({
         overflowY: "auto",
         overflowX: "hidden",
         overscrollBehavior: "contain",
-        outline: "none",
         animation: "ctxMenuIn var(--dur-fast) var(--ease-out)",
       }}
     >

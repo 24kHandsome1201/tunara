@@ -81,7 +81,7 @@ export function RemoteFsMutationDialog({
           position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
           width: 520, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)",
           borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: "var(--z-overlay)",
-          color: "var(--c-text-primary)", outline: "none", overflow: "hidden",
+          color: "var(--c-text-primary)", overflow: "hidden",
         }}
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>

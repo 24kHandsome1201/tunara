@@ -255,7 +255,6 @@ export function Sidebar({
               flex: 1,
               border: "none",
               background: "transparent",
-              outline: "none",
               fontSize: "var(--fs-body)",
               color: "var(--c-text-primary)",
               fontFamily: "var(--font-ui)",
