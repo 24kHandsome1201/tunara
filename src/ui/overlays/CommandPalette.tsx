@@ -481,7 +481,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-current-session");
-          useSessionsStore.getState().closeSession(activeSession.id);
+          useSessionsStore.getState().closeSession(activeSession.id, { confirmToast: true });
           onClose();
         },
       });
@@ -848,7 +848,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
               flex: 1,
               border: "none",
               background: "transparent",
-              outline: "none",
               fontSize: "var(--fs-body)",
               color: "var(--c-text-primary)",
               fontFamily: "var(--font-ui)",

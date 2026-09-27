@@ -176,7 +176,7 @@ test("session removal is guarded while tab selection keeps mounted drafts intact
   const setActive = source.slice(source.indexOf("setActive: (id)"), source.indexOf("// Cycle to the next/prev session"));
   assert.doesNotMatch(setActive, /requestDirtyDraftAction/);
   assert.match(source, /removeSession: \(id\) => \{\s*if \(!requestDirtyDraftAction\(\[id\]/);
-  assert.match(source, /closeSession: \(id\) => \{\s*if \(!requestDirtyDraftAction\(\[id\]/);
+  assert.match(source, /closeSession: \(id, opts\) => \{\s*if \(!requestDirtyDraftAction\(\[id\]/);
   assert.match(source, /closeSessions: \(ids, opts\) => \{[\s\S]*requestDirtyDraftAction\(/);
 });
 

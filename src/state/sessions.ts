@@ -151,7 +151,7 @@ interface SessionsState {
   openFileInTerminal: (sourceSessionId: string, directory: string, fileName: string) => void;
   splitWithNewSession: (direction: SplitDirection, sourceSessionId?: string) => void;
   duplicateOnHost: (sourceSessionId?: string) => void;
-  closeSession: (id: string) => void;
+  closeSession: (id: string, opts?: { confirmToast?: boolean }) => void;
 }
 
 let nextId = 1;
@@ -634,7 +634,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
           sessionId: toastSessionId,
           title: t("destructive.confirm_again.close"),
           subtitle: opts?.toastSubtitle ?? t("session.close.running_hint"),
-          variant: "error",
+          variant: "warning",
+          durationMs: CLOSE_CONFIRM_WINDOW_MS,
         });
       }
       return false;
@@ -1020,8 +1021,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     get().addSession(newSess);
   },
 
-  closeSession: (id) => {
-    if (!requestDirtyDraftAction([id], () => get().closeSession(id))) return;
+  closeSession: (id, opts) => {
+    if (!requestDirtyDraftAction([id], () => get().closeSession(id, opts))) return;
     const session = get().sessions.find((s) => s.id === id);
     if (session && isSessionBusy(session)) {
       const lastConfirm = getNumberRecordValue(get().closeConfirmations, id);
@@ -1030,12 +1031,17 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
           closeConfirmations: { ...state.closeConfirmations, [id]: Date.now() },
         }));
         scheduleCloseConfirmationExpiry(id, get().clearCloseConfirmation);
-        useUIStore.getState().addToast({
-          sessionId: id,
-          title: t("destructive.confirm_again.close"),
-          subtitle: t("session.close.running_hint"),
-          variant: "error",
-        });
+        // The session card already shows an inline countdown for this window;
+        // only surface a toast when the trigger isn't the card itself (e.g. ⌘W).
+        if (opts?.confirmToast) {
+          useUIStore.getState().addToast({
+            sessionId: id,
+            title: t("destructive.confirm_again.close"),
+            subtitle: t("session.close.running_hint"),
+            variant: "warning",
+            durationMs: CLOSE_CONFIRM_WINDOW_MS,
+          });
+        }
         return;
       }
     }
