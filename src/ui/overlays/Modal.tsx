@@ -213,7 +213,6 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
           borderRadius: "var(--r-overlay)",
           boxShadow: "var(--shadow-overlay)",
           zIndex,
-          outline: "none",
           ...style,
         }}
       >

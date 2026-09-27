@@ -102,7 +102,6 @@ export function TerminalSearchBar({
         style={{
           border: "none",
           background: "transparent",
-          outline: "none",
           fontSize: "var(--fs-body)",
           lineHeight: "20px",
           color: "var(--c-text-primary)",

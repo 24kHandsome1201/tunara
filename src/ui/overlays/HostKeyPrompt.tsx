@@ -93,7 +93,6 @@ export function HostKeyPromptDialog() {
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          outline: "none",
         }}
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
