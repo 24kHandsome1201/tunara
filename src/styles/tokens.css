@@ -137,6 +137,7 @@
   /* ── 圆角 ── */
   --r-btn: 7px;
   --r-input: 8px;
+  --r-menu: 8px;
   --r-card: 9px;
   --r-overlay: 14px;
   --r-badge: 6px;
@@ -155,24 +156,34 @@
   --sp-gap-lg: 10px;
 
   /* ── 控件密度 ── */
-  --h-control-sm: 26px;
-  --h-control-md: 30px;
+  --h-control-sm: 28px;
+  --h-control: 32px;
   --h-panel-header: 38px;
 
+  /* ── 图标 / 状态点 ── */
+  --icon-xs: 10px;
+  --icon-sm: 12px;
+  --icon-md: 14px;
+  --dot-sm: 6px;
+  --dot-md: 8px;
+
   /* ── Motion (response-only) ── */
-  --dur-fast: 120ms;
-  --dur-base: 160ms;
-  --dur-slow: 220ms;
-  --ease-out: cubic-bezier(0.2, 0, 0, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  /* Aliases so existing surfaces keep resolving through the motion system. */
-  --duration-fast: var(--dur-fast);
-  --duration-normal: var(--dur-base);
-  --duration-slow: var(--dur-slow);
-  --duration-expand: var(--dur-slow);
-  --ease-out-expo: var(--ease-out);
-  --ease-out-back: var(--ease-out);
-  --ease-smooth: var(--ease-out);
+  --dur-instant: 60ms;   /* hover colour/opacity nudges */
+  --dur-fast: 120ms;     /* press, menu/tooltip entrance, colour transitions */
+  --dur-base: 160ms;     /* overlay/palette entrance, expand arrows, panel slide */
+  --dur-slow: 220ms;     /* only: sidebar/panel drawers, large layout shifts */
+  --dur-loading: 1200ms; /* loading pulse period (the only allowed infinite) */
+  --delay-loading-fallback: 200ms; /* suspense fallback fade-in delay */
+  --dur-toast: 4000ms;
+  --dur-toast-long: 12000ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);    /* entrances, expands, moves */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* two-way state changes, pulse */
+  --motion-distance-sm: 4px;  /* content, statusbar */
+  --motion-distance-md: 8px;  /* toast */
+  --motion-distance-lg: 12px; /* explorer slide, drawers */
+  --motion-scale-in: 0.98;    /* overlay/palette/menu entrance start */
+  --press-scale: 0.98;        /* default button press */
+  --press-scale-icon: 0.96;   /* ≤24px icon buttons */
 
   /* ── Session state (low chroma; chrome otherwise stays neutral) ── */
   --c-state-ok: oklch(52% 0.042 155);
@@ -180,10 +191,21 @@
   --c-state-err: oklch(54% 0.072 25);
   --c-section-rule: oklch(84% 0.014 55);
 
-  /* ── 按压缩放（语义二分 + 强烈） ── */
-  --scale-press: 0.96;
-  --scale-press-soft: 0.98;
-  --scale-press-strong: 0.96;
+  /* ── 层级（backdrop 与 dialog 同层，靠 DOM 顺序压制） ── */
+  --z-raised: 10;   /* pane ring, split/resize handles */
+  --z-sticky: 30;   /* in-pane sticky chrome (terminal search bar) */
+  --z-shell: 75;    /* sidebar/panel overlays inside the shell */
+  --z-overlay: 300; /* modal dialogs, SSH prompts, suspense fallbacks */
+  --z-palette: 400; /* command palette, global search */
+  --z-toast: 500;   /* notifications stay readable above overlays */
+  --z-menu: 600;    /* context menus */
+  --z-system: 1000; /* window resize handles, fullscreen preview */
+
+  /* ── 焦点环 ── */
+  --focus-ring-w: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--c-accent);
+  --focus-ring-soft: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent);
 
   /* ── 遮罩 ── */
   --backdrop-color: rgba(31, 25, 21, 0.34);
@@ -212,7 +234,8 @@
   --h-statusbar: 28px;
   --h-inline-bar: 28px;
   --h-btn-sm: 24px;
-  --h-btn-md: 32px;
+  --h-btn-md: 30px;
+  --h-btn-lg: 34px;
   --r-badge-sm: 4px;
 
   /* ── 命令面板 ── */
@@ -221,6 +244,22 @@
 
   /* Solid surface alias retained for existing shell-tint integrations. */
   --c-bg-glass-fallback: var(--c-bg-2);
+}
+
+/* Single reduced-motion source: useTheme writes html[data-reduce-motion] from
+   the prefers-reduced-motion media query. Zeroing the token scale turns every
+   token-driven transition/animation into an instant state change. */
+html[data-reduce-motion] {
+  --dur-instant: 0ms;
+  --dur-fast: 0ms;
+  --dur-base: 0ms;
+  --dur-slow: 0ms;
+  --motion-distance-sm: 0px;
+  --motion-distance-md: 0px;
+  --motion-distance-lg: 0px;
+  --motion-scale-in: 1;
+  --press-scale: 1;
+  --press-scale-icon: 1;
 }
 
 /* ── Dark mode ── */
@@ -340,7 +379,7 @@
               box-shadow var(--dur-fast) var(--ease-out);
 }
 .hover-bg:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-bg:active { transform: scale(var(--scale-press-soft)); transition-duration: var(--dur-fast); }
+.hover-bg:active { transform: scale(var(--press-scale)); transition-duration: var(--dur-fast); }
 .hover-close {
   background: transparent; color: var(--c-text-5);
   transition: background var(--dur-fast) var(--ease-out),
@@ -348,15 +387,15 @@
               transform var(--dur-fast) var(--ease-out);
 }
 .hover-close:hover { background: var(--c-bg-hover); color: var(--c-text-2); }
-.hover-close:active { transform: scale(var(--scale-press-strong)); transition-duration: var(--dur-fast); }
+.hover-close:active { transform: scale(var(--press-scale-icon)); transition-duration: var(--dur-fast); }
 .hover-accent-bg {
   background: transparent;
   transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .hover-accent-bg:hover { background: var(--c-accent-bg-light); box-shadow: 0 1px 4px color-mix(in srgb, var(--c-accent) 12%, transparent); }
-.hover-accent-bg:active { transform: scale(var(--scale-press-soft)); box-shadow: none; }
+.hover-accent-bg:active { transform: scale(var(--press-scale)); box-shadow: none; }
 .hover-text-3:hover { color: var(--c-text-3); }
-.hover-primary:active { transform: scale(var(--scale-press-soft)); transition: transform var(--dur-fast) var(--ease-out); }
+.hover-primary:active { transform: scale(var(--press-scale)); transition: transform var(--dur-fast) var(--ease-out); }
 .hover-primary:hover { opacity: 0.88; }
 
 .tab-close { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
@@ -364,7 +403,7 @@
 .tab-btn[data-active="true"]:hover { background: var(--c-accent-bg-light) !important; }
 .tab-btn:hover .tab-close { opacity: 1; pointer-events: auto; }
 .tab-close:focus-visible { opacity: 1; pointer-events: auto; }
-.tab-select:active { transform: scale(var(--scale-press-soft)); transition: transform var(--dur-fast) var(--ease-out); }
+.tab-select:active { transform: scale(var(--press-scale)); transition: transform var(--dur-fast) var(--ease-out); }
 .workspace-tab-dirty {
   width: 5px;
   height: 5px;
@@ -394,7 +433,7 @@
   font: 500 var(--fs-meta) var(--font-ui);
   text-align: left;
 }
-.explorer-sort-button:active { transform: scale(var(--scale-press-soft)); }
+.explorer-sort-button:active { transform: scale(var(--press-scale)); }
 .explorer-sort-direction {
   color: var(--c-text-4);
   opacity: 0;
@@ -427,7 +466,7 @@
 .session-card:hover .session-card-close,
 .session-card:has(.session-card-close[data-confirm="true"]) .session-card-close,
 .session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
-.session-card-close:active { transform: scale(var(--scale-press-soft)); }
+.session-card-close:active { transform: scale(var(--press-scale)); }
 
 /* Context menu items */
 .ctx-item {
@@ -438,7 +477,7 @@
               transform var(--dur-fast) var(--ease-out);
 }
 .ctx-item:hover, .ctx-item[data-active='true'] { background: var(--c-bg-hover); color: var(--c-text-primary); }
-.ctx-item:active { opacity: 0.7; transform: scale(var(--scale-press-soft)); }
+.ctx-item:active { opacity: 0.7; transform: scale(var(--press-scale)); }
 .ctx-item-danger { color: var(--c-error); }
 .ctx-item-danger:hover, .ctx-item-danger[data-active='true'] { background: var(--c-error-bg-light); color: var(--c-error); }
 .ctx-item-disabled { color: var(--c-text-6); pointer-events: none; }
@@ -452,8 +491,8 @@
   user-select: none;
 }
 
-.sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent); }
-.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-accent) 16%, transparent); }
+.sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
+.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
 
 /* ── Utility classes ── */
 
