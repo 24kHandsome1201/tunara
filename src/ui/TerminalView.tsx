@@ -24,6 +24,7 @@ import { createTerminalLineCwdTracker } from "@/modules/terminal/lib/terminal-li
 import { registerTerminalLigatureSync } from "@/modules/terminal/lib/terminal-ligature-sync";
 import { createTerminalOutputBuffer } from "@/modules/terminal/lib/terminal-output-buffer";
 import { registerTerminalImage } from "@/modules/terminal/lib/terminal-image";
+import { registerTerminalUnicodeGraphemes } from "@/modules/terminal/lib/terminal-unicode";
 import { registerTerminalPasteProtection } from "@/modules/terminal/lib/terminal-paste-protection";
 import { schedulePendingInput } from "@/modules/terminal/lib/terminal-pending-input";
 import { registerTerminalClipboardHandler } from "@/modules/terminal/lib/terminal-clipboard";
@@ -140,6 +141,14 @@ function TerminalViewImpl({
       fitRef.current = fit;
       term.loadAddon(fit);
       term.open(containerRef.current);
+      // Grapheme-cluster widths (emoji ZWJ sequences, flags, skin-tone
+      // modifiers, presentation selectors) must be active before the restored
+      // snapshot and PTY output are written so every row agrees on cell
+      // widths. Lives in the lazy xterm chunk; falls back to the built-in
+      // width table if the import fails.
+      const disposeUnicodeGraphemes = await registerTerminalUnicodeGraphemes(term);
+      if (disposed || !containerRef.current) { disposeUnicodeGraphemes(); return; }
+      cleanups.push(disposeUnicodeGraphemes);
       const terminalScreen = term.element?.querySelector<HTMLElement>(".xterm-screen");
       if (terminalScreen) cleanups.push(linkInputRef.current.attach(terminalScreen));
       cleanups.push(registerTerminalActions(sessionIdRef.current, {
