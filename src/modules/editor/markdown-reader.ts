@@ -116,7 +116,10 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
   });
 }
 
-export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
+export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
+  // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
+  // MDX constructs are only recognized when the caller marks the source .mdx.
+  const mdx = options?.mdx === true;
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MarkdownBlock[] = [];
   const toc: MarkdownTocEntry[] = [];
@@ -142,7 +145,7 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
       continue;
     }
 
-    const mdxKind = mdxSourceKind(line);
+    const mdxKind = mdx ? mdxSourceKind(line) : null;
     if (mdxKind) {
       const sourceLines = [line];
       index++;
@@ -219,7 +222,7 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
 
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() !== "" && !mdxSourceKind(lines[index]) && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
+    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
       if (index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
       paragraph.push(lines[index++]);
     }
