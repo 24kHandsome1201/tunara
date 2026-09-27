@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { Session } from "./types";
 import { deriveAttentionRow, dockBadgeCount, nextAttentionSessionId, type HerdrAttention } from "@/modules/session/session-attention";
 import { sessionTerminalMultiplexer } from "@/modules/session/terminal-multiplexer";
-import { useHerdrStatusStore } from "@/state/herdr-status";
+import { useMultiplexerStatusStore } from "@/state/multiplexer-status";
 import { useT } from "@/modules/i18n";
 import { revealSessionAttention } from "@/modules/terminal/lib/terminal-action-registry";
 import { sessionDisplayTitle } from "@/modules/session/default-title";
@@ -18,11 +18,11 @@ interface AttentionRowProps {
  */
 export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
   const t = useT();
-  const herdrBlocked = useHerdrStatusStore((s) => s.summary?.blocked ?? 0);
   const herdrSessionId = useMemo(
     () => sessions.find((s) => !s.remote && sessionTerminalMultiplexer(s) === "herdr")?.id ?? null,
     [sessions],
   );
+  const herdrBlocked = useMultiplexerStatusStore((s) => (herdrSessionId ? s.summaries[herdrSessionId]?.blocked ?? 0 : 0));
   const herdr = useMemo<HerdrAttention | null>(
     () => (herdrSessionId && herdrBlocked > 0 ? { sessionId: herdrSessionId, blocked: herdrBlocked } : null),
     [herdrSessionId, herdrBlocked],

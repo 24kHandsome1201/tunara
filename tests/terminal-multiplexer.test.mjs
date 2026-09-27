@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectTerminalMultiplexer, sessionTerminalMultiplexer } from "../src/modules/session/terminal-multiplexer.ts";
+import { detectTerminalMultiplexer, sessionTerminalMultiplexer, zellijSessionName } from "../src/modules/session/terminal-multiplexer.ts";
 
 test("detects multiplexers by program name, not substrings", () => {
   assert.equal(detectTerminalMultiplexer("herdr"), "herdr");
@@ -17,4 +17,15 @@ test("only a running, non-Agent session reports its multiplexer", () => {
   assert.equal(sessionTerminalMultiplexer({ runState: "running", lastCommand: "herdr" }), "herdr");
   assert.equal(sessionTerminalMultiplexer({ runState: "done", lastCommand: "herdr" }), null);
   assert.equal(sessionTerminalMultiplexer({ runState: "running", lastCommand: "herdr", agent: "claude" }), null);
+});
+
+test("zellij session name comes from the command line, else the terminal title", () => {
+  assert.equal(zellijSessionName({ lastCommand: "zellij -s work" }), "work");
+  assert.equal(zellijSessionName({ lastCommand: "zellij --session work --layout compact" }), "work");
+  assert.equal(zellijSessionName({ lastCommand: "zellij attach -c work" }), "work");
+  assert.equal(zellijSessionName({ lastCommand: "zellij a work", shellTitle: "other" }), "work");
+  assert.equal(zellijSessionName({ lastCommand: "zellij", shellTitle: "calm-river | vim src" }), "calm-river");
+  assert.equal(zellijSessionName({ lastCommand: "zellij", shellTitle: "calm-river" }), "calm-river");
+  assert.equal(zellijSessionName({ lastCommand: "zellij", shellTitle: "zsh ~/repo" }), null);
+  assert.equal(zellijSessionName({ lastCommand: "zellij" }), null);
 });

@@ -27,6 +27,27 @@ export function sessionTerminalMultiplexer(session: Pick<Session, "agent" | "run
   return detectTerminalMultiplexer(session.lastCommand);
 }
 
+const ZELLIJ_SESSION_FLAGS = new Set(["-s", "--session"]);
+const ZELLIJ_ATTACH = new Set(["attach", "a"]);
+
+/**
+ * Zellij session a tab is attached to: the name given on the command line
+ * (`-s name`, `attach name`), else the one Zellij writes into the terminal
+ * title (`name` or `name | pane title`).
+ */
+export function zellijSessionName(session: Pick<Session, "lastCommand" | "shellTitle">): string | null {
+  const words = session.lastCommand?.trim().split(/\s+/) ?? [];
+  for (let i = 0; i < words.length - 1; i += 1) {
+    if (ZELLIJ_SESSION_FLAGS.has(words[i])) return words[i + 1];
+    if (ZELLIJ_ATTACH.has(words[i])) {
+      const name = words.slice(i + 1).find((word) => !word.startsWith("-"));
+      if (name) return name;
+    }
+  }
+  const title = session.shellTitle?.split(" | ")[0]?.trim();
+  return title && !/\s/.test(title) ? title : null;
+}
+
 export function terminalMultiplexerLabel(multiplexer: TerminalMultiplexer): string {
   return MULTIPLEXER_LABELS[multiplexer];
 }

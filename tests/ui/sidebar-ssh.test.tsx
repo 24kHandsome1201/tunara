@@ -255,8 +255,8 @@ test("session card marks a running multiplexer and explains where pane status co
 });
 
 test("local HerdR chip reflects blocked panes reported by the HerdR socket API", async () => {
-  mockIPC((cmd) => cmd === "herdr_status"
-    ? { panes: [
+  mockIPC((cmd, args) => cmd === "multiplexer_status" && (args as { kind?: string }).kind === "herdr"
+    ? { kind: "herdr", panes: [
       { paneId: "w1:p1", focused: true, agent: "claude", agentStatus: "blocked", cwd: "/repo" },
       { paneId: "w1:p2", focused: false, agent: "codex", agentStatus: "working", cwd: "/repo" },
     ] }

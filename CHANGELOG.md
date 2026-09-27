@@ -20,6 +20,9 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 设置 → 终端新增「渲染器」：自动 / GPU / 兼容（默认自动）。自动模式先在隐藏终端里绘制中文、中文标点、Emoji、制表符、带重音拉丁字母和 ANSI 真彩色探针，比对 DOM 与 WebGL 的单元格尺寸并逐格检查字形墨迹、越界和颜色，通过后才启用 GPU（WebGL）渲染；自检失败、WebGL 不可用、初始化失败或运行中上下文丢失时回退并固定为 DOM 渲染。GPU 模式始终尝试 WebGL（保留原有逐终端回退），兼容模式始终使用 DOM。设置页会显示自检结果。
 - 终端基准新增 `renderer` 变体与 `scripts/benchmark-renderer.sh`：对同一构建分别以 WebGL 和 DOM 运行大输出吞吐、渲染排空与四窗格并发输出帧时间，输出可直接贴进发布记录的对比表。
 
+### 产品与体验
+- 本地 tmux / Zellij 会话获得与 HerdR 相同的 pane 状态支持：侧栏会话卡片显示前台 Agent 数量，Inspector 跟随当前 pane 的工作目录。状态通过只读 CLI（`tmux list-clients` / `list-panes`、`zellij action dump-layout`）获取，并绑定到各自标签页的会话（tmux 按客户端 tty，Zellij 按会话名），带超时与字段上限，从不向 pane 发送按键；在 pane 内启动 Agent 不会再把外层会话标记为 Agent；tmux / Zellij 只能识别前台 Agent 进程，无法区分运行中与等待输入。
+
 ### 稳定性
 - 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
 
