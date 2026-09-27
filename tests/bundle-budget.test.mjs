@@ -26,6 +26,11 @@ const GROWTH_FACTOR = 1.05;
 // On-demand TextMate grammars and the Shiki JS-regex engine. They must stay
 // out of App / FilePreview / DiffPanel; the first-load total ignores them.
 const HIGHLIGHTER_CHUNK = /^(?:shiki-highlight|typescript|tsx|javascript|jsx|json|yaml|toml|rust|python|go|bash|css|html|sql|dockerfile)-.*\.js$/;
+// @xterm/addon-webgl is fetched only once a pane is allowed to render with
+// WebGL (Settings → Terminal → Renderer: GPU, or Auto after the glyph
+// self-check passes). It must stay out of the preloaded xterm chunk and is
+// likewise excluded from the first-load total.
+const ON_DEMAND_CHUNK = /^xterm-webgl-.*\.js$/;
 
 const entryBudget = Math.floor(ENTRY_CHUNK_GZIP_BASELINE * GROWTH_FACTOR);
 const totalBudget = Math.floor(TOTAL_JS_GZIP_BASELINE * GROWTH_FACTOR);
@@ -63,6 +68,8 @@ test("frontend JS gzip stays within the measured production budget", async (t) =
   }
 
   const entryName = findNamedChunk(names, "App");
+  const webglName = findNamedChunk(names, "xterm-webgl");
+  const xtermName = findNamedChunk(names.filter((name) => name !== webglName), "xterm");
   const settingsName = findNamedChunk(names, "Settings");
   const sshName = findNamedChunk(names, "SshConnect");
   const diffName = findNamedChunk(names, "DiffPanel");
@@ -90,12 +97,19 @@ test("frontend JS gzip stays within the measured production budget", async (t) =
     names.some((name) => name.startsWith("shiki-highlight-")),
     "expected a lazy shiki-highlight-*.js chunk",
   );
+  for (const name of [entryName, xtermName]) {
+    assert.doesNotMatch(
+      readFileSync(path.join(assetsDir, name), "utf8"),
+      /webgl2/,
+      `${name} must not embed the WebGL renderer; it loads via xterm-webgl-*.js`,
+    );
+  }
 
   const html = readFileSync(path.join(distDir, "index.html"), "utf8");
   const preloaded = [...html.matchAll(/rel="modulepreload"[^>]*href="([^"]+)"/g)].map((match) => match[1]);
   assert.ok(preloaded.some((href) => href.includes("/react-")), "react chunk should stay modulepreloaded");
   assert.ok(preloaded.some((href) => href.includes("/xterm-")), "xterm chunk should stay modulepreloaded");
-  for (const name of [settingsName, sshName, diffName, entryName]) {
+  for (const name of [settingsName, sshName, diffName, entryName, webglName]) {
     assert.equal(
       preloaded.some((href) => href.endsWith(`/${name}`) || href.endsWith(name)),
       false,
@@ -105,7 +119,7 @@ test("frontend JS gzip stays within the measured production budget", async (t) =
 
   const entry = sizes.find((row) => row.name === entryName);
   const totalGzip = sizes
-    .filter((row) => !HIGHLIGHTER_CHUNK.test(row.name))
+    .filter((row) => !HIGHLIGHTER_CHUNK.test(row.name) && !ON_DEMAND_CHUNK.test(row.name))
     .reduce((sum, row) => sum + row.gzip, 0);
 
   assert.ok(
