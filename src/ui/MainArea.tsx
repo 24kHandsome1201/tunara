@@ -20,7 +20,7 @@ import {
 } from "@/modules/session/split-layout";
 import { recordTerminalFocusIntent } from "@/modules/terminal/lib/binding-aware-async-action";
 import { ReaderPane } from "./ReaderPane";
-import { Icon, SquareSplitHorizontal, SquareSplitVertical, X } from "@/ui/icons";
+import { Icon, SidebarSimple, SquareSplitHorizontal, SquareSplitVertical, X } from "@/ui/icons";
 
 function clearPendingInput(id: string) {
   useSessionsStore.getState().updateSession(id, { pendingInput: undefined, pendingInputSubmit: undefined });
@@ -51,6 +51,7 @@ const TerminalPane = memo(function TerminalPane({
 interface MainAreaProps {
   sessions: Session[];
   activeSessionId: string;
+  onTogglePanel?: () => void;
 }
 
 function SplitIcon({ direction }: { direction: "columns" | "rows" | "single" }) {
@@ -90,10 +91,12 @@ function paneRectStyle(
   };
 }
 
-export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
+export function MainArea({ sessions, activeSessionId, onTogglePanel }: MainAreaProps) {
   const t = useT();
   const splitHorizontalShortcut = useUIStore((s) => s.keybindings.splitHorizontal);
   const splitVerticalShortcut = useUIStore((s) => s.keybindings.splitVertical);
+  const togglePanelShortcut = useUIStore((s) => s.keybindings.togglePanel);
+  const panelVisible = useUIStore((s) => s.panelVisible);
   const active = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const activeIsRemote = Boolean(active?.remote);
   const nonce = useSessionsStore((s) => active ? getNumberRecordValue(s.gitNonce, active.id) : 0);
@@ -313,9 +316,32 @@ export function MainArea({ sessions, activeSessionId }: MainAreaProps) {
                 <SplitIcon direction="rows" />
               </button>
             </>
+            {!panelVisible && onTogglePanel && (
+              <button
+                type="button"
+                data-statusbar="show-inspector"
+                onClick={onTogglePanel}
+                title={`${t("titlebar.panel.show")} ${formatShortcut(togglePanelShortcut)}`}
+                aria-label={t("titlebar.panel.show")}
+                style={{
+                  width: 28,
+                  height: "var(--h-btn-sm)",
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--r-btn)",
+                }}
+                className="hover-bg"
+              >
+                <Icon icon={SidebarSimple} size={16} style={{ transform: "scaleX(-1)" }} />
+              </button>
+            )}
             {isSplit && (
               <>
-                <span aria-hidden="true" style={{ width: 1, height: 12, margin: "0 4px", background: "var(--c-border-2)", flexShrink: 0 }} />
+              <span aria-hidden="true" style={{ width: 1, height: 12, margin: "0 4px", background: "var(--c-border-2)", flexShrink: 0 }} />
             <button
               type="button"
               onClick={() => {

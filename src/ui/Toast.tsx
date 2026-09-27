@@ -50,14 +50,14 @@ function ToastItem({ toast }: { toast: Toast }) {
   }, [duration]);
 
   const handleCopy = async () => {
-    const text = toast.subtitle ? `${toast.title}\n${toast.subtitle}` : toast.title;
+    const text = [toast.title, toast.subtitle, toast.errorDetail].filter(Boolean).join("\n");
     const request = ++copyRequestRef.current;
     const ok = await copyText(text);
     if (!mountedRef.current || request !== copyRequestRef.current) return;
     if (!ok) {
       setCopied(false);
       useUIStore.getState().addToast({
-        title: t("clipboard.copy_failed"),
+        title: t("common.copy_failed"),
         subtitle: t("diff.toast.clipboard_unavailable"),
         variant: "error",
       });
