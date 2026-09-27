@@ -6,6 +6,8 @@
   /* 与 DEFAULT_SETTINGS.accent (#c2683c) 同色的 OKLCH 表达；仅作启动前的
      静态回退，运行时由 useTheme/shell-tint-boot 按用户设置覆写。 */
   --c-accent: oklch(61.3% 0.129 45.4);
+  /* Text/icons drawn on top of --c-accent; ≥ 4.5:1 on the default terracotta. */
+  --c-on-accent: oklch(99% 0.003 55);
   --c-accent-bg-light: oklch(93.5% 0.035 49);
   --c-accent-bg-soft: oklch(97% 0.014 49);
   --c-accent-border: oklch(86.5% 0.048 47);
@@ -266,6 +268,7 @@ html[data-reduce-motion] {
 /* --c-accent and derived vars (--c-accent-bg-light, --c-accent-bg-soft, --c-accent-border)
    are set dynamically by useTheme.ts to avoid flash when user picks a non-default accent. */
 .dark {
+  --c-on-accent: oklch(99% 0.003 55);
   --c-text-primary: oklch(91% 0.008 55);
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);
@@ -455,6 +458,7 @@ html[data-reduce-motion] {
 .split-handle-line { transition: background var(--dur-fast) var(--ease-out), width var(--dur-fast) var(--ease-out), height var(--dur-fast) var(--ease-out); }
 
 .session-card {
+  border: 1px solid transparent;
   transition: background var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-base) var(--ease-out);
   cursor: inherit;
@@ -492,6 +496,8 @@ html[data-reduce-motion] {
 }
 
 .sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
+/* The container's :focus-within ring is the single focus indicator here. */
+.sidebar-search input:focus-visible { outline: none; }
 .explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
 
 /* ── Utility classes ── */
