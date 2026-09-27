@@ -270,8 +270,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         borderRadius: "var(--r-card)",
         // cursor 由外层 wrapper 控制（grab / grabbing / pointer），允许 inherit
         userSelect: "none",
-        background: "transparent",
-        border: "1px solid transparent",
       }}
     >
       <div className="session-card-rail" aria-hidden="true" />
