@@ -30,7 +30,7 @@ test("borderless Linux chrome exposes native resize dragging on every edge", () 
   assert.match(app, /win\.startResizeDragging\(direction\)/);
   assert.match(app, /document\.documentElement\.dataset\.chrome !== "borderless"/);
   assert.match(main, /navigator\.userAgent\.includes\("Linux"\) && "__TAURI_INTERNALS__" in window/);
-  assert.match(styles, /\.window-resize-handle[\s\S]*z-index: 10000/);
+  assert.match(styles, /\.window-resize-handle[\s\S]*z-index: var\(--z-system\)/);
   assert.match(styles, /\.window-resize-n[\s\S]*\.window-resize-nw/);
   assert.ok(capability.permissions.includes("core:window:allow-start-resize-dragging"));
 });

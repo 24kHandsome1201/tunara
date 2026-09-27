@@ -1066,7 +1066,6 @@ test("appearance settings are sanitized and command palette exposes useful actio
   const sidebar = read("src/ui/Sidebar.tsx");
   const sidebarGroup = read("src/ui/SidebarSessionGroup.tsx");
   const toast = read("src/ui/Toast.tsx");
-  const css = read("src/styles/globals.css");
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   const terminalTheme = read("src/styles/terminalTheme.ts");
   const useTheme = read("src/app/useTheme.ts");
@@ -1108,7 +1107,9 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.doesNotMatch(toast, /borderLeft: `3px solid \$\{accentColor\}`/);
   assert.match(toast, /toast\.action\?\.kind === "open-settings"/);
   assert.doesNotMatch(toast, /width: 260/);
-  assert.match(css, /prefers-reduced-motion: reduce/);
+  // Reduced motion is driven by useTheme writing html[data-reduce-motion].
+  assert.match(useTheme, /prefers-reduced-motion: reduce/);
+  assert.match(useTheme, /dataset\.reduceMotion/);
 });
 
 test("review fixes remove stale artifacts and guard high-risk regressions", () => {

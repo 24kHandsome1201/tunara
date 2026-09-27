@@ -104,7 +104,7 @@ test("FilePreview renders semantic headings, toc navigation, tables, and languag
   assert.match(source, /role="region" tabIndex=\{0\} aria-label=\{staticT\("preview\.markdown\.table"\)\}/);
   assert.match(source, /<figure aria-label=/);
   assert.match(source, /<pre tabIndex=\{0\} aria-label=/);
-  assert.match(source, /prefers-reduced-motion: reduce/);
+  assert.match(source, /reduceMotionEnabled\(\)/);
   assert.match(source, /target="_blank" rel="noreferrer noopener"/);
   assert.match(source, /safeMarkdownLanguage\(block\.language\)/);
   assert.match(source, /case "mdx-source"/);
