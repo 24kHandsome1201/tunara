@@ -8,29 +8,21 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
 
-## [Unreleased]
+## [3.1.0] - 2026-09-25
 
 ### 产品与体验
 - 新增跨会话终端搜索（默认 ⌘⇧F / Ctrl+Shift+F，也可从命令面板打开，可在配置文件 `[keybindings] global_terminal_search` 中修改）：在所有已打开的本地与 SSH 终端的内存回滚中搜索，支持纯文本、正则与大小写切换，按会话分组显示行上下文与所属命令块；选中结果会切换到该会话、滚动到对应行并高亮匹配。搜索分片让出主线程、新查询取消旧查询并限制结果数量；不建立索引，也不写入磁盘。
+- 设置 → 终端新增「渲染器」：自动 / GPU / 兼容（默认自动）。自动模式先在隐藏终端里绘制中文、中文标点、Emoji、制表符、带重音拉丁字母和 ANSI 真彩色探针，比对 DOM 与 WebGL 的单元格尺寸并逐格检查字形墨迹、越界和颜色，通过后才启用 GPU（WebGL）渲染；自检失败、WebGL 不可用、初始化失败或运行中上下文丢失时回退并固定为 DOM 渲染。GPU 模式始终尝试 WebGL（保留原有逐终端回退），兼容模式始终使用 DOM。设置页会显示自检结果。
+- 终端基准新增 `renderer` 变体与 `scripts/benchmark-renderer.sh`：对同一构建分别以 WebGL 和 DOM 运行大输出吞吐、渲染排空与四窗格并发输出帧时间，输出可直接贴进发布记录的对比表。
+- 本地 tmux / Zellij 会话获得与 HerdR 相同的 pane 状态支持：侧栏会话卡片显示前台 Agent 数量，Inspector 跟随当前 pane 的工作目录。状态通过只读 CLI（`tmux list-clients` / `list-panes`、`zellij action dump-layout`）获取，并绑定到各自标签页的会话（tmux 按客户端 tty，Zellij 按会话名），带超时与字段上限，从不向 pane 发送按键；在 pane 内启动 Agent 不会再把外层会话标记为 Agent；tmux / Zellij 只能识别前台 Agent 进程，无法区分运行中与等待输入。
 
 ### 修复
 - 终端启用 Unicode 15 字形簇宽度（`@xterm/addon-unicode-graphemes`，随终端懒加载）：emoji ZWJ 组合、旗帜、肤色修饰符和 emoji 呈现选择器按单个宽字符计算列宽，修复光标与列错位；CJK 与全角标点宽度不变，与禁用的标点压缩保持一致。
-
-### 新功能
-- 设置 → 终端新增「渲染器」：自动 / GPU / 兼容（默认自动）。自动模式先在隐藏终端里绘制中文、中文标点、Emoji、制表符、带重音拉丁字母和 ANSI 真彩色探针，比对 DOM 与 WebGL 的单元格尺寸并逐格检查字形墨迹、越界和颜色，通过后才启用 GPU（WebGL）渲染；自检失败、WebGL 不可用、初始化失败或运行中上下文丢失时回退并固定为 DOM 渲染。GPU 模式始终尝试 WebGL（保留原有逐终端回退），兼容模式始终使用 DOM。设置页会显示自检结果。
-- 终端基准新增 `renderer` 变体与 `scripts/benchmark-renderer.sh`：对同一构建分别以 WebGL 和 DOM 运行大输出吞吐、渲染排空与四窗格并发输出帧时间，输出可直接贴进发布记录的对比表。
-
-### 产品与体验
-- 本地 tmux / Zellij 会话获得与 HerdR 相同的 pane 状态支持：侧栏会话卡片显示前台 Agent 数量，Inspector 跟随当前 pane 的工作目录。状态通过只读 CLI（`tmux list-clients` / `list-panes`、`zellij action dump-layout`）获取，并绑定到各自标签页的会话（tmux 按客户端 tty，Zellij 按会话名），带超时与字段上限，从不向 pane 发送按键；在 pane 内启动 Agent 不会再把外层会话标记为 Agent；tmux / Zellij 只能识别前台 Agent 进程，无法区分运行中与等待输入。
+- 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
 
 ### 稳定性
 - 新增 Playwright 端到端冒烟测试（`pnpm test:e2e`）：在无头 Chromium 中运行生产前端并模拟 Tauri IPC，覆盖启动终端、输入回显、分屏与焦点切换、命令面板、Inspector、设置各分区和 SSH 连接表单校验；CI 新增独立的 e2e 任务，失败时上传 trace。
-
-### 测试与 CI
 - 新增真实 SSH 回归矩阵（`tests/ssh-matrix/` + cargo feature `ssh-matrix`）：在 Ubuntu CI 新增 `ssh-matrix (docker)` 任务，用两台 Docker OpenSSH 容器（target + jump）驱动生产 russh 客户端，覆盖 ed25519/RSA 公钥、密码、keyboard-interactive、ssh-agent 认证，bash/zsh 远端 shell 集成，首连 host key 的 TOFU 接受与不匹配拒绝，ProxyJump 成功及按跳点归因的失败，被动断开后按 generation 隔离重连，以及约 1 万文件目录上的 SFTP 列表/读取/安全写/上传/下载与远程 grep 延迟断言。普通 `cargo test --lib` 不编译该模块，保持无外部依赖。
-
-### 修复与优化
-- 拆分 SSH 后端超大文件，行为不变：`hosts.rs` 拆为 profile / patterns / resolver / effective / import，`sftp.rs` 拆为 browse / read / write / transfer，`connection.rs` 拆为 host_key / transport / session / ops / bootstrap；IPC 命令名、serde 形状、公开函数签名与日志文案保持不变，测试随代码迁移，单文件规模收敛至约 1.5k 行以内。
 
 ## [3.0.3] - 2026-09-16
 
