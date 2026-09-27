@@ -153,8 +153,8 @@ function HighlightedText({ text, query, cursor }: { text: string; query: string;
   return parts.length > 0 ? parts : text;
 }
 
-function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {  const t = useT();
-  const document = useMemo(() => parseMarkdownDocument(content), [content]);
+function MarkdownPreview({ content, mdx = false, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; mdx?: boolean; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {  const t = useT();
+  const document = useMemo(() => parseMarkdownDocument(content, { mdx }), [content, mdx]);
   const previewRef = useRef<HTMLDivElement>(null);
   const matchCursor: MarkdownFindCursor = { current: 0, active: activeFindIndex };
   useLayoutEffect(() => {
@@ -1458,7 +1458,7 @@ function EditorSurface({
         {mode === "preview" && isNotebook ? (
           <NotebookPreview content={content} />
         ) : mode === "preview" && isMarkdown ? (
-          <MarkdownPreview content={content} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
+          <MarkdownPreview content={content} mdx={/\.mdx$/i.test(fileName)} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
         ) : mode === "preview" && tabularPreview ? (
           <TabularTable table={tabularPreview} />
         ) : mode === "preview" ? (
@@ -1919,7 +1919,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       ) : isNotebook ? (
         <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<NotebookPreview content={textContent} /></>
       ) : isMarkdown ? (
-        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<MarkdownPreview content={textContent} fill={fill} findQuery={inertFind.query} activeFindIndex={inertFind.index} onMatchCountChange={setInertMarkdownMatchCount} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<MarkdownPreview content={textContent} mdx={/\.mdx$/i.test(fileName)} fill={fill} findQuery={inertFind.query} activeFindIndex={inertFind.index} onMatchCountChange={setInertMarkdownMatchCount} /></>
       ) : (
         <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} findQuery={inertFind.query} activeFindIndex={inertFind.index} /></>
       )}

@@ -79,7 +79,7 @@ test("MDX module, component, and expression boundaries remain inert source islan
   assert.equal(mdxSourceKind("<https://example.com>"), null);
 
   const fixture = await readFile(new URL("../scripts/fixtures/phase2-markdown-visual.mdx", import.meta.url), "utf8");
-  const parsed = parseMarkdownDocument(fixture);
+  const parsed = parseMarkdownDocument(fixture, { mdx: true });
   assert.deepEqual(
     parsed.blocks.filter((block) => block.type === "mdx-source").map((block) => [block.kind, block.text]),
     [
@@ -89,6 +89,11 @@ test("MDX module, component, and expression boundaries remain inert source islan
       ["expression", '{["静态", "表达式"].join(" · ")}'],
     ],
   );
+});
+
+test("plain .md sources do not emit mdx-source blocks for inline HTML", () => {
+  const parsed = parseMarkdownDocument('<p align="center"><img src="logo.png" /></p>\n\n{text like a template}');
+  assert.equal(parsed.blocks.some((block) => block.type === "mdx-source"), false);
 });
 
 test("FilePreview renders semantic headings, toc navigation, tables, and language labels", async () => {
