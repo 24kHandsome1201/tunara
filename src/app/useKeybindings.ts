@@ -50,7 +50,9 @@ export function useKeybindings() {
           }
           const splitSessionIds = splitLayoutSessionIds(ui.split);
           const targetId = st.activeSessionId ?? splitSessionIds[splitSessionIds.length - 1] ?? null;
-          if (targetId) st.closeSession(targetId);
+          // ⌘W can fire while the sidebar card is out of view, so keep a
+          // short warning toast alongside the card's inline countdown.
+          if (targetId) st.closeSession(targetId, { confirmToast: true });
           break;
         }
         case "openSettings":
