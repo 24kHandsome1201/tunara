@@ -8,6 +8,7 @@ import { formatTransferEta, formatTransferRate, transferEta, transferRate } from
 import { canResumeRecovery } from "@/modules/ssh/transfer-resume";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 import { useSessionsStore } from "@/state/sessions";
+import { useUIStore } from "@/state/ui";
 import type { MutableRefObject, ReactNode } from "react";
 
 /** Keep backend detail useful while removing common credential forms and hostile controls. */
@@ -68,7 +69,17 @@ function AnnouncementController({ visibleIds, announceRef }: {
       const percent = total > 0 ? Math.min(100, Math.round((item.event?.bytesTransferred ?? 0) / total * 100)) : 0;
       const bucket = Math.floor(percent / 10);
       if (!previous) setAnnouncement(t("transfer.announcement.started", { file: item.source }));
-      else if (previous.status !== item.status && ["completed", "cancelled", "failed", "needsReconcile"].includes(item.status)) setAnnouncement(t(`transfer.announcement.${item.status}`, { file: item.source }));
+      else if (previous.status !== item.status && ["completed", "cancelled", "failed", "needsReconcile"].includes(item.status)) {
+        setAnnouncement(t(`transfer.announcement.${item.status}`, { file: item.source }));
+        if (item.status === "completed") {
+          useUIStore.getState().addToast({
+            sessionId: item.binding.logicalSessionId,
+            title: t("transfer.toast.completed"),
+            subtitle: item.source.split(/[\\/]/).pop() || item.source,
+            variant: "success",
+          });
+        }
+      }
       else if (item.status === "running" && (bucket > previous.bucket || now - previous.at >= 2_000)) setAnnouncement(t("transfer.announcement.progress", { file: item.source, percent }));
       else continue;
       announced.current.set(key, { status: item.status, bucket, at: now });
@@ -164,7 +175,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     <span>{item.source}</span><span aria-hidden="true">→</span><span>{item.destination}</span>
                   </div>
                   <div className="transfer-meta">
-                    {t(`transfer.direction.${item.direction}`)} · {t("transfer.attempt", { attempt: item.attempt })}
+                    {t(`transfer.direction.${item.direction}`)}{item.attempt > 1 && <> · {t("transfer.attempt", { attempt: item.attempt })}</>}
                     {item.status === "running" && (() => {
                       const snapshot = transferRate(item.rateSamples ?? []);
                       if (!snapshot || snapshot.bytesPerSec <= 0) return null;
@@ -173,7 +184,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     })()}
                   </div>
                   <div className="transfer-card-actions">
-                    {(item.status === "queued" || item.status === "running") && <PanelActionButton aria-label={t("transfer.cancel_item", { file: item.source })} onClick={() => void cancel(item.transferId)}>{t("transfer.cancel")}</PanelActionButton>}
+                    {(item.status === "queued" || item.status === "running") && <PanelActionButton aria-label={t("transfer.cancel_item", { file: item.source })} onClick={() => void cancel(item.transferId)}>{t("common.cancel")}</PanelActionButton>}
                     {item.status === "completed" && item.direction === "upload" && (
                       <PanelActionButton
                         aria-label={t("transfer.preview_item", { file: item.destination })}
@@ -183,7 +194,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                           void openResource(resourceRefForSession(owner, item.destination), "preview");
                         }}
                       >
-                        {t("transfer.preview")}
+                        {t("common.preview")}
                       </PanelActionButton>
                     )}
                     {(item.status === "failed" || item.status === "cancelled") && <PanelActionButton aria-label={t("transfer.retry_item", { file: item.source })} onClick={() => void retry(item.transferId, (reason) => confirm(t(reason === "replace" ? "transfer.retry.replace_confirm" : "transfer.retry.replacement_confirm"), { kind: "warning" })).then((result) => { if (result === "offline") announceRef.current(t("transfer.retry.offline")); })}>{t("transfer.retry_fresh")}</PanelActionButton>}
@@ -201,7 +212,7 @@ export function TransferCenter({ inspectorScope }: Partial<InspectorScopedPanelP
                     </div>
                   )}
                   {item.outcome && "residuePath" in item.outcome && item.outcome.residuePath && <div role="alert" className="transfer-warning">{t("transfer.residue", { path: item.outcome.residuePath })}</div>}
-                  {item.event?.totalBytes != null && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
+                  {item.event?.totalBytes != null && item.status !== "completed" && <progress className="ui-progress" style={{ width: "100%" }} aria-label={t("transfer.progress", { file: item.source })} max={item.event.totalBytes || 1} value={item.event.bytesTransferred} />}
                 </li>
                 ); }}</TransferCard>
               ))}

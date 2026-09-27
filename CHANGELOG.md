@@ -21,6 +21,11 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 全局终端搜索的正则 / 大小写切换按钮点击后保持输入框焦点，遮罩层禁止文本选择。
 - `.md` 文件中的普通 HTML 不再被识别为 MDX 孤岛，`parseMarkdownDocument` 仅在 `.mdx` 时启用 MDX 解析。
 - Preview 窗口标题不再暴露 `repo=/worktree=/session=` 等内部键，改为 `Preview · <host:port/path>`。
+- 文案统一：右侧辅助面板在英文与中文里统一命名为 inspector / 检查面板（命令面板、标题栏菜单、关闭按钮、缩放提示）；zh 术语统一为「终端」（恢复/历史语境保留「会话」）、「主机」「重新连接」「快捷键」；英文文案改为 sentence case，进行状态统一以单个省略号「…」结尾，去除全大写强调；SSH 主机数文案改为「SSH hosts · N」避免复数分支。新增 `docs/COPY_GUIDE.md` 术语表与文案规范，`i18n-audit.mjs` 新增同值 ≥3 键的重复文案告警，同义键合并入 `common.*`。
+- 状态栏在检查面板关闭时显示「显示检查面板」按钮（含快捷键提示），标题栏工作区菜单的切换项显示快捷键。
+- 传输中心：完成的传输隐藏进度条、发出成功 Toast，重试次数仅在大于 1 时显示。
+- 错误提示统一走 `errorToast`：标题说明失败操作、副标题给出下一步，原始错误移入复制动作；已应用于文件浏览器、传输、SSH 连接与外部编辑器打开等常见路径。
+- 窗口透明度改为按层生效：开启后台透明度时所有 `--c-bg-*` 面底令牌带 alpha，SSH 主机面板等漏网表面不再保持不透明；覆盖层（弹窗、菜单、Toast）自动钉回实色；Diff 增删行底色改用 `color-mix` 透明染色。
 
 ### 内部
 - 设计令牌地基：新增控件高度（`--h-btn-*`、`--h-control*`）、图标与状态点、菜单圆角、层级（`--z-raised`…`--z-system`）、动效（`--dur-*`、`--ease-*`、`--motion-distance-*`、`--press-scale*`）与焦点环（`--focus-ring-*`）刻度；移除 `--duration-*`、`--ease-out-*`/`--ease-smooth`、`--scale-press*` 别名令牌；组件中的数字 zIndex 与字面时长（`1.2s`、200ms、toast 4000/12000ms）全部改为令牌引用。
