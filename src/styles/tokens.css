@@ -7,7 +7,7 @@
      静态回退，运行时由 useTheme/shell-tint-boot 按用户设置覆写。 */
   --c-accent: oklch(61.3% 0.129 45.4);
   /* Text/icons drawn on top of --c-accent; ≥ 4.5:1 on the default terracotta. */
-  --c-on-accent: oklch(99% 0.003 55);
+  --c-on-accent: #18181b;
   --c-accent-bg-light: oklch(93.5% 0.035 49);
   --c-accent-bg-soft: oklch(97% 0.014 49);
   --c-accent-border: oklch(86.5% 0.048 47);
@@ -139,6 +139,10 @@
   --fs-reader-h3: 12px;
   /* Ornament / kicker only. Status and scope chrome uses --fs-meta. */
   --fs-badge: 10px;
+  /* Editor rows: a whole-pixel line box shared by the textarea, syntax overlay
+     and line-number gutter. WebKit snaps textarea lines to whole pixels, so a
+     fractional height (12.5px × 1.7 = 21.25px) lets the gutter drift. */
+  --lh-editor-row: 21px;
 
   /* ── 行高：界面信息保持紧凑，说明文字仍可舒适换行 ── */
   --lh-tight: 1.25;
@@ -277,7 +281,7 @@ html[data-reduce-motion] {
 /* --c-accent and derived vars (--c-accent-bg-light, --c-accent-bg-soft, --c-accent-border)
    are set dynamically by useTheme.ts to avoid flash when user picks a non-default accent. */
 .dark {
-  --c-on-accent: oklch(99% 0.003 55);
+  --c-on-accent: #18181b;
   --c-text-primary: oklch(91% 0.008 55);
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);
