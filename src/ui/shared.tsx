@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ComponentPropsWithRef, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ComponentPropsWithRef, CSSProperties, ReactNode } from "react";
 import { useT } from "@/modules/i18n";
 import { PanelEmptyGlyph, PanelErrorGlyph } from "@/ui/icons";
 
@@ -14,7 +14,37 @@ export {
 export type PanelAsyncState =
   | { kind: "loading"; label: string }
   | { kind: "empty"; label: string; detail?: string }
-  | { kind: "error"; label: string; detail?: string; retryLabel?: string; onRetry?: () => void; remediation?: string };
+  | { kind: "error"; label: string; detail?: string; retryLabel?: string; onRetry?: () => void; remediation?: ReactNode };
+
+/** Small status dot; loading states pass `pulse` (loadPulse, motion-aware via .loading-dot). */
+export function StatusDot({
+  size = "sm",
+  tone = "currentColor",
+  pulse = false,
+  style,
+}: {
+  size?: "sm" | "md";
+  tone?: CSSProperties["backgroundColor"];
+  pulse?: boolean;
+  style?: CSSProperties;
+}) {
+  const dim = size === "md" ? "var(--dot-md)" : "var(--dot-sm)";
+  return (
+    <span
+      aria-hidden="true"
+      className={pulse ? "loading-dot" : undefined}
+      style={{
+        display: "inline-block",
+        width: dim,
+        height: dim,
+        borderRadius: "50%",
+        background: tone,
+        flexShrink: 0,
+        ...style,
+      }}
+    />
+  );
+}
 
 export function PanelToolbar({
   title,
@@ -75,7 +105,7 @@ export function PanelIconButton({
   );
 }
 
-export function PanelState({ state, icon, compact = false }: { state: PanelAsyncState; icon?: ReactNode; compact?: boolean }) {
+export function PanelState({ state, icon, compact = false, action }: { state: PanelAsyncState; icon?: ReactNode; compact?: boolean; action?: ReactNode }) {
   const t = useT();
   const defaultIcon = state.kind === "error" ? <PanelErrorGlyph /> : <PanelEmptyGlyph />;
   return (
@@ -89,7 +119,7 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
     >
       <div className="panel-state-icon">
         {state.kind === "loading"
-          ? <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+          ? <StatusDot pulse />
           : icon ?? defaultIcon}
       </div>
       <div className="panel-state-copy">
@@ -97,13 +127,14 @@ export function PanelState({ state, icon, compact = false }: { state: PanelAsync
         {state.kind !== "loading" && state.detail && <span className="panel-state-detail">{state.detail}</span>}
         {state.kind === "error" && state.remediation && <span className="panel-state-remediation">{state.remediation}</span>}
         {state.kind === "error" && state.onRetry && <PanelActionButton onClick={state.onRetry}>{state.retryLabel ?? t("common.retry")}</PanelActionButton>}
+        {action}
       </div>
     </div>
   );
 }
 
-export function PanelEmptyState({ icon, label, sublabel, compact = true }: { icon?: ReactNode; label: string; sublabel?: string; compact?: boolean }) {
-  return <PanelState state={{ kind: "empty", label, detail: sublabel }} icon={icon} compact={compact} />;
+export function PanelEmptyState({ icon, label, sublabel, compact = true, action }: { icon?: ReactNode; label: string; sublabel?: string; compact?: boolean; action?: ReactNode }) {
+  return <PanelState state={{ kind: "empty", label, detail: sublabel }} icon={icon} compact={compact} action={action} />;
 }
 
 export function PanelLoadingState({ label }: { label: string }) {

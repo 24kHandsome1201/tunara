@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionsStore, createRemoteSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { errorToast } from "../lib/error-toast";
-import { CloseIcon } from "../shared";
+import { CloseIcon, PanelEmptyState } from "../shared";
 import { useT } from "@/modules/i18n";
 import {
   saveHost,
@@ -765,7 +765,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               />
             ))}
             {target.trim() && suggestions.length === 0 && !loadingConfig && (
-              <div style={{ padding: "8px 4px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.search_empty")}</div>
+              <PanelEmptyState label={t("ssh.search_empty")} compact />
             )}
           </div>
 
