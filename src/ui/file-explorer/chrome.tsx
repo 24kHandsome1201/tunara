@@ -3,7 +3,7 @@ import { CloseIcon, DownloadIcon, PanelIconButton, RefreshIcon, SearchIcon, Uplo
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { breadcrumbSegments } from "../lib/breadcrumbs";
 import { FileContentIcon, FileNameIcon } from "./icons";
-import { ArrowsDownUp, BookmarkSimple, CaretLeft, Icon } from "@/ui/icons";
+import { ArrowsDownUp, BookmarkSimple, CaretLeft, Icon, Star } from "@/ui/icons";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -303,7 +303,7 @@ export function ExplorerRemoteTools({
               className="explorer-place-secondary"
               style={isFavorite ? { color: "var(--c-accent)" } : undefined}
             >
-              ★
+              <Icon icon={Star} size={13} weight={isFavorite ? "fill" : "regular"} />
             </PanelIconButton>
           </>
         )}

@@ -7,7 +7,7 @@ import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
-import { Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
+import { DotsThree, Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
 import {
   CONNECTION_TONE_COLORS,
   groupSessionsForSidebar,
@@ -381,7 +381,7 @@ function TitlebarImpl({
           }}
           className="hover-bg"
         >
-          <span aria-hidden="true" style={{ fontSize: 14, letterSpacing: -1 }}>•••</span>
+          <Icon icon={DotsThree} size={15} weight="bold" />
         </button>
         </Tooltip>
 

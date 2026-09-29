@@ -13,7 +13,7 @@ import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
-import { Icon, Terminal } from "@/ui/icons";
+import { Icon, PushPin, Terminal } from "@/ui/icons";
 import { DestructiveConfirmNotice } from "./lib/destructive-confirm";
 import { Tooltip } from "./Tooltip";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
@@ -344,7 +344,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           {/* 行1: 标题；置顶是用户意图不是状态，视觉降到最低 */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             {session.pinned && (
-              <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-text-6)", fontSize: "var(--fs-meta)", flexShrink: 0, opacity: 0.7 }}>★</span>
+              <span title={t("sidebar.session.pinned")} aria-label={t("sidebar.session.pinned")} style={{ color: "var(--c-text-6)", flexShrink: 0, opacity: 0.7, display: "inline-flex" }}><Icon icon={PushPin} size={10} weight="fill" /></span>
             )}
             {editing ? (
               <input

@@ -12,7 +12,7 @@ import {
 } from "@/modules/ssh/ssh-write-reconcile";
 import { formatSize, reconnectPrefillFromSession } from "./types";
 import { CloseIcon, PanelActionButton, PanelState, StatusDot } from "./shared";
-import { File as FileGlyph, Icon } from "@/ui/icons";
+import { ArrowLeft, ArrowRight, File as FileGlyph, Icon } from "@/ui/icons";
 import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
@@ -864,8 +864,8 @@ function SiblingNav({ sessionId, filePath, previous, next, active }: { sessionId
   if (!previous && !next) return null;
   return (
     <div ref={navRef} style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-      <button type="button" className="ui-button" disabled={!previous} aria-label={t("preview.siblings.previous")} onClick={() => previous && openSiblingFile(sessionId, filePath, previous)}>←</button>
-      <button type="button" className="ui-button" disabled={!next} aria-label={t("preview.siblings.next")} onClick={() => next && openSiblingFile(sessionId, filePath, next)}>→</button>
+      <button type="button" className="ui-button" disabled={!previous} aria-label={t("preview.siblings.previous")} onClick={() => previous && openSiblingFile(sessionId, filePath, previous)}><Icon icon={ArrowLeft} size={12} weight="bold" /></button>
+      <button type="button" className="ui-button" disabled={!next} aria-label={t("preview.siblings.next")} onClick={() => next && openSiblingFile(sessionId, filePath, next)}><Icon icon={ArrowRight} size={12} weight="bold" /></button>
     </div>
   );
 }

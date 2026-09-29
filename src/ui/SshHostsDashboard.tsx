@@ -7,7 +7,7 @@ import { readyBindingForSession } from "@/modules/terminal/lib/connection-state"
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SearchIcon } from "./shared";
-import { HardDrives, Icon } from "@/ui/icons";
+import { ArrowLeft, HardDrives, Icon } from "@/ui/icons";
 import type { Session } from "./types";
 
 type HostFilter = "all" | "online" | "offline";
@@ -197,7 +197,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
       {selected && (
         <aside className="ssh-host-detail" aria-label={t("ssh.dashboard.details")}>
           <header className="ssh-host-detail-header">
-            <button type="button" className="ssh-host-detail-back" onClick={() => setSelectedKey(null)} aria-label={t("common.back")}>←</button>
+            <button type="button" className="ssh-host-detail-back" onClick={() => setSelectedKey(null)} aria-label={t("common.back")}><Icon icon={ArrowLeft} size={13} weight="bold" /></button>
             <span className="ssh-host-detail-icon"><ServerIcon /></span>
             <span>
               <strong>{hostProfileButtonLabel(selected.profile)}</strong>

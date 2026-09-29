@@ -6,6 +6,7 @@ import { previewActionNonce, previewBlockReason, previewClose, previewDisplayUrl
 import type { PreviewRuntimeState, PreviewRuntimeStatus, PreviewTunnelState } from "@/modules/preview/preview-window";
 import type { PreviewSource } from "@/modules/preview/preview-source";
 import { PanelEmptyState } from "./shared";
+import { ArrowLeft, ArrowRight, Icon } from "@/ui/icons";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { issueFocusReturnToken, returnTerminalFocus } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -198,8 +199,8 @@ function SourceCard({ source, session }: { source: PreviewSource; session: Sessi
         </span>
       </div>
       {isOpen && <form className="preview-toolbar" aria-label={t("inspector.preview.address_form")} onSubmit={(event) => { event.preventDefault(); addressEditingRef.current = false; void run(() => previewNavigate(effectiveSource, previewAddressForRuntime(source, effectiveSource, address)), "loading"); }} style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-        <button className="preview-control" type="button" aria-label={t("common.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(effectiveSource), "loading")}>←</button>
-        <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(effectiveSource), "loading")}>→</button>
+        <button className="preview-control" type="button" aria-label={t("common.back")} disabled={busy || !!blocked || !runtimeState.canGoBack || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoBack(effectiveSource), "loading")}><Icon icon={ArrowLeft} size={13} weight="bold" /></button>
+        <button className="preview-control" type="button" aria-label={t("inspector.preview.forward")} disabled={busy || !!blocked || !runtimeState.canGoForward || runtimeStatus !== "ready"} onClick={() => void run(() => previewGoForward(effectiveSource), "loading")}><Icon icon={ArrowRight} size={13} weight="bold" /></button>
         <input className="preview-control ui-native-control" aria-label={t("inspector.preview.address")} value={address} disabled={busy || !!blocked || runtimeStatus !== "ready"} onFocus={() => { addressEditingRef.current = true; }} onBlur={() => { addressEditingRef.current = false; }} onChange={(event) => setAddress(event.target.value)} style={{ minWidth: 0, flex: "1 1 180px", fontFamily: "var(--font-mono)" }} />
         <button className="preview-control" type="submit" disabled={busy || !!blocked || runtimeStatus !== "ready"}>{t("inspector.preview.go")}</button>
       </form>}

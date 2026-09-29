@@ -76,7 +76,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
               <Icon icon={HardDrives} size={13} />
             </span>
             <span>{t("sidebar.hosts.manage")}</span>
-            <span aria-hidden="true" style={{ marginLeft: "auto" }}>›</span>
+            <Icon icon={CaretRight} size={11} weight="bold" style={{ marginLeft: "auto" }} />
           </button>
           {loading && profiles.length === 0 && <span className="sidebar-hosts-state" role="status">{t("sidebar.hosts.loading")}</span>}
           {!loading && profiles.length === 0 && <span className="sidebar-hosts-state">{t("sidebar.hosts.empty")}</span>}
