@@ -193,7 +193,8 @@ export function PaletteEmpty({ children }: { children: ReactNode }) {
 }
 
 interface PaletteFooterHint {
-  /** Canonical shortcut definition, e.g. "Escape" (rendered via formatShortcut). */
+  /** Canonical shortcut definition(s), e.g. "Escape"; space-separate multiple keys
+   * that share one action ("ArrowUp ArrowDown" renders two `<kbd>` chips). */
   keys: string;
   label: string;
 }
@@ -214,7 +215,9 @@ export function PaletteFooter({ hints }: { hints: PaletteFooterHint[] }) {
     >
       {hints.map((hint) => (
         <span key={hint.keys + hint.label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <kbd className="ui-kbd">{formatShortcut(hint.keys)}</kbd>
+          {hint.keys.split(/\s+/).map((keyDef) => (
+            <kbd key={keyDef} className="ui-kbd">{formatShortcut(keyDef)}</kbd>
+          ))}
           {hint.label}
         </span>
       ))}
@@ -226,7 +229,7 @@ export function PaletteFooter({ hints }: { hints: PaletteFooterHint[] }) {
 export function usePaletteFooterHints(): PaletteFooterHint[] {
   const t = useT();
   return [
-    { keys: "ArrowUp+ArrowDown", label: t("palette.hint.navigate") },
+    { keys: "ArrowUp ArrowDown", label: t("palette.hint.navigate") },
     { keys: "Enter", label: t("palette.hint.select") },
     { keys: "Escape", label: t("palette.hint.close") },
   ];
