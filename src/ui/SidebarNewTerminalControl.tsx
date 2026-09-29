@@ -42,7 +42,7 @@ export function SidebarNewTerminalControl({
             className="hover-bg"
             style={{
               flex: 1,
-              height: 30,
+              height: "var(--h-btn-md)",
               padding: "0 9px",
               border: "1px solid var(--c-control-border)",
               borderRadius: "var(--r-btn) 0 0 var(--r-btn)",
@@ -69,7 +69,7 @@ export function SidebarNewTerminalControl({
             aria-haspopup="menu"
             aria-expanded={Boolean(menu)}
             className="hover-bg"
-            style={{ width: 30, height: 30, border: "1px solid var(--c-control-border)", borderLeft: 0, borderRadius: "0 var(--r-btn) var(--r-btn) 0", background: "var(--c-bg-white)", color: "var(--c-text-2)", cursor: "pointer", padding: 0 }}
+            style={{ width: "var(--h-btn-md)", height: "var(--h-btn-md)", border: "1px solid var(--c-control-border)", borderLeft: 0, borderRadius: "0 var(--r-btn) var(--r-btn) 0", background: "var(--c-bg-white)", color: "var(--c-text-2)", cursor: "pointer", padding: 0 }}
           >
             <Icon icon={CaretDown} size={10} weight="bold" />
           </button>

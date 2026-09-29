@@ -27,8 +27,8 @@ interface ReaderPaneProps {
 }
 
 const HEADER_BUTTON: CSSProperties = {
-  width: 26,
-  height: 26,
+  width: "var(--h-btn-sm)",
+  height: "var(--h-btn-sm)",
   borderRadius: "var(--r-btn)",
   border: "none",
   background: "transparent",
@@ -225,7 +225,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           style={{
             minWidth: 0,
             flex: 1,
-            height: 26,
+            height: "var(--h-btn-sm)",
             padding: "0 8px",
             border: "none",
             background: "transparent",

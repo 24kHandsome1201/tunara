@@ -19,7 +19,8 @@ interface WorkspaceEmptyStateProps {
 }
 
 const launchButtonStyle: CSSProperties = {
-  padding: "8px 16px",
+  minHeight: "var(--h-btn-lg)",
+  padding: "0 16px",
   borderRadius: "var(--r-btn)",
   border: "1px solid var(--c-control-border)",
   background: "var(--c-bg-white)",

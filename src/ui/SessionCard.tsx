@@ -319,8 +319,8 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           className="session-card-close hover-close"
           data-confirm={confirmClose ? "true" : undefined}
           style={{
-            width: 24,
-            height: 24,
+            width: "var(--h-btn-sm)",
+            height: "var(--h-btn-sm)",
             borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
