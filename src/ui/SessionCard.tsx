@@ -14,7 +14,7 @@ import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { Icon, Terminal } from "@/ui/icons";
-import { useDestructiveConfirmCountdown } from "./lib/destructive-confirm";
+import { DestructiveConfirmNotice } from "./lib/destructive-confirm";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
@@ -176,7 +176,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
   const detailTitle = [subtitle, session.lastCommand, session.shellTitle, multiplexerHint]
     .filter(Boolean)
     .join(" · ");
-  const closeCountdown = useDestructiveConfirmCountdown(confirmClose ? confirmCloseAt : 0);
+
   const renamingSessionId = useSessionsStore((s) => s.renamingSessionId);
   const isRenaming = renamingSessionId === session.id;
   const [editing, setEditing] = useState(false);
@@ -483,57 +483,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       </div>
 
       {confirmClose && (
-        <div style={{ marginTop: 6 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              fontSize: "var(--fs-meta)",
-              color: "var(--c-error)",
-              lineHeight: 1.3,
-            }}
-          >
-            <span style={{ minWidth: 0 }}>{t("session.close.running_hint")}</span>
-            {closeCountdown && (
-              <span
-                aria-hidden="true"
-                style={{
-                  flexShrink: 0,
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 600,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {closeCountdown.remainingSeconds}s
-              </span>
-            )}
-          </div>
-          {closeCountdown && (
-            <div
-              aria-hidden="true"
-              style={{
-                marginTop: 4,
-                height: 2,
-                borderRadius: "var(--r-pill)",
-                overflow: "hidden",
-                background: "color-mix(in srgb, var(--c-error) 12%, transparent)",
-              }}
-            >
-              <span
-                style={{
-                  display: "block",
-                  width: `${closeCountdown.progress * 100}%`,
-                  height: "100%",
-                  borderRadius: "var(--r-pill)",
-                  background: "var(--c-error)",
-                  transition: "width var(--dur-fast) var(--ease-out)",
-                }}
-              />
-            </div>
-          )}
-        </div>
+        <DestructiveConfirmNotice confirmedAt={confirmCloseAt} label={t("session.close.running_hint")} />
       )}
 
       {session.terminalProgress && <TerminalProgressBar progress={session.terminalProgress} />}

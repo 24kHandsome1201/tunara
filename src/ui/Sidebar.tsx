@@ -325,7 +325,7 @@ export function Sidebar({
             tabbableSessionId={tabbableSessionId}
             canReorder={canReorder}
             drag={drag}
-            confirmClose={getNumberRecordValue(dirCloseConfirmations, group.key) > 0}
+            confirmCloseAt={getNumberRecordValue(dirCloseConfirmations, group.key)}
             closeConfirmations={closeConfirmations}
             externalEditor={externalEditor}
             t={t}

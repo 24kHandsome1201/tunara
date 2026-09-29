@@ -4,6 +4,7 @@ import { CaretRight, FolderSimple, HardDrives, Icon, Plus } from "@/ui/icons";
 import { useT } from "@/modules/i18n";
 import type { SessionCue } from "@/modules/session/session-attention";
 import { SessionCueDot } from "./SessionCueDot";
+import { DestructiveConfirmNotice } from "./lib/destructive-confirm";
 
 function FolderIcon() {
   return <Icon icon={FolderSimple} size={13} color="var(--c-text-6)" />;
@@ -29,7 +30,7 @@ export function DirGroupHeader({
   onToggleCollapse,
   onNewTerminal,
   onCloseAll,
-  confirmClose,
+  confirmCloseAt = 0,
   onContextMenu,
   onKeyDown,
 }: {
@@ -54,11 +55,13 @@ export function DirGroupHeader({
   onToggleCollapse?: () => void;
   onNewTerminal?: () => void;
   onCloseAll?: () => void;
-  confirmClose?: boolean;
+  /** Timestamp (ms) when the close-all confirm was armed; 0 = idle. */
+  confirmCloseAt?: number;
   onContextMenu?: (e: MouseEvent) => void;
   onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const t = useT();
+  const confirmClose = confirmCloseAt > 0;
   const groupName = kind === "ssh" ? label : workspace?.repositoryName || label;
   const newTerminalLabel = kind === "ssh" ? t("sidebar.session.duplicate_host") : t("common.new_terminal_here");
   const closeAllTitle = confirmClose
@@ -143,11 +146,11 @@ export function DirGroupHeader({
       tabIndex={onToggleCollapse ? undefined : 0}
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 6,
+        flexDirection: "column",
         padding: "5px 9px",
       }}
     >
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {/* 折叠切换用真实 button（容器不再 role=button 嵌套按钮），
           aria-expanded 播报折叠状态 */}
       {onToggleCollapse ? (
@@ -227,6 +230,10 @@ export function DirGroupHeader({
         >
           <CloseIcon size={12} strokeWidth={2.5} />
         </button>
+      )}
+      </div>
+      {confirmClose && (
+        <DestructiveConfirmNotice confirmedAt={confirmCloseAt} label={t("session.close.all_running_hint")} />
       )}
     </div>
   );
