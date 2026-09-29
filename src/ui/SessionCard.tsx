@@ -15,6 +15,7 @@ import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { Icon, Terminal } from "@/ui/icons";
 import { DestructiveConfirmNotice } from "./lib/destructive-confirm";
+import { Tooltip } from "./Tooltip";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
@@ -299,11 +300,14 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       )}
 
       {onClose && (
+        <Tooltip
+          label={confirmClose ? t("destructive.confirm_again.close") : closeLabel}
+          style={{ position: "absolute", top: 6, right: 6, zIndex: 2 }}
+        >
         <button
           type="button"
           tabIndex={0}
           aria-label={confirmClose ? t("destructive.confirm_again.close") : closeLabel}
-          title={confirmClose ? t("destructive.confirm_again.close") : closeLabel}
           onClick={handleClose}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -315,9 +319,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
           className="session-card-close hover-close"
           data-confirm={confirmClose ? "true" : undefined}
           style={{
-            position: "absolute",
-            top: 6,
-            right: 6,
             width: 24,
             height: 24,
             borderRadius: "var(--r-badge-sm)",
@@ -328,12 +329,12 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
             justifyContent: "center",
             color: confirmClose ? "var(--c-error)" : "var(--c-text-5)",
             cursor: "pointer",
-            zIndex: 2,
             padding: 0,
           }}
         >
           <CloseIcon size={11} strokeWidth={2.5} />
         </button>
+        </Tooltip>
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative", zIndex: 1, pointerEvents: editing ? "auto" : "none" }}>

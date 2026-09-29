@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ComponentPropsWithRef, CSSProperties, ReactNode } from "react";
 import { useT } from "@/modules/i18n";
 import { PanelEmptyGlyph, PanelErrorGlyph } from "@/ui/icons";
+import { Tooltip } from "./Tooltip";
 
 export {
   CloseIcon,
@@ -93,16 +94,18 @@ export function PanelActionButton({
 export function PanelIconButton({
   className,
   type = "button",
+  title,
   ...props
 }: ComponentPropsWithRef<"button">) {
-  return (
+  const button = (
     <button
       {...props}
       type={type}
-      aria-label={props["aria-label"] ?? (typeof props.title === "string" ? props.title : undefined)}
+      aria-label={props["aria-label"] ?? (typeof title === "string" ? title : undefined)}
       className={["panel-icon-button", "hover-bg", className].filter(Boolean).join(" ")}
     />
   );
+  return typeof title === "string" && title ? <Tooltip label={title}>{button}</Tooltip> : button;
 }
 
 export function PanelState({ state, icon, compact = false, action }: { state: PanelAsyncState; icon?: ReactNode; compact?: boolean; action?: ReactNode }) {
