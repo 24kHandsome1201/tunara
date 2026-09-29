@@ -1,4 +1,5 @@
 import { cloneElement, isValidElement, useId, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { formatShortcut } from "./formatShortcut";
 import { motionDurationMs } from "./lib/motion";
 
@@ -72,7 +73,7 @@ export function Tooltip({
       }}
     >
       {trigger}
-      {pos !== null && (
+      {pos !== null && createPortal(
         <span
           role="tooltip"
           id={tipId}
@@ -101,7 +102,8 @@ export function Tooltip({
         >
           <span>{label}</span>
           {shortcut ? <kbd className="ui-kbd">{formatShortcut(shortcut)}</kbd> : null}
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );
