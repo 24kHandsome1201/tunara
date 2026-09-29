@@ -1,5 +1,12 @@
-import { useMemo, useRef, useState } from "react";
-import { useFocusTrap } from "@/ui/overlays/useFocusTrap";
+import { useMemo, useState } from "react";
+import {
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+  MODAL_COLUMN_LAYOUT,
+} from "@/ui/overlays/Modal";
 import { performRemoteMutation, type MutationActionResult } from "./actions";
 import type { MutationRequestV1 } from "./bridge";
 import { useT } from "@/modules/i18n";
@@ -36,11 +43,9 @@ export function RemoteFsMutationDialog({
   onComplete,
 }: RemoteFsMutationDialogProps) {
   const t = useT();
-  const dialogRef = useRef<HTMLDivElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<MutationActionResult | null>(null);
   const [error, setError] = useState("");
-  useFocusTrap(dialogRef);
 
   const paths = useMemo(() => operationPaths(request), [request]);
   const sourceKind = request.precondition.source.state === "present"
@@ -65,66 +70,58 @@ export function RemoteFsMutationDialog({
   };
 
   return (
-    <>
-      <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="remote-fs-mutation-title"
-        aria-describedby="remote-fs-mutation-safety"
-        tabIndex={-1}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && !submitting) onClose();
-        }}
-        style={{
-          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-          width: 520, maxWidth: "calc(100vw - 32px)", background: "var(--c-bg-white)",
-          borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", zIndex: "var(--z-overlay)",
-          color: "var(--c-text-primary)", overflow: "hidden",
-        }}
-      >
-        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
-          <strong id="remote-fs-mutation-title">{operationLabel(request, t)}</strong>
-        </div>
-        <div style={{ padding: 18, display: "grid", gap: 12 }}>
-          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "72px 1fr", gap: "7px 10px" }}>
-            <dt>{t("common.host")}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{host}</dd>
-            <dt>{t("remote_fs.mutation.kind")}</dt><dd style={{ margin: 0 }}>{sourceKind}</dd>
-            {paths.map((path, index) => (
-              <div key={path} style={{ display: "contents" }}>
-                <dt>{index === 0 ? t("remote_fs.mutation.path") : t("remote_fs.mutation.to")}</dt>
-                <dd style={{ margin: 0, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{path}</dd>
-              </div>
-            ))}
-          </dl>
-          <p id="remote-fs-mutation-safety" style={{ margin: 0, color: "var(--c-text-4)", lineHeight: 1.5 }}>
-            {t("remote_fs.mutation.safety")}
-          </p>
-          {outcome && (
-            <div role="status" style={{ padding: 10, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)" }}>
-              <strong>{outcome.result.status}</strong>: {outcome.result.message}
-              {outcome.reconciled && t("remote_fs.mutation.reconciled")}
+    <Modal
+      labelledBy="remote-fs-mutation-title"
+      describedBy="remote-fs-mutation-safety"
+      onRequestClose={() => { if (!submitting) onClose(); }}
+      closeOnBackdrop={false}
+      style={{
+        ...MODAL_COLUMN_LAYOUT,
+        width: 520,
+        maxWidth: "calc(100vw - 32px)",
+        color: "var(--c-text-primary)",
+      }}
+    >
+      <ModalHeader>
+        <ModalTitle id="remote-fs-mutation-title">{operationLabel(request, t)}</ModalTitle>
+      </ModalHeader>
+      <ModalBody>
+        <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "72px 1fr", gap: "7px 10px" }}>
+          <dt>{t("common.host")}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}>{host}</dd>
+          <dt>{t("remote_fs.mutation.kind")}</dt><dd style={{ margin: 0 }}>{sourceKind}</dd>
+          {paths.map((path, index) => (
+            <div key={path} style={{ display: "contents" }}>
+              <dt>{index === 0 ? t("remote_fs.mutation.path") : t("remote_fs.mutation.to")}</dt>
+              <dd style={{ margin: 0, fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{path}</dd>
             </div>
-          )}
-          {error && <div role="alert" style={{ color: "var(--c-error)" }}>{error}</div>}
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)" }}>
-          <button type="button" className="ui-button" onClick={onClose} disabled={submitting} autoFocus>
-            {outcome ? t("common.close") : t("common.cancel")}
+          ))}
+        </dl>
+        <p id="remote-fs-mutation-safety" style={{ margin: 0, color: "var(--c-text-4)", lineHeight: 1.5 }}>
+          {t("remote_fs.mutation.safety")}
+        </p>
+        {outcome && (
+          <div role="status" style={{ padding: 10, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)" }}>
+            <strong>{outcome.result.status}</strong>: {outcome.result.message}
+            {outcome.reconciled && t("remote_fs.mutation.reconciled")}
+          </div>
+        )}
+        {error && <div role="alert" style={{ color: "var(--c-error)" }}>{error}</div>}
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="ui-button" onClick={onClose} disabled={submitting}>
+          {outcome ? t("common.close") : t("common.cancel")}
+        </button>
+        {!outcome && (
+          <button
+            type="button"
+            className={`ui-button ${destructive ? "ui-button--danger" : "ui-button--primary"}`}
+            onClick={() => { void submit(); }}
+            disabled={submitting}
+          >
+            {submitting ? t("remote_fs.mutation.checking") : operationLabel(request, t)}
           </button>
-          {!outcome && (
-            <button
-              type="button"
-              className={`ui-button ${destructive ? "ui-button--danger" : "ui-button--primary"}`}
-              onClick={() => { void submit(); }}
-              disabled={submitting}
-            >
-              {submitting ? t("remote_fs.mutation.checking") : operationLabel(request, t)}
-            </button>
-          )}
-        </div>
-      </div>
-    </>
+        )}
+      </ModalFooter>
+    </Modal>
   );
 }

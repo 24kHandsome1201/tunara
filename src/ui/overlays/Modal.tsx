@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   type CSSProperties,
+  type KeyboardEventHandler,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -147,6 +148,7 @@ interface ModalProps {
   closeOnBackdrop?: boolean;
   backdropZIndex?: CSSProperties["zIndex"];
   zIndex?: CSSProperties["zIndex"];
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   className?: string;
   style?: CSSProperties;
 }
@@ -165,6 +167,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
   closeOnBackdrop = true,
   backdropZIndex = "var(--z-overlay)",
   zIndex = "var(--z-overlay)",
+  onKeyDown,
   className,
   style,
 }, forwardedRef) {
@@ -197,6 +200,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         tabIndex={-1}
+        onKeyDown={onKeyDown}
         className={["overlay-sheet", className].filter(Boolean).join(" ")}
         style={{
           position: "fixed",
@@ -221,3 +225,80 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(function Modal({
     </>
   );
 });
+
+/**
+ * Sheet style for the pinned header/footer layout: the sheet stops scrolling
+ * itself and `ModalBody` owns the scroll area instead.
+ */
+export const MODAL_COLUMN_LAYOUT: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+};
+
+interface ModalSectionProps {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}
+
+export function ModalHeader({ children, className, style }: ModalSectionProps) {
+  return (
+    <div
+      className={className}
+      style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)", ...style }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ModalTitle({ id, children, style }: { id?: string; children: ReactNode; style?: CSSProperties }) {
+  return (
+    <span
+      id={id}
+      style={{ display: "block", fontSize: "var(--fs-title)", fontWeight: 600, color: "var(--c-text-primary)", ...style }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function ModalBody({ children, className, style }: ModalSectionProps) {
+  return (
+    <div
+      className={className}
+      style={{
+        padding: 18,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        overflowY: "auto",
+        minHeight: 0,
+        flex: 1,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ModalFooter({ children, className, style }: ModalSectionProps) {
+  return (
+    <div
+      className={className}
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        gap: 8,
+        padding: "12px 18px",
+        borderTop: "1px solid var(--c-border-2)",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
