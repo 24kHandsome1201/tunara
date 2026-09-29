@@ -255,6 +255,7 @@
 
   /* ── 命令面板 ── */
   --w-palette: 480px;
+  --w-palette-wide: 720px;
   --palette-top: 15%;
 
   /* Solid surface alias retained for existing shell-tint integrations. */

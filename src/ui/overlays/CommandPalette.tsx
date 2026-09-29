@@ -41,7 +41,15 @@ import { formatShortcut } from "../formatShortcut";
 import { filterCommandPaletteItems, parseCommandPaletteQuery, rankCommandPaletteItems, type CommandPaletteScope } from "./command-palette-filter";
 import { collectRecentTerminalCommands, collectRecentTerminalDirs } from "./command-palette-recents";
 import { useT } from "@/modules/i18n";
-import { useFocusTrap } from "./useFocusTrap";
+import {
+  PaletteEmpty,
+  PaletteFooter,
+  PaletteHeader,
+  PaletteInput,
+  PaletteList,
+  PaletteShell,
+  usePaletteFooterHints,
+} from "./PaletteShell";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import { canSplitLayout, sessionIdFromPaneId, splitFocusTarget, type SplitFocusDirection } from "@/modules/session/split-layout";
 import { copyActiveTerminal, openTerminalMenu, safePasteActiveTerminal } from "@/modules/terminal/lib/terminal-action-registry";
@@ -88,10 +96,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const composingRef = useRef(false);
   const executingRef = useRef(false);
-  useFocusTrap(dialogRef);
+  const footerHints = usePaletteFooterHints();
 
   const sessions = useSessionsStore((s) => s.sessions);
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
@@ -787,83 +794,31 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <>
-      <div
-        aria-hidden="true"
-        onClick={onClose}
-        className="overlay-backdrop"
-        style={{
-          position: "fixed", inset: 0, zIndex: "var(--z-palette)",
-          background: "var(--backdrop-color)",
-        }}
-      />
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("palette.placeholder")}
-        onKeyDown={handleKeyDown}
-        style={{
-          position: "fixed",
-          top: "var(--palette-top)",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "var(--w-palette)",
-          maxWidth: "90vw",
-          maxHeight: "60vh",
-          background: "var(--c-bg-white)",
-          border: "1px solid var(--c-control-border)",
-          borderRadius: "var(--r-overlay)",
-          boxShadow: "var(--shadow-overlay)",
-          zIndex: "var(--z-palette)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-        className="overlay-palette"
-      >
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--c-border-1)", display: "flex", alignItems: "center", gap: 8 }}>
-          <SearchIcon size={14} />
-          <input
-            className="ui-control"
-            ref={inputRef}
-            type="text"
-            role="combobox"
-            aria-expanded="true"
-            aria-controls="palette-listbox"
-            aria-activedescendant={ranked.length > 0 ? `palette-option-${selectedIndex}` : undefined}
-            aria-autocomplete="list"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onCompositionStart={() => { composingRef.current = true; }}
-            onCompositionEnd={(e) => {
-              composingRef.current = false;
-              // Chromium 在 compositionend 之后才同步最终值到 input.value，
-              // 这里手动同步一次确保过滤命中合成完成后的字符串。
-              setQuery((e.target as HTMLInputElement).value);
-            }}
-            aria-label={t("palette.placeholder")}
-            placeholder={t("palette.placeholder")}
-            style={{
-              flex: 1,
-              border: "none",
-              background: "transparent",
-              fontSize: "var(--fs-body)",
-              color: "var(--c-text-primary)",
-              fontFamily: "var(--font-ui)",
-            }}
-          />
-        </div>
+    <PaletteShell
+      ariaLabel={t("palette.placeholder")}
+      onClose={onClose}
+      onKeyDown={handleKeyDown}
+    >
+      <PaletteHeader>
+        <SearchIcon size={14} />
+        <PaletteInput
+          inputRef={inputRef}
+          composingRef={composingRef}
+          value={query}
+          onChange={setQuery}
+          ariaLabel={t("palette.placeholder")}
+          ariaControls="palette-listbox"
+          ariaActiveDescendant={ranked.length > 0 ? `palette-option-${selectedIndex}` : undefined}
+          placeholder={t("palette.placeholder")}
+        />
+      </PaletteHeader>
 
-        <div
-          ref={listRef}
-          role="listbox"
-          id="palette-listbox"
-          aria-label={t("palette.placeholder")}
-          style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}
-          className="no-scrollbar scroll-fade-y"
-        >
-          <span
+      <PaletteList
+        id="palette-listbox"
+        ariaLabel={t("palette.placeholder")}
+        listRef={listRef}
+      >
+        <span
             aria-live="polite"
             aria-atomic="true"
             style={{
@@ -881,9 +836,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             {ranked.length === 0 ? t("palette.empty") : t("palette.result_count", { count: ranked.length })}
           </span>
           {ranked.length === 0 && (
-            <div style={{ padding: "20px 16px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-              {t("palette.empty")}
-            </div>
+            <PaletteEmpty>{t("palette.empty")}</PaletteEmpty>
           )}
           {[...sections.entries()].map(([section, cmds], sectionIdx) => (
             <div key={section}>
@@ -960,8 +913,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
               })}
             </div>
           ))}
-        </div>
-      </div>
-    </>
+      </PaletteList>
+      <PaletteFooter hints={footerHints} />
+    </PaletteShell>
   );
 }
