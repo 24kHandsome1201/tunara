@@ -1699,5 +1699,5 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
 
 test("terminal open completion does not take focus from a text field elsewhere", () => {
   const terminal = read("src/ui/TerminalView.tsx");
-  assert.match(terminal, /if \\(activeRef\\.current && !isTypingOutsidePane\\(term\\.element\\)\\) \\{\\s*const focusToken = issueFocusReturnToken/);
+  assert.match(terminal, /if \(activeRef\.current && !isTypingOutsidePane\(term\.element\)\) \{\s*const focusToken = issueFocusReturnToken/);
 });
