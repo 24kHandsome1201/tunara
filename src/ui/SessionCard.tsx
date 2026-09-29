@@ -14,7 +14,7 @@ import { useT } from "@/modules/i18n";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { Icon, PushPin, Terminal } from "@/ui/icons";
-import { DestructiveConfirmNotice } from "./lib/destructive-confirm";
+import { DestructiveConfirmNotice } from "./shared";
 import { Tooltip } from "./Tooltip";
 import { useContextMenuTrigger } from "./overlays/context-menu-trigger";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";

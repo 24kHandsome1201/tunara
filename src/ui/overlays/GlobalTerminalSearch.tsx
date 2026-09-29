@@ -268,6 +268,7 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
           ariaLabel={t("terminal_search.title")}
           listRef={listRef}
           hasItems={flat.length > 0}
+          className="no-scrollbar scroll-fade-y"
         >
           {state.groups.map((group) => {
             const label = sessionLabel(group.sessionId);

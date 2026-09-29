@@ -33,7 +33,8 @@ import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
 import { diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
 import type { RemoteInfo } from "../types";
 import { useFocusTrap } from "./useFocusTrap";
-import { DestructiveConfirmNotice, useDestructiveConfirm } from "../lib/destructive-confirm";
+import { useDestructiveConfirm } from "../lib/destructive-confirm";
+import { DestructiveConfirmNotice } from "../shared";
 
 interface SshConnectProps {
   onClose: () => void;

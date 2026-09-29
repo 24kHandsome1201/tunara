@@ -150,10 +150,18 @@ interface PaletteListProps {
   ariaLabel: string;
   listRef: RefObject<HTMLDivElement | null>;
   hasItems?: boolean;
+  className?: string;
   children: ReactNode;
 }
 
-export function PaletteList({ id, ariaLabel, listRef, hasItems = true, children }: PaletteListProps) {
+export function PaletteList({
+  id,
+  ariaLabel,
+  listRef,
+  hasItems = true,
+  className = "no-scrollbar scroll-fade-y",
+  children,
+}: PaletteListProps) {
   return (
     <div
       ref={listRef}
@@ -161,7 +169,7 @@ export function PaletteList({ id, ariaLabel, listRef, hasItems = true, children 
       id={id}
       aria-label={ariaLabel}
       style={{ flex: 1, overflowY: "auto", padding: hasItems ? "6px 0" : 0 }}
-      className="no-scrollbar scroll-fade-y"
+      className={className}
     >
       {children}
     </div>

@@ -817,6 +817,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         id="palette-listbox"
         ariaLabel={t("palette.placeholder")}
         listRef={listRef}
+        className="no-scrollbar scroll-fade-y"
       >
         <span
             aria-live="polite"

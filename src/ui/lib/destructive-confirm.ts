@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+// DestructiveConfirmNotice lives in ../shared.tsx (JSX); this module keeps the
+// pure helpers + hooks so node tests can import it without JSX compilation.
 
 /** Shared window for "click again to confirm" destructive actions. */
 export const DESTRUCTIVE_CONFIRM_WINDOW_MS = 3_000;
@@ -98,71 +100,3 @@ export function useDestructiveConfirm() {
   return { isPending, armedAt, tryConfirm };
 }
 
-/**
- * Shared pending state for "click again to confirm" destructive actions:
- * danger-colored label plus the remaining seconds and a progress bar that
- * drain over the confirm window. The label is announced through aria-live;
- * the ticking seconds and the bar stay aria-hidden so they don't spam.
- */
-export function DestructiveConfirmNotice({
-  confirmedAt,
-  label,
-}: {
-  confirmedAt: number;
-  label: string;
-}) {
-  const countdown = useDestructiveConfirmCountdown(confirmedAt);
-  return (
-    <div aria-live="polite" style={{ marginTop: 6 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          fontSize: "var(--fs-meta)",
-          color: "var(--c-error)",
-          lineHeight: 1.3,
-        }}
-      >
-        <span style={{ minWidth: 0 }}>{label}</span>
-        {countdown && (
-          <span
-            aria-hidden="true"
-            style={{
-              flexShrink: 0,
-              fontFamily: "var(--font-mono)",
-              fontWeight: 600,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {countdown.remainingSeconds}s
-          </span>
-        )}
-      </div>
-      {countdown && (
-        <div
-          aria-hidden="true"
-          style={{
-            marginTop: 4,
-            height: 2,
-            borderRadius: "var(--r-pill)",
-            overflow: "hidden",
-            background: "color-mix(in srgb, var(--c-error) 12%, transparent)",
-          }}
-        >
-          <span
-            style={{
-              display: "block",
-              width: `${countdown.progress * 100}%`,
-              height: "100%",
-              borderRadius: "var(--r-pill)",
-              background: "var(--c-error)",
-              transition: "width var(--dur-fast) var(--ease-out)",
-            }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}

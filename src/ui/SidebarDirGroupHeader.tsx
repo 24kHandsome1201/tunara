@@ -4,7 +4,7 @@ import { CaretRight, FolderSimple, HardDrives, Icon, Plus } from "@/ui/icons";
 import { useT } from "@/modules/i18n";
 import type { SessionCue } from "@/modules/session/session-attention";
 import { SessionCueDot } from "./SessionCueDot";
-import { DestructiveConfirmNotice } from "./lib/destructive-confirm";
+import { DestructiveConfirmNotice } from "./shared";
 import { Tooltip } from "./Tooltip";
 
 function FolderIcon() {
