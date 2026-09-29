@@ -5,6 +5,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { Icon, SearchIcon, Terminal, TerminalWindow } from "@/ui/icons";
 import { useT } from "@/modules/i18n";
 import {
+  PaletteEmpty,
   PaletteFooter,
   PaletteHeader,
   PaletteInput,
@@ -201,6 +202,10 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
             ? t("terminal_search.summary_capped", { count: state.total, sessions: state.groups.length, max: TERMINAL_SEARCH_MAX_RESULTS })
             : t("terminal_search.summary", { count: state.total, sessions: state.groups.length });
 
+  // Empty result sets get the shared PaletteEmpty row (same as CommandPalette)
+  // instead of the compact status line used for hint/searching/summary text.
+  const showPaletteEmpty = Boolean(query) && !state.error && state.done && state.total === 0;
+
   let flatIndex = 0;
 
   return (
@@ -255,13 +260,13 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
           aria-live="polite"
           aria-atomic="true"
           style={{
-            padding: "6px 16px",
+            padding: showPaletteEmpty ? 0 : "6px 16px",
             fontSize: "var(--fs-meta)",
             color: state.error ? "var(--c-error)" : "var(--c-text-5)",
             borderBottom: flat.length > 0 ? "1px solid var(--c-border-1)" : undefined,
           }}
         >
-          {statusText}
+          {showPaletteEmpty ? <PaletteEmpty>{statusText}</PaletteEmpty> : statusText}
         </div>
         <PaletteList
           id="terminal-search-listbox"

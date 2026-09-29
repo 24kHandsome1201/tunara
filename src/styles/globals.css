@@ -299,7 +299,10 @@ select.ui-control {
 .settings-key-hint {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 20px;
   min-height: 22px;
+  padding: 0 5px;
   border: 1px solid var(--c-control-border);
   border-radius: var(--r-badge-sm);
   background: var(--c-bg-2);
