@@ -102,7 +102,6 @@ export function TerminalSearchBar({
         style={{
           border: "none",
           background: "transparent",
-          outline: "none",
           fontSize: "var(--fs-body)",
           lineHeight: "20px",
           color: "var(--c-text-primary)",
@@ -178,7 +177,7 @@ export function TerminalSearchBar({
       <button type="button" onClick={onNext} title={`${t("term.search.next")} ${nextShortcut}`} aria-label={`${t("term.search.next")} ${nextShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE} disabled={!hasResults}>
         <Icon icon={CaretDown} size={12} weight="bold" />
       </button>
-      <button type="button" onClick={onClose} title={`${t("term.search.close")} ${closeShortcut}`} aria-label={`${t("term.search.close")} ${closeShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
+      <button type="button" onClick={onClose} title={`${t("common.close")} ${closeShortcut}`} aria-label={`${t("common.close")} ${closeShortcut}`} className="hover-bg" style={SEARCH_BUTTON_STYLE}>
         <CloseIcon size={12} strokeWidth={2.2} />
       </button>
     </div>

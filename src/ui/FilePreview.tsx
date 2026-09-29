@@ -153,8 +153,8 @@ function HighlightedText({ text, query, cursor }: { text: string; query: string;
   return parts.length > 0 ? parts : text;
 }
 
-function MarkdownPreview({ content, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {  const t = useT();
-  const document = useMemo(() => parseMarkdownDocument(content), [content]);
+function MarkdownPreview({ content, mdx = false, fill = false, findQuery = "", activeFindIndex = -1, initialScrollRatio = 0, onMatchCountChange, onScrollRatioChange }: { content: string; mdx?: boolean; fill?: boolean; findQuery?: string; activeFindIndex?: number; initialScrollRatio?: number; onMatchCountChange?: (count: number) => void; onScrollRatioChange?: (ratio: number) => void }) {  const t = useT();
+  const document = useMemo(() => parseMarkdownDocument(content, { mdx }), [content, mdx]);
   const previewRef = useRef<HTMLDivElement>(null);
   const matchCursor: MarkdownFindCursor = { current: 0, active: activeFindIndex };
   useLayoutEffect(() => {
@@ -654,7 +654,7 @@ function LargeFileHeadControls({
         </select>
       </label>
       {loading
-        ? <button className="ui-button" onClick={onCancel}>{t("preview.head.cancel")}</button>
+        ? <button className="ui-button" onClick={onCancel}>{t("common.cancel")}</button>
         : <button className="ui-button ui-button--primary" onClick={onView}>{window === "tail" ? t("preview.head.view_end") : t("preview.head.view")}</button>}
       {window === "tail" ? (
         <label className="large-file-line-limit" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -1375,7 +1375,7 @@ function EditorSurface({
           ) : (
             <div className="file-editor-mode" role="tablist" aria-label={t("preview.editor.mode")}>
               <button ref={editTabRef} id={`${viewId}-edit-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "edit"} tabIndex={mode === "edit" ? 0 : -1} data-active={mode === "edit"} onKeyDown={handleModeTabKey} onClick={() => switchMode("edit")}>{t("preview.editor.edit")}</button>
-              {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("preview.editor.preview")}</button>}
+              {previewable && <button ref={previewTabRef} id={`${viewId}-preview-tab`} role="tab" aria-controls={`${viewId}-panel`} aria-selected={mode === "preview"} tabIndex={mode === "preview" ? 0 : -1} data-active={mode === "preview"} onKeyDown={handleModeTabKey} onClick={() => switchMode("preview")}>{t("common.preview")}</button>}
             </div>
           )}
           <SiblingNav sessionId={sessionId ?? undefined} filePath={filePath} previous={siblings.previous} next={siblings.next} active={active} />
@@ -1458,7 +1458,7 @@ function EditorSurface({
         {mode === "preview" && isNotebook ? (
           <NotebookPreview content={content} />
         ) : mode === "preview" && isMarkdown ? (
-          <MarkdownPreview content={content} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
+          <MarkdownPreview content={content} mdx={/\.mdx$/i.test(fileName)} fill findQuery={debouncedFindQuery} activeFindIndex={findIndex} initialScrollRatio={previewScrollRatioRef.current} onMatchCountChange={setPreviewMatchCount} onScrollRatioChange={(ratio) => { previewScrollRatioRef.current = ratio; }} />
         ) : mode === "preview" && tabularPreview ? (
           <TabularTable table={tabularPreview} />
         ) : mode === "preview" ? (
@@ -1501,7 +1501,7 @@ function EditorSurface({
 
       <div className="file-editor-footer">
         <span className="file-editor-status" data-state={saveState}>{statusLabel}</span>
-        <span>{t("preview.editor.lines", { count: lines.length })}</span>
+        <span>{t("common.lines", { count: lines.length })}</span>
         <span>{formatSize(byteLength)}</span>
         <div className="file-editor-footer-actions">
           {isRemote ? (
@@ -1860,7 +1860,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         <div role="status" style={{ padding: "6px 12px", borderBottom: "1px solid var(--c-border-1)", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <span style={{ flex: 1 }}>{t("reader.disconnected")}</span>
           {remoteSession?.remote ? (
-            <button type="button" className="ui-button" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+            <button type="button" className="ui-button" onClick={reconnectRemote}>{t("common.reconnect")}</button>
           ) : null}
         </div>
       ) : null}
@@ -1883,9 +1883,9 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
           <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
           <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" className="ui-button" onClick={retryRead}>{t("preview.retry")}</button>
+            <button type="button" className="ui-button" onClick={retryRead}>{t("common.retry")}</button>
             {readError.kind === "disconnected" && remoteSession?.remote ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("terminal.exited.reconnect")}</button>
+              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("common.reconnect")}</button>
             ) : null}
           </div>
         </div>
@@ -1919,7 +1919,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       ) : isNotebook ? (
         <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<NotebookPreview content={textContent} /></>
       ) : isMarkdown ? (
-        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<MarkdownPreview content={textContent} fill={fill} findQuery={inertFind.query} activeFindIndex={inertFind.index} onMatchCountChange={setInertMarkdownMatchCount} /></>
+        <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<MarkdownPreview content={textContent} mdx={/\.mdx$/i.test(fileName)} fill={fill} findQuery={inertFind.query} activeFindIndex={inertFind.index} onMatchCountChange={setInertMarkdownMatchCount} /></>
       ) : (
         <>{canViewHead ? <LargeFileHeadControls {...largeFileControls} /> : null}{truncatedNotice}<InertTextOrTable fileName={fileName} content={textContent} fill={fill} followTail={followTail && headWindow === "tail"} onUserScrollAway={() => setFollowTail(false)} findQuery={inertFind.query} activeFindIndex={inertFind.index} /></>
       )}

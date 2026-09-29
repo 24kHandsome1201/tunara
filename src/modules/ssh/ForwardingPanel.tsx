@@ -182,7 +182,7 @@ export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
     const copied = await copyText(endpoint);
     useUIStore.getState().addToast({
       sessionId: session.id,
-      title: t(copied ? "clipboard.copy_success" : "clipboard.copy_failed"),
+      title: t(copied ? "clipboard.copy_success" : "common.copy_failed"),
       subtitle: endpoint,
       variant: copied ? "success" : "error",
     });
@@ -195,7 +195,7 @@ export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
   return (
     <section aria-labelledby="forwarding-title" style={{ minHeight: 0, display: "flex", flexDirection: "column", overflow: "auto" }}>
       <PanelToolbar titleId="forwarding-title" title={t("forwarding.title")}>
-        <PanelActionButton onClick={() => { void refresh(); }} disabled={!binding || loading}>{t("forwarding.refresh")}</PanelActionButton>
+        <PanelActionButton onClick={() => { void refresh(); }} disabled={!binding || loading}>{t("common.refresh")}</PanelActionButton>
       </PanelToolbar>
       <div style={{ padding: 12, display: "grid", gap: 12 }}>
       <p style={{ color: "var(--c-text-4)", fontSize: "var(--fs-secondary)", margin: 0 }}>{t("forwarding.loopback_only")}</p>

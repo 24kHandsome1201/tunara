@@ -30,13 +30,13 @@ test("saved hosts expose compact connection details without monitoring IPC", asy
   mockHosts(commands);
   render(<SshHostsDashboard sessions={[]} />);
 
-  const card = await screen.findByRole("button", { name: "View Production API server details" });
+  const card = await screen.findByRole("button", { name: "View Production API host details" });
   expect(screen.getByText("api.example.com", { selector: ".ssh-host-card-meta b" })).toBeTruthy();
   expect(screen.getByText("2222", { selector: ".ssh-host-card-meta b" })).toBeTruthy();
   expect(screen.queryByText(/monitor|memory|uptime/i)).toBeNull();
 
   fireEvent.click(card);
-  expect(screen.getByRole("complementary", { name: "Server details" })).toBeTruthy();
+  expect(screen.getByRole("complementary", { name: "Host details" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Connection settings" })).toBeTruthy();
   expect(screen.getByText("Connection information")).toBeTruthy();
@@ -61,10 +61,10 @@ test("online filter and Open terminal use existing connection state only", async
   useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
   render(<SshHostsDashboard sessions={[session]} />);
 
-  await screen.findByRole("button", { name: "View Production API server details" });
+  await screen.findByRole("button", { name: "View Production API host details" });
   fireEvent.click(screen.getByRole("button", { name: "Online" }));
-  expect(screen.getByRole("button", { name: "View Production API server details" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "View Production API server details" }));
+  expect(screen.getByRole("button", { name: "View Production API host details" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "View Production API host details" }));
   fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
   expect(useUIStore.getState().mainSurface).toBe("terminal");
   expect(useSessionsStore.getState().activeSessionId).toBe(session.id);

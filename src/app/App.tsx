@@ -441,6 +441,7 @@ export default function App() {
               key="terminal-main-area"
               sessions={sessions}
               activeSessionId={activeSessionId ?? ""}
+              onTogglePanel={togglePanelWithoutStacking}
             />
           </div>
         )}

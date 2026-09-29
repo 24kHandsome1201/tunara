@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 
 import { useT } from "@/modules/i18n";
 import { requestDirtyDraftFileAction } from "@/modules/editor/dirty-draft-guard";
 import { openInEditorWithToast } from "./lib/open-in-editor";
+import { errorToast } from "./lib/error-toast";
 import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 import { resourceRefForSession } from "@/modules/resources/resource-ref";
 import { useSessionsStore } from "@/state/sessions";
@@ -123,12 +124,11 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
             if (!menuBinding || !binding
               || binding.physicalPtyId !== menuBinding.physicalPtyId
               || binding.transportGeneration !== menuBinding.transportGeneration) {
-              useUIStore.getState().addToast({
+              useUIStore.getState().addToast(errorToast({
                 sessionId: session.id,
                 title: t("preview.editor.external_remote"),
-                subtitle: t("preview.editor.external_remote_open_failed"),
-                variant: "error",
-              });
+                next: t("preview.editor.external_remote_open_failed"),
+              }));
               return;
             }
             void openRemoteInExternalEditor({
@@ -136,13 +136,13 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
               binding,
               remotePath: current.filePath,
               editor: useUIStore.getState().externalEditor,
-            }).catch(() => {
-              useUIStore.getState().addToast({
+            }).catch((error: unknown) => {
+              useUIStore.getState().addToast(errorToast({
                 sessionId: session.id,
                 title: t("preview.editor.external_remote"),
-                subtitle: t("preview.editor.external_remote_open_failed"),
-                variant: "error",
-              });
+                next: t("preview.editor.external_remote_open_failed"),
+                error,
+              }));
             });
           },
         }]
@@ -186,8 +186,8 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           type="button"
           className="hover-bg"
           disabled={!canBack}
-          title={t("reader.back")}
-          aria-label={t("reader.back")}
+          title={t("common.back")}
+          aria-label={t("common.back")}
           onClick={() => {
             const go = () => useUIStore.getState().readerHistoryBack(session.id);
             if (dirty && requestDirtyDraftFileAction(session.id, current.filePath, go)) go();

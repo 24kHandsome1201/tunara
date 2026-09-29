@@ -11,6 +11,7 @@ Tunara 是高密度纸面开发工具。界面像一张有明确层级的工作�
 - 侧栏和检查器使用二级纸面，终端使用主纸面，层级依靠明度与边界，不依靠透明模糊。
 - 默认终端调色板与外壳同源：画布背景与前景直接取主纸面与主墨色的 sRGB 等效值，ANSI 色相向暖纸/暖墨调和，常规色对比度保持在 AA 附近。
 - 绿色、黄色、红色只表示完成、等待、失败等语义状态。
+- 半透明按“层”而不是按“组件白名单”启用：开启窗口透明度时（macOS，`html[data-window-translucent]`），`--c-bg-*` 面底令牌整体带 `--window-bg-opacity` alpha，外壳与面板（标题栏、侧栏、检查器、SSH 主机面板、文件预览）因此统一半透明；覆盖层（`.overlay-sheet`、`.overlay-palette`、`.settings-dialog`、`.toast-item`、`[role="menu"]`、`[role="listbox"]`）把令牌重新钉回 `-solid` 值保持不透明；文本、终端画布与文件正文中保留透明洞。新增界面只需使用 `--c-bg-*` 令牌即自动符合规则，不要再为某个类名单独写 color-mix。Diff 增删行底色用 `color-mix` 从 `--c-success`/`--c-error` 派生为透明染色，随面板一起叠色。
 
 ## 3. 字体
 

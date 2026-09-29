@@ -143,7 +143,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "new-terminal",
-      label: t("palette.cmd.new_terminal"),
+      label: t("common.new_terminal"),
       shortcut: formatShortcut(keybindings.newTerminal),
       icon: <PaletteIcon icon={Plus} />,
       section: section.terminal,
@@ -481,7 +481,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         originalIndex: idx++,
         action: () => {
           uiStore.getState().recordCommandUse("close-current-session");
-          useSessionsStore.getState().closeSession(activeSession.id);
+          useSessionsStore.getState().closeSession(activeSession.id, { confirmToast: true });
           onClose();
         },
       });
@@ -644,7 +644,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
     cmds.push({
       id: "settings",
-      label: t("palette.cmd.settings"),
+      label: t("common.settings"),
       shortcut: formatShortcut(keybindings.openSettings),
       icon: <PaletteIcon icon={Gear} />,
       section: section.app,
@@ -848,7 +848,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
               flex: 1,
               border: "none",
               background: "transparent",
-              outline: "none",
               fontSize: "var(--fs-body)",
               color: "var(--c-text-primary)",
               fontFamily: "var(--font-ui)",

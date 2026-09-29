@@ -812,7 +812,7 @@ test("git sidebar state is single-sourced and distinguishes non-repo directories
   assert.match(diff, /if \(live\) setDiff\(result\)/);
   assert.match(diff, /ref\.diff = \{ stage: file\.stage, repoPath: openedRepoPath, relativePath: file\.path \}/);
   assert.match(diff, /if \(live\) setError/);
-  assert.match(diff, /t\("diff\.mini\.retry"\)/);
+  assert.match(diff, /t\("common\.retry"\)/);
   assert.match(diff, /useSessionsStore\.getState\(\)\.refreshGit\(session\.id\)/);
   assert.doesNotMatch(diff, /\bgitStatus\b/);
   assert.match(watcher, /const WATCH_FALLBACK_POLL_MS = 5_000/);
@@ -1079,7 +1079,7 @@ test("appearance settings are sanitized and command palette exposes useful actio
   assert.match(palette, /label: t\("palette\.cmd\.close_current_session"\)/);
   assert.match(zhDict, /"palette\.cmd\.new_terminal_current_dir": "在当前目录新建终端"/);
   assert.match(zhDict, /"palette\.cmd\.refresh_git_current": "刷新当前 Git 状态"/);
-  assert.match(zhDict, /"palette\.cmd\.close_current_session": "关闭当前会话"/);
+  assert.match(zhDict, /"palette\.cmd\.close_current_session": "关闭当前终端"/);
   assert.match(palette, /parseCommandPaletteQuery\(query\)/);
   assert.match(palette, /rankCommandPaletteItems\(filtered, parsedQuery, usage\)/);
   assert.match(paletteFilter, /actions: "action"/);
@@ -1275,7 +1275,7 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.doesNotMatch(sidebar, /clearDirCloseConfirmation/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
   assert.match(sidebarMenu, /label: t\("sidebar\.session\.rename"\), icon: "rename"/);
-  assert.match(sidebarMenu, /label: t\("sidebar\.session\.close"\), icon: "close"/);
+  assert.match(sidebarMenu, /label: t\("common\.close_session"\), icon: "close"/);
   assert.match(sidebarDirMenu, /dirGroupHasLocalFilesystem/);
   assert.match(sidebarDirMenu, /canUseSessionDirForLocalTerminal/);
   assert.match(sidebarDirMenu, /dir:duplicate-host/);
@@ -1285,8 +1285,8 @@ test("follow-up review fixes keep agent registry and batch close behavior centra
   assert.match(sidebar, /groupSessionsForSidebar/);
   assert.match(sessions, /closeSessionsInGroup: \(groupKey: string\) => void/);
   assert.match(zhDict, /"sidebar\.session\.rename": "重命名"/);
-  assert.match(zhDict, /"sidebar\.session\.close": "关闭会话"/);
-  assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部会话"/);
+  assert.match(zhDict, /"common\.close_session": "关闭终端"/);
+  assert.match(zhDict, /"sidebar\.dir\.close_all": "关闭全部终端"/);
   assert.match(palette, /st\.closeSessions\(st\.sessions\.map/);
   assert.match(palette, /toastSubtitle: t\("palette\.toast\.running_need_confirm"\)/);
   assert.match(sessions, /destructive\.confirm_again\.close/);
@@ -1425,9 +1425,9 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(read("src/ui/file-explorer/helpers.ts"), /function compactRelativePath/);
   assert.match(explorer, /className="no-scrollbar scroll-fade-y"/);
   const zhDict = read("src/modules/i18n/locales/zh-CN.json");
-  assert.match(explorer, /label: t\("sidebar\.dir\.new_terminal"\), icon: "terminal"/);
+  assert.match(explorer, /label: t\("common\.new_terminal_here"\), icon: "terminal"/);
   assert.match(explorer, /label: t\("sidebar\.dir\.copy_path"\), icon: "copy"/);
-  assert.match(zhDict, /"sidebar\.dir\.new_terminal": "在此目录新建终端"/);
+  assert.match(zhDict, /"common\.new_terminal_here": "在此目录新建终端"/);
   assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
   assert.equal((explorer.match(/explorer-listing-grid/g) ?? []).length, 2);
@@ -1578,7 +1578,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(commandPalette, /nextAttentionSessionId\(/);
   assert.match(commandPalette, /id: "export-scrollback"/);
   assert.match(commandPalette, /requestTerminalScrollbackExport\(activeSession\.id\)/);
-  assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到需要你的会话"/);
+  assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到需要你的终端"/);
   assert.match(zhDict, /"palette\.cmd\.export_scrollback": "导出终端滚屏…"/);
   assert.match(terminalChrome, /formatDroppedTerminalPaths\(paths\)/);
   assert.match(terminalChrome, /insertTerminalText\(sessionId, inserted\)/);

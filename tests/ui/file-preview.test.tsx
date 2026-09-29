@@ -479,7 +479,7 @@ describe("FilePreview editor behavior", () => {
     const editor = await screen.findByRole("textbox", { name: "Edit late.txt" });
     fireEvent.change(editor, { target: { value: "remote draft\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText("Saving");
+    await screen.findByText("Saving…");
     first.unmount();
 
     render(
@@ -487,7 +487,7 @@ describe("FilePreview editor behavior", () => {
     );
     const restored = await screen.findByRole("textbox", { name: "Edit late.txt" }) as HTMLTextAreaElement;
     expect(restored.value).toBe("remote draft\n");
-    await screen.findByText("Saving");
+    await screen.findByText("Saving…");
 
     rejectWrite?.(token);
     await screen.findByText("Save result not confirmed");
@@ -564,13 +564,13 @@ describe("FilePreview editor behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Save result not confirmed");
     fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
-    await screen.findByText("Checking result");
+    await screen.findByText("Checking result…");
     first.unmount();
 
     render(
       <FilePreview sessionId="remote-session" filePath="/tmp/late-reconcile.txt" fileName="late-reconcile.txt" fill remotePtyId={84} resource={sshResource(84, "/tmp/late-reconcile.txt", "remote-session")} onClose={() => {}} />,
     );
-    await screen.findByText("Checking result");
+    await screen.findByText("Checking result…");
     await act(async () => {
       reconciled = true;
       finishReconcile?.({ status: "saved", fingerprint: attemptedFingerprint, size: 10 });
@@ -632,7 +632,7 @@ describe("FilePreview editor behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Save result not confirmed");
     fireEvent.click(screen.getByRole("button", { name: "Check remote result" }));
-    await screen.findByText("Checking result");
+    await screen.findByText("Checking result…");
 
     const run = vi.fn();
     act(() => { expect(requestActiveDirtyDraftAction(run)).toBe(false); });

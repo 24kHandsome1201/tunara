@@ -20,7 +20,7 @@ import { sessionTerminalMultiplexer, zellijSessionName } from "@/modules/session
 import { useMultiplexerStatusPolling, type MultiplexerPollTarget } from "@/state/multiplexer-status";
 import { statusMultiplexer } from "@/modules/session/multiplexer-status";
 
-// Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("sidebar.session.close"), icon: "close"
+// Session menu source anchors: label: t("sidebar.session.rename"), icon: "rename"; label: t("common.close_session"), icon: "close"
 interface DragState {
   draggingId: string;
   sourceGroupKey: string;
@@ -255,7 +255,6 @@ export function Sidebar({
               flex: 1,
               border: "none",
               background: "transparent",
-              outline: "none",
               fontSize: "var(--fs-body)",
               color: "var(--c-text-primary)",
               fontFamily: "var(--font-ui)",
@@ -311,7 +310,7 @@ export function Sidebar({
               </button>
             ) : onNewTerminal ? (
               <button type="button" className="ui-button ui-button--primary" onClick={onNewTerminal}>
-                {t("sidebar.new_terminal")}
+                {t("common.new_terminal")}
               </button>
             ) : null}
           </div>

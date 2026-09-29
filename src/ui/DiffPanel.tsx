@@ -13,6 +13,7 @@ import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { getNumberRecordValue, hasTrueRecordKey } from "@/state/record-keys";
 import { openInEditorWithToast } from "./lib/open-in-editor";
+import { errorToast } from "./lib/error-toast";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
@@ -170,7 +171,7 @@ export function MiniDiff({
           {t("diff.mini.load_failed")}
         </span>
         <button type="button" onClick={onRetry} className="hover-accent-bg" style={{ border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", color: "var(--c-accent)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "2px 7px" }}>
-          {t("diff.mini.retry")}
+          {t("common.retry")}
         </button>
       </div>
     );
@@ -340,8 +341,8 @@ export function ReaderDiff({ session, diffRef, findRequest }: {
     const ok = await copyText(text);
     useUIStore.getState().addToast({
       sessionId: session.id,
-      title: t(ok ? "diff.toast.hunk_copied" : "diff.toast.copy_failed"),
-      subtitle: ok ? t("diff.toast.hunk_copied_lines", { count: text.split("\n").length }) : t("diff.toast.clipboard_unavailable"),
+      title: t(ok ? "diff.toast.hunk_copied" : "common.copy_failed"),
+      subtitle: ok ? t("common.lines", { count: text.split("\n").length }) : t("diff.toast.clipboard_unavailable"),
       variant: ok ? "success" : "error",
     });
   };
@@ -585,7 +586,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
     const path = `${openedRepoPath.replace(/\/$/, "")}/${file.path}`;
     const ref = resourceRefForSession(session, path);
     ref.diff = { stage: file.stage, repoPath: openedRepoPath, relativePath: file.path };
-    void openResource(ref, "preview").catch(() => useUIStore.getState().addToast({ sessionId: session.id, title: t("diff.mini.load_failed"), subtitle: "", variant: "error" }));
+    void openResource(ref, "preview").catch((error: unknown) => useUIStore.getState().addToast(errorToast({ sessionId: session.id, title: t("diff.mini.load_failed"), next: t("common.retry"), error })));
   }, [isRemote, repoPath, session, t]);
 
   const hasChanges = files.length > 0;

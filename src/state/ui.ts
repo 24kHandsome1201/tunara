@@ -241,6 +241,8 @@ export interface Toast {
   title: string;
   subtitle: string;
   variant: "success" | "error" | "warning";
+  /** Raw error text for error toasts; kept out of the subtitle and surfaced by the copy action. */
+  errorDetail?: string;
   agentCode?: string;
   action?: {
     kind: "open-settings";

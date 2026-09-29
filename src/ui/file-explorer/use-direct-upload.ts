@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { confirm as confirmDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { sshCancelUpload, sshUpload } from "@/modules/ssh/remote-fs-bridge";
 import { useUIStore } from "@/state/ui";
+import { errorToast } from "../lib/error-toast";
 import { joinPath } from "./helpers";
 import { parseUploadFailure, uploadFailureKey } from "./transfer-failures";
 
@@ -92,7 +93,7 @@ export function useDirectUpload({ sessionId, remotePtyId, t, onUploaded }: Direc
       });
     } catch {
       if (!transfer.disposed) {
-        useUIStore.getState().addToast({ sessionId, title: t("explorer.upload.failed"), subtitle: t("explorer.upload.failed_hint"), variant: "error" });
+        useUIStore.getState().addToast(errorToast({ sessionId, title: t("explorer.upload.failed"), next: t("explorer.upload.failed_hint") }));
       }
       if (uploadTransferRef.current === transfer) uploadTransferRef.current = null;
       return;
@@ -178,12 +179,12 @@ export function useDirectUpload({ sessionId, remotePtyId, t, onUploaded }: Direc
             const residue = failure.residuePath
               ? ` ${t("explorer.upload.error_residue", { path: failure.residuePath })}`
               : "";
-            useUIStore.getState().addToast({
+            useUIStore.getState().addToast(errorToast({
               sessionId,
               title: t("explorer.upload.failed"),
-              subtitle: `${primary}${residue}`,
-              variant: "error",
-            });
+              next: `${primary}${residue}`,
+              error,
+            }));
           }
         } finally {
           setUpload((current) => current?.transferId === transferId ? null : current);

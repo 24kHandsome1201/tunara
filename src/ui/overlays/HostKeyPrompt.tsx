@@ -93,7 +93,6 @@ export function HostKeyPromptDialog() {
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          outline: "none",
         }}
       >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--c-border-2)" }}>
@@ -148,7 +147,7 @@ export function HostKeyPromptDialog() {
               fontSize: "var(--fs-body)",
             }}
           >
-            {t("ssh.hostKey.reject")}
+            {t("common.cancel")}
           </button>
           <button
             onClick={() => { void decide(true); }}

@@ -82,7 +82,7 @@ export function WorkspaceEmptyState({
           {t("app.empty.guide")}
         </div>
         <div role="group" aria-label={t("app.empty.actions")} className="workspace-empty-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <button type="button" onClick={onNewTerminal} className="hover-bg" style={{ ...launchButtonStyle, background: "var(--c-accent)", color: "var(--c-on-accent)", borderColor: "var(--c-accent)" }}>
+          <button type="button" onClick={onNewTerminal} className="hover-accent-bg" style={{ ...launchButtonStyle, background: "var(--c-accent)", color: "var(--c-on-accent)", borderColor: "var(--c-accent)" }}>
             {t("app.empty.local_terminal")}
           </button>
           <button type="button" onClick={onNewTerminalInDirectory} className="hover-bg" style={launchButtonStyle}>
@@ -114,7 +114,7 @@ export function WorkspaceEmptyState({
                         {entry.label}
                       </span>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-                        {t("app.empty.open_here")}
+                        {t("common.new_terminal_here")}
                       </span>
                     </button>
                   ))}
@@ -141,7 +141,7 @@ export function WorkspaceEmptyState({
                         {repo.name}
                       </span>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-                        {t("app.empty.open_here")}
+                        {t("common.new_terminal_here")}
                       </span>
                     </button>
                   ))}

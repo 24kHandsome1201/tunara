@@ -26,6 +26,8 @@ export interface MenuItem {
   icon?: MenuIconName;
   danger?: boolean;
   disabled?: boolean;
+  /** Pre-formatted shortcut hint shown right-aligned, e.g. formatShortcut(...). */
+  shortcut?: string;
 }
 
 export interface MenuHeading {
@@ -230,7 +232,6 @@ export function ContextMenu({
         overflowY: "auto",
         overflowX: "hidden",
         overscrollBehavior: "contain",
-        outline: "none",
         animation: "ctxMenuIn var(--dur-fast) var(--ease-out)",
       }}
     >
@@ -300,6 +301,21 @@ export function ContextMenu({
               {item.icon ? <MenuIcon name={item.icon} /> : null}
             </span>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>
+            {item.shortcut && (
+              <span
+                aria-hidden="true"
+                style={{
+                  marginLeft: "auto",
+                  paddingLeft: 16,
+                  color: item.danger ? "var(--c-error)" : "var(--c-text-6)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "var(--fs-meta)",
+                  flexShrink: 0,
+                }}
+              >
+                {item.shortcut}
+              </span>
+            )}
           </div>
         );
       })}
