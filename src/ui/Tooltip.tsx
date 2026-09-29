@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useId, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatShortcut } from "./formatShortcut";
 import { motionDurationMs } from "./lib/motion";
@@ -11,6 +11,10 @@ import { motionDurationMs } from "./lib/motion";
  * own aria-label — the tooltip duplicates it visually, not semantically.
  * `shortcut` takes a raw keybinding string and renders it via <kbd> +
  * formatShortcut so tooltips and menus share one shortcut format.
+ * The bubble portals to document.body so ancestors with transform/filter
+ * cannot re-anchor position:fixed, then a layout effect measures the real
+ * bubble size and clamps it inside the viewport (flipping above the
+ * trigger when it would overflow the bottom edge).
  */
 export function Tooltip({
   label,
@@ -27,7 +31,9 @@ export function Tooltip({
 }) {
   const tipId = useId();
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [anchor, setAnchor] = useState<{ cx: number; top: number; triggerTop: number } | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
   const cancelTimer = () => {
@@ -41,21 +47,38 @@ export function Tooltip({
       const el = wrapRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const half = Math.max(rect.width, 80) / 2;
-      setPos({
-        x: Math.min(Math.max(rect.left + rect.width / 2, half + 8), window.innerWidth - half - 8),
-        y: rect.bottom + 6,
-      });
+      setPos(null);
+      setAnchor({ cx: rect.left + rect.width / 2, top: rect.bottom + 6, triggerTop: rect.top });
     }, motionDurationMs("--delay-tooltip", 400));
   };
   const hide = () => {
     cancelTimer();
+    setAnchor(null);
     setPos(null);
   };
 
+  // Measure the real bubble after mount and clamp it inside the viewport —
+  // estimating half-width from the trigger breaks for narrow right-edge
+  // triggers with wide labels.
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const tip = tipRef.current;
+    if (!tip) return;
+    const { width, height } = tip.getBoundingClientRect();
+    const lo = width / 2 + 8;
+    const hi = Math.max(lo, window.innerWidth - width / 2 - 8);
+    const x = Math.min(Math.max(anchor.cx, lo), hi);
+    let y = anchor.top;
+    if (y + height + 8 > window.innerHeight) {
+      const above = anchor.triggerTop - height - 6;
+      y = above >= 8 ? above : Math.max(8, window.innerHeight - height - 8);
+    }
+    setPos({ x, y });
+  }, [anchor]);
+
   const trigger = isValidElement(children)
     ? cloneElement(children as ReactElement<Record<string, unknown>>, {
-        "aria-describedby": pos ? tipId : undefined,
+        "aria-describedby": anchor ? tipId : undefined,
       })
     : children;
 
@@ -73,15 +96,17 @@ export function Tooltip({
       }}
     >
       {trigger}
-      {pos !== null && createPortal(
+      {anchor !== null && createPortal(
         <span
+          ref={tipRef}
           role="tooltip"
           id={tipId}
           style={{
             position: "fixed",
-            left: pos.x,
-            top: pos.y,
+            left: pos ? pos.x : 0,
+            top: pos ? pos.y : 0,
             transform: "translateX(-50%)",
+            visibility: pos ? "visible" : "hidden",
             zIndex: "var(--z-menu)",
             padding: "4px 8px",
             borderRadius: "var(--r-badge)",
