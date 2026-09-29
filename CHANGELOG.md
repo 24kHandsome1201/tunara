@@ -31,6 +31,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 设计令牌地基：新增控件高度（`--h-btn-*`、`--h-control*`）、图标与状态点、菜单圆角、层级（`--z-raised`…`--z-system`）、动效（`--dur-*`、`--ease-*`、`--motion-distance-*`、`--press-scale*`）与焦点环（`--focus-ring-*`）刻度；移除 `--duration-*`、`--ease-out-*`/`--ease-smooth`、`--scale-press*` 别名令牌；组件中的数字 zIndex 与字面时长（`1.2s`、200ms、toast 4000/12000ms）全部改为令牌引用。
 - Reduced motion 收敛为单一真相源：`useTheme` 按系统 `prefers-reduced-motion` 写入 `html[data-reduce-motion]`，`tokens.css` 清零动效刻度；移除失效的 `html.reduce-motion` 类与 `@media` 全量覆盖。
 - 新增 `tests/design-tokens.test.mjs`：CI 强制组件不出现字面 `ms`/`s` 时长与 ≥10 的数字 zIndex。
+- 组件收敛：HostKeyPrompt / KeyboardInteractivePrompt / RemoteFsMutationDialog 改用共享 `Modal`；抽取 `PaletteShell`（`--w-palette` / `--w-palette-wide`）供命令面板与全局终端搜索共用，底栏快捷键提示统一经 `formatShortcut` 渲染 `<kbd>`；「再次点击确认」统一为 `useDestructiveConfirm` + `DestructiveConfirmNotice`（倒计时秒数 + 进度条 + aria-live）；新增 `PanelState`/`PanelEmptyState` compact 变体与 action 槽、`StatusDot`、`Tooltip`（悬停/键盘聚焦，`--delay-tooltip`）组件；面板与侧栏空态补充下一步动作按钮；Toast 标题改用 UI 字体；Unicode 字符按钮全部替换为 Phosphor 图标；按钮高度收敛到 `--h-btn-*`；新增 `--delay-tooltip` token 与 `palette.hint.*` 文案键。
 
 ## [3.1.0] - 2026-09-25
 
