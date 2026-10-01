@@ -347,3 +347,7 @@ CI runs it as the standalone `e2e (chromium)` job in
   `platform: "macos"` to `@tauri-apps/plugin-os` and pins `navigator.platform`
   to `MacIntel` (keybinding defaults read it), so the app behaves as macOS and
   `Mod` maps to ⌘ on every host OS, including the Linux CI runner.
+
+### Homebrew publication metadata
+
+App versions in package.json, Tauri, Cargo and the changelog advance before a release tag. The Cask and `Casks/published-release.json` retain the last public stable installer until the signed DMG is published. The postpublication workflow computes its SHA-256 from the downloaded artifact and updates both files together. Metadata regressions require that exact version/checksum pair, a matching public asset URL, and a published version no newer than the source version. Release acceptance must additionally compare the record against the public release asset digest; a green release build does not guarantee the best-effort Cask update succeeded.

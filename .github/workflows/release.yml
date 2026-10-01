@@ -380,14 +380,23 @@ jobs:
           sed -i.bak -E "s/^  sha256 .*/  sha256 \"$SHA\"/" Casks/tunara.rb
           rm -f Casks/tunara.rb.bak
 
-          if git diff --quiet Casks/tunara.rb; then
+          # Record the same published artifact pair for the metadata regression
+          # guard; never advance Homebrew during a source version bump.
+          python3 - "$TAG" "$SHA" "$DMG_URL" <<'PYTHON'
+          import json, pathlib, sys
+          pathlib.Path("Casks/published-release.json").write_text(json.dumps({
+              "version": sys.argv[1], "sha256": sys.argv[2], "url": sys.argv[3]
+          }, indent=2) + "\n")
+          PYTHON
+
+          if git diff --quiet Casks/tunara.rb Casks/published-release.json; then
             echo "Homebrew cask already up to date; nothing to do."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/tunara.rb
+          git add Casks/tunara.rb Casks/published-release.json
           git commit -m "chore: update homebrew cask to v${TAG} (sha256 ${SHA:0:12}…) [skip ci]"
           # publish-tauri 的构建+公证耗时较长，期间 main 可能被人工推进；rebase
           # 吸收并发提交，保证下面是 fast-forward（满足 non_fast_forward /

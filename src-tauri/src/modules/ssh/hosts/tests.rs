@@ -713,8 +713,26 @@ fn canonicalization_skip_fallback_and_cname_boundaries_fail_closed() {
     assert_eq!(profile.host, "box.example");
     assert_eq!(profile.user, "canonical");
 
-    let fallback = parse_ssh_config(
+    let root = temp_path("canonical-cname").parent().unwrap().to_path_buf();
+    fs::create_dir_all(&root).unwrap();
+    let config_path = root.join("config");
+    fs::write(
+        &config_path,
         "CanonicalizeHostname yes\nCanonicalDomains invalid\nCanonicalizeFallbackLocal no\nHost definitely-not-resolvable-tunara\n",
+    )
+    .unwrap();
+    // NXDOMAIN is an empty answer. Inject it instead of assuming the machine's
+    // DNS service honors .invalid (some local proxies return synthetic IPs).
+    let fallback = resolve_config_with_lookup(
+        &config_path,
+        &root,
+        "local-user",
+        &[],
+        ResolverLimits::default(),
+        &|host| {
+            assert_eq!(host, "definitely-not-resolvable-tunara.invalid.");
+            Ok(None)
+        },
     );
     assert!(fallback.imported.is_empty());
     assert!(fallback
@@ -730,9 +748,23 @@ fn canonicalization_skip_fallback_and_cname_boundaries_fail_closed() {
         "canonicalize_fallback_local_invalid"
     );
 
-    let root = temp_path("canonical-cname").parent().unwrap().to_path_buf();
-    fs::create_dir_all(&root).unwrap();
-    let config_path = root.join("config");
+    let failed_lookup = resolve_config_with_lookup(
+        &config_path,
+        &root,
+        "local-user",
+        &[],
+        ResolverLimits::default(),
+        &|host| {
+            assert_eq!(host, "definitely-not-resolvable-tunara.invalid.");
+            Err("canonical_lookup_failed".into())
+        },
+    );
+    assert!(failed_lookup.imported.is_empty());
+    assert!(failed_lookup
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "canonical_lookup_failed"));
+
     fs::write(
         &config_path,
         "CanonicalizeHostname yes\nCanonicalDomains example.com\nCanonicalizeFallbackLocal no\nCanonicalizePermittedCNAMEs *.example.com:target.example.com\nHost cname\nHost target.example.com\n  Port 2223\n",
