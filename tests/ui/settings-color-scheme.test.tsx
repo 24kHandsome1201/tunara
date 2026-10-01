@@ -86,6 +86,27 @@ test("font family and size are grouped and IME Enter does not commit a draft", (
   expect(useUIStore.getState().fontSize).toBe(15);
 });
 
+test.each(["light", "dark"] as const)("%s font toggles use on-accent text only while pressed", (theme) => {
+  useUIStore.setState({ theme, nerdFontFallback: false, fontLigatures: false });
+  render(<Settings onClose={() => {}} />);
+
+  for (const name of ["Nerd Font", "Ligatures"]) {
+    const button = screen.getByRole("button", { name });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.style.color).toBe("var(--c-text-3)");
+
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.style.background).toBe("var(--c-accent)");
+    expect(button.style.color).toBe("var(--c-on-accent)");
+
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.style.background).toBe("var(--c-bg-white)");
+    expect(button.style.color).toBe("var(--c-text-3)");
+  }
+});
+
 test("transfer limits are under connection and transfer rather than About", () => {
   render(<Settings onClose={() => {}} />);
   const transferSection = document.getElementById("settings-section-ssh");
