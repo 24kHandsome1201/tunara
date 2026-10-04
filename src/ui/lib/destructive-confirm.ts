@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+// DestructiveConfirmNotice lives in ../shared.tsx (JSX); this module keeps the
+// pure helpers + hooks so node tests can import it without JSX compilation.
 
 /** Shared window for "click again to confirm" destructive actions. */
 export const DESTRUCTIVE_CONFIRM_WINDOW_MS = 3_000;
@@ -83,11 +85,18 @@ export function useDestructiveConfirm() {
     return isDestructiveConfirmPending(storeRef.current, key);
   }, []);
 
+  /** Arming timestamp for `key` (0 when not armed) — feeds `DestructiveConfirmNotice`. */
+  const armedAt = useCallback((key: string) => {
+    const at = storeRef.current.get(key) ?? 0;
+    return isDestructiveConfirmPending(storeRef.current, key) ? at : 0;
+  }, []);
+
   const tryConfirm = useCallback((key: string, action: () => void): boolean => {
     const confirmed = requestDestructiveConfirm(storeRef.current, key, bump);
     if (confirmed) action();
     return confirmed;
   }, [bump]);
 
-  return { isPending, tryConfirm };
+  return { isPending, armedAt, tryConfirm };
 }
+

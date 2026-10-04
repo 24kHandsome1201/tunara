@@ -3,7 +3,7 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { deriveTitle, type Session } from "./types";
 import { SidebarSearchIcon } from "./SidebarDirGroupHeader";
 import { SidebarSessionGroup } from "./SidebarSessionGroup";
-import { CloseIcon } from "./shared";
+import { CloseIcon, PanelActionButton, PanelEmptyState } from "./shared";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -302,18 +302,21 @@ export function Sidebar({
         aria-label={t("sidebar.list.aria_label")}
       >
         {hasSessions && filtered.length === 0 && (
-          <div style={{ padding: "24px 12px", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--c-text-5)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <span>{q ? t("sidebar.empty.no_match") : t("sidebar.empty.none")}</span>
-            {q ? (
-              <button type="button" className="ui-button" onClick={() => setSearch("")}>
-                {t("common.clear_search")}
-              </button>
-            ) : onNewTerminal ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={onNewTerminal}>
-                {t("common.new_terminal")}
-              </button>
-            ) : null}
-          </div>
+          <PanelEmptyState
+            compact={false}
+            label={q ? t("sidebar.empty.no_match") : t("sidebar.empty.none")}
+            action={
+              q ? (
+                <PanelActionButton onClick={() => setSearch("")}>
+                  {t("common.clear_search")}
+                </PanelActionButton>
+              ) : onNewTerminal ? (
+                <PanelActionButton className="ui-button--primary" onClick={onNewTerminal}>
+                  {t("common.new_terminal")}
+                </PanelActionButton>
+              ) : null
+            }
+          />
         )}
 
         {groupEntries.map((group) => (
@@ -325,7 +328,7 @@ export function Sidebar({
             tabbableSessionId={tabbableSessionId}
             canReorder={canReorder}
             drag={drag}
-            confirmClose={getNumberRecordValue(dirCloseConfirmations, group.key) > 0}
+            confirmCloseAt={getNumberRecordValue(dirCloseConfirmations, group.key)}
             closeConfirmations={closeConfirmations}
             externalEditor={externalEditor}
             t={t}

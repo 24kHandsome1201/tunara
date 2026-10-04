@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionsStore, createRemoteSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { errorToast } from "../lib/error-toast";
-import { CloseIcon } from "../shared";
+import { CloseIcon, PanelEmptyState } from "../shared";
 import { useT } from "@/modules/i18n";
 import {
   saveHost,
@@ -34,6 +34,7 @@ import { diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
 import type { RemoteInfo } from "../types";
 import { useFocusTrap } from "./useFocusTrap";
 import { useDestructiveConfirm } from "../lib/destructive-confirm";
+import { DestructiveConfirmNotice } from "../shared";
 
 interface SshConnectProps {
   onClose: () => void;
@@ -70,6 +71,7 @@ function SuggestionRow({
   onSelect,
   onDelete,
   deletePending,
+  deleteArmedAt = 0,
 }: {
   profile: SshHostProfile;
   source: SshProfileSourceV1;
@@ -79,6 +81,7 @@ function SuggestionRow({
   onSelect: () => void;
   onDelete?: () => void;
   deletePending?: boolean;
+  deleteArmedAt?: number;
 }) {
   const t = useT();
   return (
@@ -88,47 +91,54 @@ function SuggestionRow({
       data-source={source}
       className="ssh-profile-item"
       data-selected={selected || active}
-      style={{ display: "flex", alignItems: "center", gap: 4, borderRadius: "var(--r-btn)", background: active ? "var(--c-accent-bg-soft)" : "transparent" }}
+      style={{ display: "flex", flexDirection: "column", borderRadius: "var(--r-btn)", background: active ? "var(--c-accent-bg-soft)" : "transparent" }}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="hover-bg ssh-profile-row"
-        style={{
-          flex: 1,
-          minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 2,
-          padding: "7px 8px",
-          border: "none",
-          borderRadius: "var(--r-btn)",
-          background: "transparent",
-          color: "var(--c-text-primary)",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 600 }}>
-          {profile.label || `${profile.user}@${profile.host}`}
-        </span>
-        <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)" }}>
-          {formatSshTarget(profile.user, profile.host, profile.port)}
-          {source === "sshConfig" || alsoInConfig ? " · ~/.ssh/config" : ""}
-        </span>
-      </button>
-      {onDelete && (
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <button
           type="button"
-          onClick={onDelete}
-          title={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
-          aria-label={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
-          className="hover-close ssh-profile-delete"
-          style={{ width: 28, height: 28, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: deletePending ? "var(--c-error)" : "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={onSelect}
+          className="hover-bg ssh-profile-row"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 2,
+            padding: "7px 8px",
+            border: "none",
+            borderRadius: "var(--r-btn)",
+            background: "transparent",
+            color: "var(--c-text-primary)",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
         >
-          <CloseIcon />
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 600 }}>
+            {profile.label || `${profile.user}@${profile.host}`}
+          </span>
+          <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)" }}>
+            {formatSshTarget(profile.user, profile.host, profile.port)}
+            {source === "sshConfig" || alsoInConfig ? " · ~/.ssh/config" : ""}
+          </span>
         </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            title={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
+            aria-label={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
+            className="hover-close ssh-profile-delete"
+            style={{ width: 28, height: 28, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: deletePending ? "var(--c-error)" : "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <CloseIcon />
+          </button>
+        )}
+      </div>
+      {deleteArmedAt > 0 && (
+        <div style={{ padding: "0 8px 6px" }}>
+          <DestructiveConfirmNotice confirmedAt={deleteArmedAt} label={t("destructive.confirm_again")} />
+        </div>
       )}
     </div>
   );
@@ -165,7 +175,7 @@ function FileField({
 /** Compact connection sheet: one target field, Enter connects, auth is automatic. */
 export function SshConnect({ onClose }: SshConnectProps) {
   const t = useT();
-  const { isPending, tryConfirm } = useDestructiveConfirm();
+  const { isPending, armedAt, tryConfirm } = useDestructiveConfirm();
   const containerRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLInputElement>(null);
   const addSession = useSessionsStore((s) => s.addSession);
@@ -752,10 +762,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 onSelect={() => fillFrom(entry.profile.id, entry.source, entry.configProfile)}
                 onDelete={entry.source === "saved" ? () => { void actions.onRemove(entry.profile.id); } : undefined}
                 deletePending={isPending(`ssh-profile:${entry.profile.id}`)}
+                deleteArmedAt={armedAt(`ssh-profile:${entry.profile.id}`)}
               />
             ))}
             {target.trim() && suggestions.length === 0 && !loadingConfig && (
-              <div style={{ padding: "8px 4px", color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t("ssh.search_empty")}</div>
+              <PanelEmptyState label={t("ssh.search_empty")} compact />
             )}
           </div>
 

@@ -40,6 +40,7 @@ import { ShareNetwork } from "@phosphor-icons/react/dist/ssr/ShareNetwork";
 import { SidebarSimple } from "@phosphor-icons/react/dist/ssr/SidebarSimple";
 import { Square } from "@phosphor-icons/react/dist/ssr/Square";
 import { SquareSplitHorizontal } from "@phosphor-icons/react/dist/ssr/SquareSplitHorizontal";
+import { Star } from "@phosphor-icons/react/dist/ssr/Star";
 import { SquareSplitVertical } from "@phosphor-icons/react/dist/ssr/SquareSplitVertical";
 import { Terminal } from "@phosphor-icons/react/dist/ssr/Terminal";
 import { TerminalWindow } from "@phosphor-icons/react/dist/ssr/TerminalWindow";
@@ -226,6 +227,7 @@ export {
   Square,
   SquareSplitHorizontal,
   SquareSplitVertical,
+  Star,
   Terminal,
   TerminalWindow,
   TextT,

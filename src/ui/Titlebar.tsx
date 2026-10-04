@@ -6,7 +6,8 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
+import { Tooltip } from "./Tooltip";
+import { DotsThree, Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
 import {
   CONNECTION_TONE_COLORS,
   groupSessionsForSidebar,
@@ -113,36 +114,39 @@ function WindowControls() {
   };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-      <button
-        type="button"
-        onClick={() => win.minimize()}
-        title={t("titlebar.window.minimize")}
-        aria-label={t("titlebar.window.minimize")}
-        className="hover-bg"
-        style={btnBase}
-      >
-        <Icon icon={Minus} size={12} weight="bold" />
-      </button>
-      <button
-        type="button"
-        onClick={() => win.toggleMaximize()}
-        title={t("titlebar.window.maximize")}
-        aria-label={t("titlebar.window.maximize")}
-        className="hover-bg"
-        style={btnBase}
-      >
-        <Icon icon={Square} size={11} />
-      </button>
-      <button
-        type="button"
-        onClick={() => win.close()}
-        title={t("common.close")}
-        aria-label={t("common.close")}
-        className="hover-close"
-        style={btnBase}
-      >
-        <Icon icon={X} size={12} weight="bold" />
-      </button>
+      <Tooltip label={t("titlebar.window.minimize")}>
+        <button
+          type="button"
+          onClick={() => win.minimize()}
+          aria-label={t("titlebar.window.minimize")}
+          className="hover-bg"
+          style={btnBase}
+        >
+          <Icon icon={Minus} size={12} weight="bold" />
+        </button>
+      </Tooltip>
+      <Tooltip label={t("titlebar.window.maximize")}>
+        <button
+          type="button"
+          onClick={() => win.toggleMaximize()}
+          aria-label={t("titlebar.window.maximize")}
+          className="hover-bg"
+          style={btnBase}
+        >
+          <Icon icon={Square} size={11} />
+        </button>
+      </Tooltip>
+      <Tooltip label={t("common.close")}>
+        <button
+          type="button"
+          onClick={() => win.close()}
+          aria-label={t("common.close")}
+          className="hover-close"
+          style={btnBase}
+        >
+          <Icon icon={X} size={12} weight="bold" />
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -277,9 +281,9 @@ function TitlebarImpl({
       >
         {trafficLightWidth > 0 && <div style={{ width: trafficLightWidth, flexShrink: 0 }} />}
         {sessions.length > 0 && (
+          <Tooltip label={t("titlebar.toggle_sidebar")}>
           <button
             onClick={onToggleSidebar}
-            title={t("titlebar.toggle_sidebar")}
             aria-label={t("titlebar.toggle_sidebar")}
             aria-pressed={sidebarVisible}
             style={{
@@ -297,6 +301,7 @@ function TitlebarImpl({
           >
             <PanelLeftIcon active={sidebarVisible} />
           </button>
+          </Tooltip>
         )}
       </div>
 
@@ -318,10 +323,10 @@ function TitlebarImpl({
       )}
 
       <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 4, transform: titlebarControlTransform, WebkitAppRegion: "no-drag" } as DragStyle}>
+        <Tooltip label={`${t("titlebar.new_menu")} · ${t("common.new_terminal")}`} shortcut={newTerminalShortcut}>
         <button
           onClick={openNewTerminalMenu}
           onContextMenu={openNewTerminalMenu}
-          title={`${t("titlebar.new_menu")} · ${t("common.new_terminal")} ${formatShortcut(newTerminalShortcut)}`}
           aria-label={t("titlebar.new_menu")}
           aria-haspopup="menu"
           aria-expanded={Boolean(newTerminalMenu)}
@@ -341,6 +346,7 @@ function TitlebarImpl({
         >
           <Icon icon={Plus} size={13} weight="bold" />
         </button>
+        </Tooltip>
       </div>
 
       <div
@@ -354,11 +360,11 @@ function TitlebarImpl({
           WebkitAppRegion: "no-drag",
         } as DragStyle}
       >
+        <Tooltip label={t("common.more_actions")}>
         <button
           ref={workspaceMenuBtnRef}
           type="button"
           onClick={openWorkspaceMenu}
-          title={t("common.more_actions")}
           aria-label={t("common.more_actions")}
           aria-haspopup="menu"
           aria-expanded={workspaceMenu !== null}
@@ -375,8 +381,9 @@ function TitlebarImpl({
           }}
           className="hover-bg"
         >
-          <span aria-hidden="true" style={{ fontSize: 14, letterSpacing: -1 }}>•••</span>
+          <Icon icon={DotsThree} size={15} weight="bold" />
         </button>
+        </Tooltip>
 
         {!_isMac && <WindowControls />}
       </div>

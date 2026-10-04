@@ -5,6 +5,7 @@ import { useT } from "@/modules/i18n";
 import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 import { reconnectPrefillFromSession, type Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
+import { StatusDot } from "./shared";
 import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 import { copyText } from "./lib/clipboard";
 import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
@@ -146,7 +147,7 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 12em", minWidth: 0 }}>
-        <span aria-hidden="true" style={{ width: "var(--dot-md)", height: "var(--dot-md)", borderRadius: "50%", background: tone, flexShrink: 0 }} />
+        <StatusDot size="md" tone={tone} />
         <span
           title={label}
           style={{
@@ -337,7 +338,7 @@ export function ConnectingOverlay({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ width: "var(--dot-md)", height: "var(--dot-md)", borderRadius: "50%", background: "var(--c-accent)" }} />
+        <StatusDot size="md" tone="var(--c-accent)" pulse />
         <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>
           {label}
         </span>

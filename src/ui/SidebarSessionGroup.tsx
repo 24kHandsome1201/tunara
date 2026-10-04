@@ -25,7 +25,8 @@ interface SidebarSessionGroupProps {
   tabbableSessionId: string | null;
   canReorder: boolean;
   drag: { draggingId: string; sourceGroupKey: string; overIndex: number } | null;
-  confirmClose: boolean;
+  /** Timestamp (ms) when the group close-all confirm was armed; 0 = idle. */
+  confirmCloseAt: number;
   closeConfirmations: Record<string, number>;
   externalEditor: ExternalEditor;
   t: (key: string, params?: Record<string, string | number>) => string;
@@ -46,7 +47,7 @@ export function SidebarSessionGroup({
   tabbableSessionId,
   canReorder,
   drag,
-  confirmClose,
+  confirmCloseAt,
   closeConfirmations,
   externalEditor,
   t,
@@ -103,7 +104,7 @@ export function SidebarSessionGroup({
             ? () => useSessionsStore.getState().newTerminalInDir(localDir)
             : undefined}
         onCloseAll={() => useSessionsStore.getState().closeSessionsInGroup(key)}
-        confirmClose={confirmClose}
+        confirmCloseAt={confirmCloseAt}
         onContextMenu={(e) => {
           e.preventDefault();
           onOpenMenu(

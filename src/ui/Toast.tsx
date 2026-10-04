@@ -171,7 +171,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           fontSize: "var(--fs-secondary)",
           fontWeight: 600,
           color: "var(--c-text-primary)",
-          fontFamily: toast.agentCode ? "var(--font-ui)" : "var(--font-mono)",
+          fontFamily: "var(--font-ui)",
         }}>
           {toast.title}
         </div>
@@ -198,7 +198,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           style={{
             position: "relative",
             zIndex: 1,
-            height: 26,
+            height: "var(--h-btn-sm)",
             padding: "0 9px",
             borderRadius: "var(--r-btn)",
             border: "1px solid var(--c-accent-border)",
@@ -225,7 +225,7 @@ function ToastItem({ toast }: { toast: Toast }) {
             zIndex: 1,
             width: 18,
             height: 18,
-            borderRadius: 4,
+            borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
             cursor: "pointer",
@@ -254,7 +254,7 @@ function ToastItem({ toast }: { toast: Toast }) {
           zIndex: 1,
           width: 18,
           height: 18,
-          borderRadius: 4,
+          borderRadius: "var(--r-badge-sm)",
           border: "none",
           background: "transparent",
           cursor: "pointer",

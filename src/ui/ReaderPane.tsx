@@ -8,7 +8,8 @@ import { resourceRefForSession } from "@/modules/resources/resource-ref";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { PanelLoadingState } from "./shared";
+import { CloseIcon, PanelLoadingState } from "./shared";
+import { CaretDown, CaretLeft, CaretRight, DotsThree, Icon } from "@/ui/icons";
 import { FileIcon } from "./file-explorer/icons";
 import { fileKindTint } from "./file-explorer/file-kind";
 import type { Session } from "./types";
@@ -26,8 +27,8 @@ interface ReaderPaneProps {
 }
 
 const HEADER_BUTTON: CSSProperties = {
-  width: 26,
-  height: 26,
+  width: "var(--h-btn-sm)",
+  height: "var(--h-btn-sm)",
   borderRadius: "var(--r-btn)",
   border: "none",
   background: "transparent",
@@ -195,7 +196,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           }}
           style={{ ...HEADER_BUTTON, opacity: canBack ? 1 : 0.35, cursor: canBack ? "pointer" : "default" }}
         >
-          ‹
+          <Icon icon={CaretLeft} size={13} weight="bold" />
         </button>
         <button
           type="button"
@@ -210,7 +211,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           }}
           style={{ ...HEADER_BUTTON, opacity: canForward ? 1 : 0.35, cursor: canForward ? "pointer" : "default" }}
         >
-          ›
+          <Icon icon={CaretRight} size={13} weight="bold" />
         </button>
         <button
           ref={historyBtnRef}
@@ -224,7 +225,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           style={{
             minWidth: 0,
             flex: 1,
-            height: 26,
+            height: "var(--h-btn-sm)",
             padding: "0 8px",
             border: "none",
             background: "transparent",
@@ -250,7 +251,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           </span>
           {current.diff && <span style={{ flexShrink: 0, color: "var(--c-text-4)", fontSize: "var(--fs-meta)" }}>{t(`diff.section.${current.diff.stage}`)}</span>}
           {dirty ? <span className="reader-dirty-marker" aria-hidden="true">●</span> : null}
-          <span aria-hidden="true" style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", flexShrink: 0 }}>▾</span>
+          <Icon icon={CaretDown} size={10} weight="bold" color="var(--c-text-5)" style={{ flexShrink: 0 }} />
         </button>
         <button
           type="button"
@@ -272,7 +273,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           onClick={openOverflowMenu}
           style={HEADER_BUTTON}
         >
-          <span aria-hidden="true" style={{ fontSize: 13, letterSpacing: -1 }}>⋯</span>
+          <Icon icon={DotsThree} size={16} weight="bold" />
         </button>
         <button
           type="button"
@@ -282,7 +283,7 @@ export function ReaderPane({ session, active }: ReaderPaneProps) {
           onClick={(event) => { event.stopPropagation(); closeReader(); }}
           style={HEADER_BUTTON}
         >
-          ✕
+          <CloseIcon size={12} strokeWidth={2.5} />
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>

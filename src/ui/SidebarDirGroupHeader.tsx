@@ -4,6 +4,8 @@ import { CaretRight, FolderSimple, HardDrives, Icon, Plus } from "@/ui/icons";
 import { useT } from "@/modules/i18n";
 import type { SessionCue } from "@/modules/session/session-attention";
 import { SessionCueDot } from "./SessionCueDot";
+import { DestructiveConfirmNotice } from "./shared";
+import { Tooltip } from "./Tooltip";
 
 function FolderIcon() {
   return <Icon icon={FolderSimple} size={13} color="var(--c-text-6)" />;
@@ -29,7 +31,7 @@ export function DirGroupHeader({
   onToggleCollapse,
   onNewTerminal,
   onCloseAll,
-  confirmClose,
+  confirmCloseAt = 0,
   onContextMenu,
   onKeyDown,
 }: {
@@ -54,11 +56,13 @@ export function DirGroupHeader({
   onToggleCollapse?: () => void;
   onNewTerminal?: () => void;
   onCloseAll?: () => void;
-  confirmClose?: boolean;
+  /** Timestamp (ms) when the close-all confirm was armed; 0 = idle. */
+  confirmCloseAt?: number;
   onContextMenu?: (e: MouseEvent) => void;
   onKeyDown?: (e: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const t = useT();
+  const confirmClose = confirmCloseAt > 0;
   const groupName = kind === "ssh" ? label : workspace?.repositoryName || label;
   const newTerminalLabel = kind === "ssh" ? t("sidebar.session.duplicate_host") : t("common.new_terminal_here");
   const closeAllTitle = confirmClose
@@ -143,20 +147,23 @@ export function DirGroupHeader({
       tabIndex={onToggleCollapse ? undefined : 0}
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 6,
+        flexDirection: "column",
         padding: "5px 9px",
       }}
     >
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {/* 折叠切换用真实 button（容器不再 role=button 嵌套按钮），
           aria-expanded 播报折叠状态 */}
       {onToggleCollapse ? (
+        <Tooltip
+          label={collapsed ? t("dir_group.expand_named", { name: groupName }) : t("dir_group.collapse_named", { name: groupName })}
+          style={{ flex: 1, minWidth: 0 }}
+        >
         <button
           type="button"
           className="dir-group-toggle"
           onClick={onToggleCollapse}
           aria-expanded={!collapsed}
-          title={collapsed ? t("dir_group.expand_named", { name: groupName }) : t("dir_group.collapse_named", { name: groupName })}
           aria-label={collapsed ? t("dir_group.expand_named", { name: groupName }) : t("dir_group.collapse_named", { name: groupName })}
           style={{
             display: "flex",
@@ -174,22 +181,23 @@ export function DirGroupHeader({
         >
           {headerContent}
         </button>
+        </Tooltip>
       ) : (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
           {headerContent}
         </div>
       )}
       {onNewTerminal && (
+        <Tooltip label={newTerminalLabel}>
         <button
           type="button"
           className="dir-group-add hover-bg"
           onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
-          title={newTerminalLabel}
           aria-label={newTerminalLabel}
           style={{
             width: 18,
             height: 18,
-            borderRadius: 4,
+            borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
             display: "flex",
@@ -202,18 +210,19 @@ export function DirGroupHeader({
         >
           <Icon icon={Plus} size={12} weight="bold" />
         </button>
+        </Tooltip>
       )}
       {onCloseAll && (
+        <Tooltip label={closeAllTitle}>
         <button
           type="button"
           className="dir-group-close hover-close"
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
-          title={closeAllTitle}
           aria-label={closeAllTitle}
           style={{
             width: 18,
             height: 18,
-            borderRadius: 4,
+            borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
             display: "flex",
@@ -227,6 +236,11 @@ export function DirGroupHeader({
         >
           <CloseIcon size={12} strokeWidth={2.5} />
         </button>
+        </Tooltip>
+      )}
+      </div>
+      {confirmClose && (
+        <DestructiveConfirmNotice confirmedAt={confirmCloseAt} label={t("session.close.all_running_hint")} />
       )}
     </div>
   );

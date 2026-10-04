@@ -11,8 +11,8 @@ import {
   type SshWriteOutcomeUnknown,
 } from "@/modules/ssh/ssh-write-reconcile";
 import { formatSize, reconnectPrefillFromSession } from "./types";
-import { CloseIcon } from "./shared";
-import { File as FileGlyph, Icon } from "@/ui/icons";
+import { CloseIcon, PanelActionButton, PanelState, StatusDot } from "./shared";
+import { ArrowLeft, ArrowRight, File as FileGlyph, Icon } from "@/ui/icons";
 import { useT, t as staticT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
@@ -864,8 +864,8 @@ function SiblingNav({ sessionId, filePath, previous, next, active }: { sessionId
   if (!previous && !next) return null;
   return (
     <div ref={navRef} style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-      <button type="button" className="ui-button" disabled={!previous} aria-label={t("preview.siblings.previous")} onClick={() => previous && openSiblingFile(sessionId, filePath, previous)}>←</button>
-      <button type="button" className="ui-button" disabled={!next} aria-label={t("preview.siblings.next")} onClick={() => next && openSiblingFile(sessionId, filePath, next)}>→</button>
+      <button type="button" className="ui-button" disabled={!previous} aria-label={t("preview.siblings.previous")} onClick={() => previous && openSiblingFile(sessionId, filePath, previous)}><Icon icon={ArrowLeft} size={12} weight="bold" /></button>
+      <button type="button" className="ui-button" disabled={!next} aria-label={t("preview.siblings.next")} onClick={() => next && openSiblingFile(sessionId, filePath, next)}><Icon icon={ArrowRight} size={12} weight="bold" /></button>
     </div>
   );
 }
@@ -1878,20 +1878,32 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
       ) : null}
 
       {readError && !disconnectedInline ? (
-        <div role="alert" style={{ padding: 12, display: "flex", minHeight: 0, flex: fill ? 1 : undefined, flexDirection: "column", alignItems: "flex-start", justifyContent: fill ? "center" : undefined, gap: 7 }}>
-          <strong style={{ color: "var(--c-text-2)", fontSize: "var(--fs-secondary)" }}>{t("preview.read_failed")}</strong>
-          <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-secondary)", lineHeight: 1.5 }}>{readErrorBody}</span>
-          <span title={readError.detail} style={{ display: "block", maxWidth: "100%", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{readError.detail}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" className="ui-button" onClick={retryRead}>{t("common.retry")}</button>
-            {readError.kind === "disconnected" && remoteSession?.remote ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={reconnectRemote}>{t("common.reconnect")}</button>
-            ) : null}
-          </div>
+        <div style={{ minHeight: 0, flex: fill ? 1 : undefined, display: "flex", flexDirection: "column", justifyContent: fill ? "center" : undefined }}>
+        <PanelState
+          compact
+          state={{
+            kind: "error",
+            label: t("preview.read_failed"),
+            detail: readErrorBody,
+            remediation: (
+              <span title={readError.detail} style={{ display: "block", maxWidth: "100%", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {readError.detail}
+              </span>
+            ),
+          }}
+          action={(
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <PanelActionButton onClick={retryRead}>{t("common.retry")}</PanelActionButton>
+              {readError.kind === "disconnected" && remoteSession?.remote ? (
+                <PanelActionButton className="ui-button--primary" onClick={reconnectRemote}>{t("common.reconnect")}</PanelActionButton>
+              ) : null}
+            </div>
+          )}
+        />
         </div>
       ) : !result ? (
         <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-          <div className="loading-dot" style={{ width: "var(--dot-sm)", height: "var(--dot-sm)", borderRadius: "50%", background: "var(--c-text-5)", flexShrink: 0 }} />
+          <StatusDot tone="var(--c-text-5)" pulse />
           <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("preview.reading")}</span>
         </div>
       ) : headResult?.kind === "binary" ? (

@@ -189,6 +189,7 @@
   --dur-slow: 220ms;     /* only: sidebar/panel drawers, large layout shifts */
   --dur-loading: 1200ms; /* loading pulse period (the only allowed infinite) */
   --delay-loading-fallback: 200ms; /* suspense fallback fade-in delay */
+  --delay-tooltip: 400ms;   /* hover/focus delay before a themed tooltip shows */
   --dur-toast: 4000ms;
   --dur-toast-long: 12000ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);    /* entrances, expands, moves */
@@ -255,6 +256,7 @@
 
   /* ── 命令面板 ── */
   --w-palette: 480px;
+  --w-palette-wide: 720px;
   --palette-top: 15%;
 
   /* Solid surface alias retained for existing shell-tint integrations. */

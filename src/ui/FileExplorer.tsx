@@ -15,6 +15,7 @@ import {
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { PanelEmptyState, PanelLoadingState, PanelState } from "./shared";
+import { DotsThree, Icon } from "@/ui/icons";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -1136,7 +1137,7 @@ export function FileExplorer({
             openMenu(rect.right, rect.bottom, event.currentTarget);
           }}
         >
-          <span aria-hidden="true">⋯</span>
+          <Icon icon={DotsThree} size={14} weight="bold" />
         </button>
         </div>
       </div>
