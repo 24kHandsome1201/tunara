@@ -10,6 +10,8 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-10-01
+
 ### 修复
 - 侧栏会话卡片悬停与选中态恢复生效：移除覆盖样式表的内联背景/边框（边框保留在 `.session-card` 规则中，布局不变）。
 - 新增 `--c-on-accent` token（亮/暗双主题）：空工作区「Local terminal」主按钮文字恢复可读对比度，悬停改用 accent 发光态。
@@ -28,6 +30,8 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 窗口透明度改为按层生效：开启后台透明度时所有 `--c-bg-*` 面底令牌带 alpha，SSH 主机面板等漏网表面不再保持不透明；覆盖层（弹窗、菜单、Toast）自动钉回实色；Diff 增删行底色改用 `color-mix` 透明染色。
 
 ### 内部
+- DNS 错误测试改用确定性解析器夹具，保留错误传播与失败关闭断言，不再依赖本机 DNS 对 `.invalid` 的处理。
+- Homebrew 校验锁定已发布安装包的版本、URL 与 SHA-256；新版本发布后同时更新 Cask 和发布记录，避免提前把新版本配上旧校验和。
 - 设计令牌地基：新增控件高度（`--h-btn-*`、`--h-control*`）、图标与状态点、菜单圆角、层级（`--z-raised`…`--z-system`）、动效（`--dur-*`、`--ease-*`、`--motion-distance-*`、`--press-scale*`）与焦点环（`--focus-ring-*`）刻度；移除 `--duration-*`、`--ease-out-*`/`--ease-smooth`、`--scale-press*` 别名令牌；组件中的数字 zIndex 与字面时长（`1.2s`、200ms、toast 4000/12000ms）全部改为令牌引用。
 - Reduced motion 收敛为单一真相源：`useTheme` 按系统 `prefers-reduced-motion` 写入 `html[data-reduce-motion]`，`tokens.css` 清零动效刻度；移除失效的 `html.reduce-motion` 类与 `@media` 全量覆盖。
 - 新增 `tests/design-tokens.test.mjs`：CI 强制组件不出现字面 `ms`/`s` 时长与 ≥10 的数字 zIndex。
@@ -36,6 +40,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 ## [3.1.0] - 2026-09-25
 
 ### 产品与体验
+- 修复浅色主题下 Nerd Font 与连字开关选中状态的文字对比度，并加入亮暗主题及键盘操作回归覆盖。
 - 新增跨会话终端搜索（默认 ⌘⇧F / Ctrl+Shift+F，也可从命令面板打开，可在配置文件 `[keybindings] global_terminal_search` 中修改）：在所有已打开的本地与 SSH 终端的内存回滚中搜索，支持纯文本、正则与大小写切换，按会话分组显示行上下文与所属命令块；选中结果会切换到该会话、滚动到对应行并高亮匹配。搜索分片让出主线程、新查询取消旧查询并限制结果数量；不建立索引，也不写入磁盘。
 - 设置 → 终端新增「渲染器」：自动 / GPU / 兼容（默认自动）。自动模式先在隐藏终端里绘制中文、中文标点、Emoji、制表符、带重音拉丁字母和 ANSI 真彩色探针，比对 DOM 与 WebGL 的单元格尺寸并逐格检查字形墨迹、越界和颜色，通过后才启用 GPU（WebGL）渲染；自检失败、WebGL 不可用、初始化失败或运行中上下文丢失时回退并固定为 DOM 渲染。GPU 模式始终尝试 WebGL（保留原有逐终端回退），兼容模式始终使用 DOM。设置页会显示自检结果。
 - 终端基准新增 `renderer` 变体与 `scripts/benchmark-renderer.sh`：对同一构建分别以 WebGL 和 DOM 运行大输出吞吐、渲染排空与四窗格并发输出帧时间，输出可直接贴进发布记录的对比表。

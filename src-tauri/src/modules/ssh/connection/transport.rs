@@ -318,19 +318,28 @@ pub(crate) async fn connect_direct_authenticated(
 /// Resolve `host:port` before TCP connect. Errors are prefixed with `resolve`
 /// so the frontend can bucket them apart from refused/timed-out connects.
 async fn resolve_ssh_addrs(host: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
-    let addrs: Vec<_> = tokio::time::timeout(
-        SSH_TCP_CONNECT_TIMEOUT,
-        tokio::net::lookup_host((host, port)),
-    )
-    .await
-    .map_err(|_| {
-        format!(
-            "resolve {host}:{port} timed out after {}s",
-            SSH_TCP_CONNECT_TIMEOUT.as_secs()
-        )
-    })?
-    .map_err(|e| format!("resolve {host}:{port} failed: {e}"))?
-    .collect();
+    resolve_ssh_addrs_with_lookup(host, port, tokio::net::lookup_host((host, port))).await
+}
+
+async fn resolve_ssh_addrs_with_lookup<F, I>(
+    host: &str,
+    port: u16,
+    lookup: F,
+) -> Result<Vec<std::net::SocketAddr>, String>
+where
+    F: Future<Output = std::io::Result<I>>,
+    I: Iterator<Item = std::net::SocketAddr>,
+{
+    let addrs: Vec<_> = tokio::time::timeout(SSH_TCP_CONNECT_TIMEOUT, lookup)
+        .await
+        .map_err(|_| {
+            format!(
+                "resolve {host}:{port} timed out after {}s",
+                SSH_TCP_CONNECT_TIMEOUT.as_secs()
+            )
+        })?
+        .map_err(|e| format!("resolve {host}:{port} failed: {e}"))?
+        .collect();
     if addrs.is_empty() {
         return Err(format!("resolve {host}:{port} failed: no addresses"));
     }
@@ -430,10 +439,26 @@ mod tests {
     async fn ssh_resolution_is_a_named_stage_before_tcp_connect() {
         let addrs = resolve_ssh_addrs("127.0.0.1", 2222).await.unwrap();
         assert_eq!(addrs, vec!["127.0.0.1:2222".parse().unwrap()]);
-        // `.invalid` never resolves (RFC 6761); the error must name resolution,
-        // not "connect", so the failure bar reports the right stage.
-        let err = resolve_ssh_addrs("qa-alias.invalid", 22).await.unwrap_err();
-        assert!(err.starts_with("resolve qa-alias.invalid:22 "), "{err}");
+        // Inject a genuine resolver error: local DNS proxies may synthesize
+        // answers even for .invalid, but the failure must still name resolution.
+        let err = resolve_ssh_addrs_with_lookup("qa-alias.invalid", 22, async {
+            Err::<std::vec::IntoIter<std::net::SocketAddr>, _>(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "fixture DNS name not found",
+            ))
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            err,
+            "resolve qa-alias.invalid:22 failed: fixture DNS name not found"
+        );
+        let empty = resolve_ssh_addrs_with_lookup("qa-alias.invalid", 22, async {
+            Ok(Vec::<std::net::SocketAddr>::new().into_iter())
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(empty, "resolve qa-alias.invalid:22 failed: no addresses");
         let source = include_str!("transport.rs");
         let resolving = source.find("send_connection_status(&on_event, \"resolving\")");
         let connecting = source.find("send_connection_status(&on_event, \"connecting\")");

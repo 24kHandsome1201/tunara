@@ -146,7 +146,7 @@ export function AppearanceSettings() {
             style={{
               height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
               background: nerdFontFallback ? "var(--c-accent)" : "var(--c-bg-white)",
-              color: nerdFontFallback ? "var(--c-btn-primary-text)" : "var(--c-text-3)",
+              color: nerdFontFallback ? "var(--c-on-accent)" : "var(--c-text-3)",
               fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
             }}
           >
@@ -159,7 +159,7 @@ export function AppearanceSettings() {
             style={{
               height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
               background: fontLigatures ? "var(--c-accent)" : "var(--c-bg-white)",
-              color: fontLigatures ? "var(--c-btn-primary-text)" : "var(--c-text-3)",
+              color: fontLigatures ? "var(--c-on-accent)" : "var(--c-text-3)",
               fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
             }}
           >

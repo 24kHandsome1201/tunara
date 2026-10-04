@@ -176,7 +176,20 @@ test("release metadata keeps versions and distribution identifiers aligned", () 
   assert.equal(tauri.version, version);
   assert.match(cargo, new RegExp(`^version = "${version}"$`, "m"));
   assert.match(lock, new RegExp(`name = "tunara"\\nversion = "${version}"`));
-  assert.match(cask, new RegExp(`version "${version}"`));
+  // Homebrew tracks the last published installer until the next signed DMG
+  // exists. Its version and checksum must advance together after publication.
+  const published = JSON.parse(read("Casks/published-release.json"));
+  assert.match(published.version, /^\d+\.\d+\.\d+$/);
+  assert.match(published.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(cask.match(/version "([^"]+)"/)[1], published.version);
+  assert.equal(cask.match(/sha256 "([^"]+)"/)[1], published.sha256);
+  assert.equal(published.url, `https://github.com/24kHandsome1201/tunara/releases/download/v${published.version}/Tunara_${published.version}_aarch64.dmg`);
+  const parts = (value) => value.split(".").map(Number);
+  const appParts = parts(version);
+  const publishedParts = parts(published.version);
+  const firstDifference = publishedParts.findIndex((part, i) => part !== appParts[i]);
+  assert.ok(firstDifference < 0 || publishedParts[firstDifference] < appParts[firstDifference], "published Homebrew installer cannot be newer than the app");
+  assert.ok(changelog.includes(`## [${published.version}]`));
   assert.match(changelog, new RegExp(`## \\[${version}\\]`));
 
   assert.equal(tauri.identifier, "dev.tunara.app");
@@ -200,6 +213,8 @@ test("release stays draft until direct, legacy, and updater assets are complete"
   assert.match(release, /DMG_NAME="Tunara_\$\{TAG\}_aarch64\.dmg"/);
   assert.doesNotMatch(release, /select\(\.name \| test\("Tunara_\.\*\\\\\.dmg"\)\)/);
   assert.match(release, /Casks\/tunara\.rb/);
+  assert.match(release, /Casks\/published-release\.json/);
+  assert.match(release, /sha256.*SHA/);
   assert.equal(existsSync(resolve(root, "homebrew/tunara.rb")), false);
 });
 
