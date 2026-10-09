@@ -1217,7 +1217,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(settings, /t\("settings\.cli\.path_label"\)/);
   assert.match(zhDict, /"settings\.cli\.path_label": "CLI 路径"/);
   assert.match(settings, /t\("settings\.cli\.not_on_path"\)/);
-  assert.match(zhDict, /"settings\.cli\.not_on_path": "未在当前应用 PATH 中找到"/);
+  assert.match(zhDict, /"settings\.cli\.not_on_path": "未找到"/);
   assert.match(settings, /confirm\(t\("settings\.appearance\.reset_confirm"\)/);
   assert.match(settings, /useUIStore\.getState\(\)\.resetAppearance\(\)/);
 });
@@ -1594,7 +1594,7 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   assert.match(commandPalette, /id: "export-scrollback"/);
   assert.match(commandPalette, /requestTerminalScrollbackExport\(activeSession\.id\)/);
   assert.match(zhDict, /"palette\.cmd\.focus_latest_attention": "跳到需要你的终端"/);
-  assert.match(zhDict, /"palette\.cmd\.export_scrollback": "导出终端滚屏…"/);
+  assert.match(zhDict, /"palette\.cmd\.export_scrollback": "导出终端输出…"/);
   assert.match(terminalChrome, /formatDroppedTerminalPaths\(paths\)/);
   assert.match(terminalChrome, /insertTerminalText\(sessionId, inserted\)/);
   assert.match(terminalChrome, /term\.drop\.ssh_not_ready/);
