@@ -29,12 +29,13 @@ fixed three-pane layout under a custom titlebar:
   attention/running/recovery layer for SSH, commands, and agents.
 - **Center — `MainArea`** ([`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) →
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
-  WebGL, one per session, optionally split into two panes.
+  WebGL, one per session, split into a recursive layout of up to four panes.
 - **Right: `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
-  contextual Inspector (Chinese UI: 检查器). It auto-selects Changes, Files,
-  Preview, or SSH Transfers, with Forwarding available from the compact
-  switcher. Auto-follow and lock live in
-  [`inspector-context.ts`](../src/ui/inspector-context.ts). View availability is
+  contextual Inspector (Chinese UI: 检查器). It defaults to Files and keeps the
+  user's last choice; changes, transfers, and session activity never switch the
+  current view (there is no Auto/Locked mode). Files and Changes are always-shown
+  tabs; Preview and Transfers appear when they have a source or activity; the
+  rest (e.g. SSH Forwarding) open from the more menu or ⌘K. View availability is
   computed in [`inspector-navigation.ts`](../src/ui/inspector-navigation.ts).
   Only the active Inspector view is mounted.
 
@@ -44,10 +45,10 @@ single pane). The decision lives in
 [`src/app/lib/app-shell-layout.ts`](../src/app/lib/app-shell-layout.ts) and is
 not a pair of fixed 720/900px viewport cliffs. Overlays (`Settings`,
 `CommandPalette`, `SshConnect`, `HostKeyPromptDialog`,
-`KeyboardInteractivePromptDialog`, `WorkflowParamPrompt`, `ToastContainer`)
-are rendered as siblings, gated on `useUIStore`. The three Zustand stores
-under [`src/state/`](../src/state/) are `sessions`, `ui`, and `workflows`;
-`persist` provides snapshot I/O rather than a fourth store.
+`KeyboardInteractivePromptDialog`, `GlobalTerminalSearch`, `ToastContainer`)
+are rendered as siblings, gated on `useUIStore`. The two Zustand stores
+under [`src/state/`](../src/state/) are `sessions` and `ui`;
+`persist` provides snapshot I/O rather than a third store.
 
 ### macOS titlebar contract
 
@@ -77,7 +78,7 @@ that wires up plugins, registers the IPC handlers, manages shared state, and run
 the event loop. Backend logic is split into modules under
 [`src-tauri/src/modules/`](../src-tauri/src/modules/): `pty`, `ssh`, `fs`, `git`,
 `agent`, `preview`, `resolver`, `editor`, `config`,
-`process`, `workspace_store`.
+`process`, `workspace_store`, `multiplexer`, `window_effects`.
 
 ## IPC surface
 
@@ -114,7 +115,7 @@ their own commands.
 | `ssh_host_key_decision` | Reply to a parked TOFU host-key prompt (accept/reject by `promptId`) | `answerHostKeyPrompt`, [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_keyboard_interactive_response` | Reply to a parked keyboard-interactive prompt by `promptId` | [`KeyboardInteractivePrompt.tsx`](../src/ui/overlays/KeyboardInteractivePrompt.tsx) via [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_diagnostic_run_v1` / `ssh_diagnostic_cancel_v1` | Run or cancel an explicit connection/config diagnostic | [`diagnostics-store.ts`](../src/modules/ssh/diagnostics-store.ts) |
-| `ssh_local_forward_*` / `ssh_dynamic_forward_*` | Start, list, and stop local or dynamic (SOCKS) forwards | [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
+| `ssh_local_forward_*` / `ssh_dynamic_forward_*` / `ssh_remote_forward_*` | Start, list, and stop local, dynamic (SOCKS), or remote (reverse) forwards | [`forwarding-bridge.ts`](../src/modules/ssh/forwarding-bridge.ts) via [`ForwardingPanel.tsx`](../src/modules/ssh/ForwardingPanel.tsx) |
 | `ssh_forwarding_reconnect_snapshot` / `ssh_forwarding_reconnect_rebuild` | Snapshot forwarding intent across a reconnect, then rebuild | SSH reconnect path in [`pty-bridge.ts`](../src/modules/terminal/lib/pty-bridge.ts) |
 | `ssh_hosts_load` | Read saved host profiles (no credentials) | `loadHosts`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_save` | Upsert a host profile, return the new list | `saveHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
@@ -221,6 +222,18 @@ defaults).
 | Command | Does | Frontend caller |
 |---|---|---|
 | `workspace_store_file_state` | Report `missing` or `present` for a known store file | [`persist.ts`](../src/state/persist.ts) |
+
+### `multiplexer` — HerdR / tmux / zellij status [`modules/multiplexer`](../src-tauri/src/modules/multiplexer/mod.rs)
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `multiplexer_status` | Read-only status snapshot for the multiplexer running in a local tab (`None` when not installed, not running, or not bound to that tab) | [`multiplexer-status.ts`](../src/state/multiplexer-status.ts) |
+
+### `window_effects` — window background blur [`modules/window_effects`](../src-tauri/src/modules/window_effects.rs)
+
+| Command | Does | Frontend caller |
+|---|---|---|
+| `set_window_background_blur` | Toggle the macOS native vibrancy behind a translucent window | [`useTheme.ts`](../src/app/useTheme.ts) |
 
 ## The three transports
 
@@ -348,7 +361,7 @@ tauri::RunEvent::Exit => {
    the UI store.
 2. **`loadWorkspaceSnapshot()`** — restore the persisted workspace: sessions,
    active session, UI layout (sidebar/panel/split/inspector), terminal
-   scrollback snapshots, agent-resume data, recent dirs/commands, workflows.
+   scrollback snapshots, agent-resume data, recent dirs/commands, per-host file prefs.
    Split layout is a recursive tree capped at four panes
    ([`split-layout.ts`](../src/modules/session/split-layout.ts)).
    A session may also own a `reader` leaf (file preview beside the terminal).

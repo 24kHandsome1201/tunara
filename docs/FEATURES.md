@@ -6,7 +6,7 @@
 - IPC、传输与托管 state：[ARCHITECTURE.md](./ARCHITECTURE.md)
 - 已落地能力叙事：[ROADMAP.md](./ROADMAP.md)
 
-当前发布版本见根目录 `package.json`（撰写时为 2.0.1）。
+当前发布版本见根目录 `package.json`（撰写时为 3.1.1）。
 
 ## 产品是什么
 
@@ -43,7 +43,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 
 ## 1. 终端
 
-**用户能做什么：** 多会话真实 PTY；最多 4 个递归分栏；⌘F 搜索（正则 / 大小写）；命令块导航、复制与导出；可点击链接；行内图片（SIXEL / iTerm IIP，始终启用）；跨重启恢复 10000 行 scrollback。没有命令块输出过滤器。
+**用户能做什么：** 多会话真实 PTY；最多 4 个递归分栏；⌘F 搜索当前终端、⌘⇧F 跨会话搜索（正则 / 大小写）；命令块导航、复制与导出；可点击链接；行内图片（SIXEL / iTerm IIP，始终启用）；跨重启恢复 10000 行 scrollback。没有命令块输出过滤器。
 
 | 能力 | 说明 | 代码 |
 |------|------|------|
@@ -52,6 +52,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 输出确认 | 前端 ACK 驱动 SSH/本地流控 | `pty_output_ack` |
 | 分栏 | 在任意 pane 右/下继续拆，最多 4 pane | [`split-layout.ts`](../src/modules/session/split-layout.ts) |
 | 搜索 | ⌘F，匹配计数，正则 / 大小写 | [`useTerminalSearch.ts`](../src/ui/useTerminalSearch.ts) · [`TerminalSearchBar.tsx`](../src/ui/TerminalSearchBar.tsx) |
+| 全局终端搜索 | ⌘⇧F，搜索所有已打开会话的内存 scrollback；当前会话优先、从最新行往前；正则 / 大小写；最多 500 条，按会话分组，选中后跳到对应会话和行。查询只在本次运行内记住 | [`GlobalTerminalSearch.tsx`](../src/ui/overlays/GlobalTerminalSearch.tsx) · [`cross-session-search.ts`](../src/modules/terminal/lib/cross-session-search.ts) |
 | 命令块 | 跟随 scrollback marker；⌘⇧↑ / ⌘⇧↓ 块导航；右键菜单展示退出码/耗时，可复制命令/输出、导出输出、回填命令到输入行（不自动执行）。没有 text / regex / invert / context-lines 输出过滤器。 | [`terminal-blocks.ts`](../src/modules/terminal/lib/terminal-blocks.ts) · [`useTerminalBlockMenu.ts`](../src/ui/useTerminalBlockMenu.ts) |
 | 命令完成提醒 | 非观察中会话的完成 toast 附带耗时；≥15s 的长命令在窗口后台完成时请求一次 Dock 弹跳 | [`session-lifecycle.ts`](../src/modules/terminal/lib/session-lifecycle.ts) · [`background-attention.ts`](../src/ui/lib/background-attention.ts) |
 | 拖放路径 | 本地会话把 Finder/文件管理器拖入的路径转义后写入输入行（不自动回车）；SSH 会话仍走 SFTP 上传 | [`shell-quote.ts`](../src/modules/terminal/lib/shell-quote.ts) · [`TerminalViewChrome.tsx`](../src/ui/TerminalViewChrome.tsx) |
@@ -129,7 +130,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 安全写 | fingerprint 冲突检测、断线 reconcile | [`safe_write.rs`](../src-tauri/src/modules/ssh/safe_write.rs) |
 | 远端变更 | mkdir / rename / delete，带前置条件 | `ssh_fs_mutate_v1` · [`remote-fs/`](../src/modules/ssh/remote-fs/) |
 | 传输 | 单文件与批量上传/下载、进度、取消、journal 恢复 | [`transfer/`](../src-tauri/src/modules/ssh/transfer/) · [`transfer-store.ts`](../src/modules/ssh/transfer-store.ts) |
-| 转发 | 本地端口转发与动态转发；重连快照 | `ssh_local_forward_*` / `ssh_dynamic_forward_*` |
+| 转发 | 本地（`-L`）、动态 SOCKS（`-D`）与反向（`-R`）端口转发；重连快照 | `ssh_local_forward_*` / `ssh_dynamic_forward_*` / `ssh_remote_forward_*` · [`forwarding-bridge.ts`](../src/modules/ssh/forwarding-bridge.ts) |
 | 诊断 | 显式运行/取消的配置与连接诊断 | `ssh_diagnostic_*_v1` |
 | 远程 shell 集成 | 可选远程 bash/zsh，用于 cwd、命令边界和 agent 状态 | [`src-tauri/src/modules/ssh/`](../src-tauri/src/modules/ssh/) |
 
@@ -181,6 +182,12 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 
 需要你时走侧栏「需要你 · N」和同源 Dock 角标，不走终端上方提示条。
 
+### 多路复用器感知
+
+本地非 Agent 会话的前台命令是 HerdR / tmux / zellij 时，侧栏每 3 秒读取一次该多路复用器的只读快照，显示其中 pane 的状态（例如哪个 pane 里有 Agent 在跑）。HerdR 中 blocked 的 pane 计入「需要你 · N」。Tunara 不向多路复用器发送任何操作。细节见 [AGENT_DETECTION.md](./AGENT_DETECTION.md)。
+
+代码：[`src-tauri/src/modules/multiplexer/`](../src-tauri/src/modules/multiplexer/) · [`multiplexer-status.ts`](../src/state/multiplexer-status.ts)。
+
 ---
 
 ## 8. Preview
@@ -213,6 +220,7 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | 切换 pane | ⌘[ ⌘] ⌘⇧[ ⌘⇧] |
 | 命令面板 | ⌘K |
 | 终端搜索 | ⌘F |
+| 全局终端搜索 | ⌘⇧F |
 | 会话 1–8 / 最后一个 | ⌘1–8 / ⌘9 |
 | 命令块导航 | ⌘⇧↑ / ⌘⇧↓ |
 | 跳到「需要你」 | ⌘↩ |
@@ -228,7 +236,8 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 ## 桌面体验
 
 - Light / Dark / 跟随系统，陶土强调色
-- 实色纸面层级 + macOS 原生覆盖标题栏
+- 默认实色纸面层级；可在外观设置调低背景不透明度并开启 macOS 原生背景模糊（文字保持不透明）
+- macOS 原生覆盖标题栏
 - Toast：退出动画、hover 暂停、进度条
 - 低打扰的签名更新提醒：仅在确有新版本时出现
 - 右键菜单覆盖会话、目录组、文件
@@ -266,6 +275,8 @@ Tunara **认出谁在跑**，不启动、不编排、不解析私有 stdout、�
 | `git/` | git2 只读 + watcher |
 | `agent/` | hooks socket、wrapper、preflight |
 | `preview/` | Preview WebView 与 tunnel |
+| `multiplexer/` | HerdR / tmux / zellij 只读状态快照 |
+| `window_effects` | macOS 背景模糊 |
 | `resolver/` · `editor/` · `process/` | CLI 路径、外部编辑器、子进程 |
 
 命令注册中心：[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs)。

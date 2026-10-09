@@ -20,7 +20,7 @@ Tunara 是 terminal-first 的本地开发工作台：保持真实 PTY 与 SSH �
 2. 稳定的本地 PTY、SSH、SFTP、resume 与终端恢复。
 3. Markdown 阅读和有边界的单文件轻编辑。
 4. Workspace-bound Preview，包括来源验证、导航、安全重启准备和显式 SSH tunnel。
-5. 轻量 Agent 检测、可用的生命周期状态、Attention 与 resume；优先支持 Claude Code、Codex、Cursor、OpenCode，其他 catalog 项提供基础识别。
+5. 轻量 Agent 检测、可用的生命周期状态、Attention 与 resume；只识别 Claude Code、Codex、Cursor、OpenCode，其他 coding agent 按普通终端进程处理。
 
 一条完整但透明的使用路径是：进入 repository/worktree，恢复终端和上下文，阅读或轻改文件，观察绑定的 Preview，审阅真实文件变化，再由用户决定后续 Git 操作。
 
