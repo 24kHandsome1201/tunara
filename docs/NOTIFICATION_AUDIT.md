@@ -43,7 +43,7 @@ Rust 侧 `src-tauri/src` 没有 notification / dock / badge / `requestUserAttent
 
 | 调用 | 为什么多余 |
 | --- | --- |
-| `sessions.ts:659` Agent 已完成 | 未读点、会话卡、`GlobalAgentBar` 已有 |
+| `sessions.ts:659` Agent 已完成 | 未读点、终端卡、`GlobalAgentBar` 已有 |
 | `sessions.ts:746` 后台命令成功 | 同上；失败才值得说话 |
 | `SshConnect.tsx:246` SSH 配置已刷新 | 列表自己变了 |
 | `pty-bridge.ts:47` 主机密钥已保存 | 用户刚在模态里点了「信任」 |
@@ -98,18 +98,18 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 
 | 文件:行号 | 触发 | 文案（key · 中文） | 类型 | 别处能否看到 | 建议 | 理由 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `src/state/sessions.ts:524` | 批量关闭仍在跑的会话，第一次点击 | `destructive.confirm_again.close` · 再次点击确认关闭 / `session.close.running_hint` · 进程运行中，再次点击关闭 | toast | 否 | 需要设计 | 这是二次确认，不是通知。toast 当确认很弱。 |
-| `src/state/sessions.ts:659` | 后台 Agent 一轮跑完 | Agent 名 / `agent.toast.done` · 已完成（或 `done_files`） | toast | 是：未读、会话卡、gbar | 删除 | 成功且持久状态已在侧栏。 |
+| `src/state/sessions.ts:524` | 批量关闭仍在跑的终端，第一次点击 | `destructive.confirm_again.close` · 再次点击确认关闭 / `session.close.running_hint` · 进程运行中，再次点击关闭 | toast | 否 | 需要设计 | 这是二次确认，不是通知。toast 当确认很弱。 |
+| `src/state/sessions.ts:659` | 后台 Agent 一轮跑完 | Agent 名 / `agent.toast.done` · 已完成（或 `done_files`） | toast | 是：未读、终端卡、gbar | 删除 | 成功且持久状态已在侧栏。 |
 | `src/state/sessions.ts:699` | 后台 Agent 进程退出 | 成功同上一行；失败 `agent.toast.exited` · 已退出（退出码 N） | toast | 是：未读 + gbar | 并入「需要你」 | 失败要挂着；成功删 toast。 |
-| `src/state/sessions.ts:746` | 后台命令结束（非 Agent） | 命令原文 / `command.toast.done` · 已完成 或 `failed` · 失败（退出码 N） | toast | 是：未读、会话卡 | 并入「需要你」 | 成功删；失败进「需要你」。≥15s 的 Dock 弹跳并进同一条。 |
+| `src/state/sessions.ts:746` | 后台命令结束（非 Agent） | 命令原文 / `command.toast.done` · 已完成 或 `failed` · 失败（退出码 N） | toast | 是：未读、终端卡 | 并入「需要你」 | 成功删；失败进「需要你」。≥15s 的 Dock 弹跳并进同一条。 |
 | `src/state/sessions.ts:921` | 文件名含换行，无法在终端打开 | `explorer.open_terminal.failed` · 无法在终端中打开文件 | toast | 否 | 保留 | 动作失败，列表无变化。 |
-| `src/state/sessions.ts:977` | 对本地会话点「同一主机再开窗口」 | `session.duplicate.ssh_only` · 仅 SSH 会话可以在同一主机再开窗口 | toast | 否 | 删除 | 菜单项应对本地会话禁用，而不是点了再骂。 |
-| `src/state/sessions.ts:1001` | 关闭单个仍在跑的会话，第一次点击 | 同 524 | toast | 否 | 需要设计 | 与批量关闭同一问题。 |
+| `src/state/sessions.ts:977` | 对本地终端点「同一主机再开窗口」 | `session.duplicate.ssh_only` · 仅 SSH 终端可以在同一主机再开窗口 | toast | 否 | 删除 | 菜单项应对本地终端禁用，而不是点了再骂。 |
+| `src/state/sessions.ts:1001` | 关闭单个仍在跑的终端，第一次点击 | 同 524 | toast | 否 | 需要设计 | 与批量关闭同一问题。 |
 | `src/state/ui.ts:725` | 用户配置读写失败 | `settings.config_error` · 配置错误 + 底层 message | toast | 否 | 保留 | 设置页可能没开。丢配置必须说。 |
 | `src/app/useInit.ts:84` | 工作区恢复失败或保存失败（每种一次） | `workspace.restore_error.title` · 工作区恢复已暂停 / `workspace.save_error.title` · 工作区未保存 | toast | 否 | 保留 | 写盘停了，没有第二处告警。 |
 | `src/app/useUpdateReminder.ts:24` | 启动 18s 后检查到已签名更新 | `update.reminder.title` · Tunara vX 已就绪 | toast | 设置→应用 页也有 | 保留 | 克制；设置页用户未必打开。以后可改挂「需要你」。 |
 | `src/app/useGlobalShortcut.ts:67` | 全局热键注册失败 | `settings.global_shortcut.conflict` · 热键已被其他应用占用或格式无效 | toast | 设置页有同一开关 | 保留 | 改快捷键当时人在设置里，但启动注册失败时不在。 |
-| `src/app/useKeybindings.ts:135` | 快捷键「下一个需要处理的会话」，当前没有 | `attention.none` · 没有需要处理的会话 | toast | 是：侧栏空 | 删除 | 快捷键没跳转就是答案。 |
+| `src/app/useKeybindings.ts:135` | 快捷键「下一个需要处理的终端」，当前没有 | `attention.none` · 没有需要处理的终端 | toast | 是：侧栏空 | 删除 | 快捷键没跳转就是答案。 |
 | `src/ui/overlays/CommandPalette.tsx:204` | 命令面板同一动作，当前没有 | 同上 | toast | 是 | 删除 | 同上。 |
 | `src/ui/TerminalView.tsx:454` | 本地 PTY 打开失败 | `pty.error.title` · 终端启动失败 | toast | 是：`PtyErrorBanner` | 删除 | 横幅已经盖在死终端上。 |
 | `src/modules/terminal/lib/pty-bridge.ts:176` | SSH `ssh_open` 失败 | `ssh.error.title` · SSH 连接失败 + 安全处理后的 message | toast | 是：横幅 + 连接 phase | 并入「需要你」 | 失败是持续态。横幅留给当前窗格按钮。 |
@@ -166,8 +166,8 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 | `src/ui/TerminalViewChrome.tsx:178` | 往远程终端拖文件已入队 | `term.drop.upload` + 已加入 N 个文件 | toast | 是：传输面板 | 删除 | 队列自己会动。 |
 | `src/ui/TerminalViewChrome.tsx:186` | 终端拖放失败 | `term.drop.upload` / `explorer.drop.failed` 或 `term.drop.no_cwd` | toast | 否 | 保留 | 没入队。无 cwd 这条尤其要说。 |
 | `src/ui/FilePreview.tsx:1285` | 预览里打开远程外部编辑失败 | `preview.editor.external_remote_open_failed` | toast | 编辑器工具条无变化 | 保留 | 没打开。 |
-| `src/modules/ssh/remote-external-edit.ts:47` | 会话已关，外部编辑同步停 | `preview.editor.external_remote_sync_failed` + session_closed_body | toast | 否（窗口可能在别的应用） | 保留 | 自动上传停了，本地副本还在。 |
-| `src/modules/ssh/remote-external-edit.ts:54` | 同步失败，会话还在 | 同上 + 打开远程预览 action | toast | 否 | 保留 | 同上。 |
+| `src/modules/ssh/remote-external-edit.ts:47` | 终端已关，外部编辑同步停 | `preview.editor.external_remote_sync_failed` + session_closed_body | toast | 否（窗口可能在别的应用） | 保留 | 自动上传停了，本地副本还在。 |
+| `src/modules/ssh/remote-external-edit.ts:54` | 同步失败，终端还在 | 同上 + 打开远程预览 action | toast | 否 | 保留 | 同上。 |
 | `src/modules/ssh/remote-external-edit.ts:88` | 远程文件不是可编辑文本 | `preview.editor.error_unsupported` · Tunara 无法安全编辑这个文件 | toast | 否 | 保留 | 没打开。 |
 | `src/modules/ssh/remote-external-edit.ts:143` | 外部编辑冲突或读本地失败 | `conflict_title` 或 `sync_failed` | toast | 否 | 保留 | 自动上传停了。 |
 | `src/modules/ssh/remote-external-edit.ts:157` | 外部编辑器已打开 | `preview.editor.external_remote` / `external_remote_hint` · 保存后会传回远程主机 | toast | 是：编辑器窗口 | 删除 | 窗口就是反馈。 |
@@ -187,7 +187,7 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 
 | 文件:行号 | 触发 | 文案 | 类型 | 别处能否看到 | 建议 | 理由 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `src/ui/terminal-attention.ts:15` 被 `sessions.ts:676` 调用 | 后台 Agent 等待确认 | 无文案，Informational 弹跳 | Dock | gbar「待确认」、会话卡徽章 | 并入「需要你」 | 弹跳改为「需要你」>0 且失焦时的 OS 投影，不再单独按事件弹。 |
+| `src/ui/terminal-attention.ts:15` 被 `sessions.ts:676` 调用 | 后台 Agent 等待确认 | 无文案，Informational 弹跳 | Dock | gbar「待确认」、终端卡徽章 | 并入「需要你」 | 弹跳改为「需要你」>0 且失焦时的 OS 投影，不再单独按事件弹。 |
 | `src/ui/terminal-attention.ts:15` 被 `sessions.ts:754` 调用 | 后台命令 ≥15s 结束 | 无文案 | Dock | 命令 toast + 未读 | 并入「需要你」 | 同上。 |
 | `src/ui/TerminalView.tsx:557` | xterm `onBell`，窗口失焦且设置开 | 无文案 | Dock | 终端响铃本身 | 需要设计 | BEL 不是「需要你」。要么跟设置走只弹跳、不进侧栏，要么关掉产品弹跳只留终端铃。 |
 | `src/app/useDockBadge.ts:13-18` | 失焦时未读数；聚焦清零 | 数字角标 | Dock | 侧栏未读点 | 并入「需要你」 | 角标 = 「需要你」的数量，不是第三套计数。 |
@@ -198,10 +198,10 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 
 | 文件:行号 | 触发 | 文案 | 类型 | 别处能否看到 | 建议 | 理由 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `src/ui/SshSuggestionBar.tsx:16` | 本地会话里敲了 `ssh host` | `ssh.suggest.title` · 用内置 SSH 打开 … | 提示条 | 否 | 已在处理 | 其他线程删除/重做。 |
+| `src/ui/SshSuggestionBar.tsx:16` | 本地终端里敲了 `ssh host` | `ssh.suggest.title` · 用内置 SSH 打开 … | 提示条 | 否 | 已在处理 | 其他线程删除/重做。 |
 | `src/ui/PreviewSuggestionBar.tsx:13` | 终端输出里扫到预览 URL | `preview.suggest.title` · 要在 Tunara 里预览 … | 提示条 | Inspector 也有预览建议 | 已在处理 | 同上。 |
 | `src/ui/ReviewChangesBar.tsx:12` | Agent 改了文件 | `review.suggest.title` · N 个文件有改动 | 提示条 | Changes 页、gbar 查看改动 | 已在处理 | 同上。 |
-| `src/ui/GlobalAgentBar.tsx:238` | 有待处理 / 运行中 / 可恢复会话 | `gbar.title` · 会话动态；`gbar.count.attention` · N 待处理 | 侧栏条 | 会话卡状态点 | 已在处理 | 目标形态就是「需要你」一行。 |
+| `src/ui/GlobalAgentBar.tsx:238` | 有待处理 / 运行中 / 可恢复终端 | `gbar.title` · 终端动态；`gbar.count.attention` · N 待处理 | 侧栏条 | 终端卡状态点 | 已在处理 | 目标形态就是「需要你」一行。 |
 
 ### Inspector / 传输 / 终端内联
 
@@ -228,8 +228,8 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 | `src/ui/FileExplorer.tsx:1155` | 读目录失败 | `explorer.read_dir_failed` | 内联状态 | 改为内联静默状态 | 行内错误。 |
 | `src/ui/FileExplorer.tsx:1206` | SSH 断了还在看缓存 | `explorer.remote_disconnected` | 内联状态 | 并入「需要你」 | 断线是持续要人；explorer 条可留重连按钮。 |
 | `src/modules/ssh/ForwardingPanel.tsx:193,239` | 转发错误 | `forwarding.error.*` | 内联状态 | 改为内联静默状态 | 人在转发页。 |
-| `src/ui/SessionCard.tsx:16,527` | 未读点、待确认徽章 | `gbar.tag.confirmation` · 待确认 | 内联状态 | 并入「需要你」 | 会话行可留圆点，文案不要和第二处打架。 |
-| `src/ui/Titlebar.tsx:455,1179` | 纯净模式会话名 / 设备身份 | 会话名、连接 phase | 内联状态 | 改为内联静默状态 | 铬，不是喇叭。 |
+| `src/ui/SessionCard.tsx:16,527` | 未读点、待确认徽章 | `gbar.tag.confirmation` · 待确认 | 内联状态 | 并入「需要你」 | 终端行可留圆点，文案不要和第二处打架。 |
+| `src/ui/Titlebar.tsx:455,1179` | 纯净模式终端名 / 设备身份 | 终端名、连接 phase | 内联状态 | 改为内联静默状态 | 铬，不是喇叭。 |
 | `src/ui/overlays/settings/AppSettings.tsx:29` | 用户打开应用页 | `settings.app.updates.*` | 内联状态 | 改为内联静默状态 | 检查更新写在该页，对。 |
 
 ### 模态确认（用户手势拉起，不是推送）
@@ -256,7 +256,7 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 6. `src/state/sessions.ts:659` — 后台 Agent「已完成」
 7. `src/modules/ssh/transfer-store.ts:198` — 上传完成 toast
 8. `src/ui/file-explorer/use-direct-upload.ts:173` — 直传完成 toast
-9. `src/ui/overlays/CommandPalette.tsx:204` — 没有需要处理的会话
+9. `src/ui/overlays/CommandPalette.tsx:204` — 没有需要处理的终端
 10. `src/app/useKeybindings.ts:135` — 同上
 11. `src/ui/TerminalView.tsx:454` — 与 `PtyErrorBanner` 重复的 PTY toast
 12. `src/ui/FileExplorer.tsx:491` — 远程 home 失败（列表已是 `/`）
@@ -282,10 +282,10 @@ README：`Delayed signed-update reminders that stay silent until a release is ac
 
 ### 3. 需要设计再动
 
-- **关运行中会话的二次确认**（`sessions.ts:524/1001`）：toast 当确认不可靠。候选：会话行上的内联「再点一次」，或短模态。
+- **关运行中终端的二次确认**（`sessions.ts:524/1001`）：toast 当确认不可靠。候选：终端行上的内联「再点一次」，或短模态。
 - **退出横幅**：死窗格的重启/重连按钮留下；不要同时 toast。
 - **BEL 弹跳**：不是「需要你」。单独决定是否还要 OS 注意力。
-- **更新提醒去向**：现在 toast 已克制。若「需要你」允许非会话条目，再搬过去。
+- **更新提醒去向**：现在 toast 已克制。若「需要你」允许非终端条目，再搬过去。
 
 ### 不做的
 
