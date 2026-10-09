@@ -2,33 +2,33 @@
 
 ## 产品判断
 
-Tunara 已经有终端、会话、Git 审查、远程 SSH、文件浏览/轻编辑、Preview 和 Agent 状态识别。后续最值得发展的方向是把远程修复闭环补齐，以及在终端本职内做更扎实的会话管理。
+Tunara 已经有终端、侧栏分组、Git 审查、远程 SSH、文件浏览/轻编辑、Preview 和 Agent 状态识别。后续最值得发展的方向是把远程修复闭环补齐，以及在终端本职内做更扎实的终端管理。
 
-当前体验继续围绕“少切换、少记忆、少迷路”收敛：终端可从原生目录选择器直接起步，侧栏用一层统一会话动态聚合 SSH 故障、后台完成、运行中和可恢复状态。功能与代码对照见 [FEATURES.md](./FEATURES.md)。
+当前体验继续围绕“少切换、少记忆、少迷路”收敛：终端可从原生目录选择器直接起步，侧栏用一层统一终端动态聚合 SSH 故障、后台完成、运行中和可恢复状态。功能与代码对照见 [FEATURES.md](./FEATURES.md)。
 
 ## 已落地能力
 
-### 1. 会话置顶
+### 1. 终端置顶
 
-关键会话可以固定在切换列表前面，侧边栏和命令面板都会优先显示。置顶状态进入工作区快照，重启后继续保留。
+关键终端可以固定在切换列表前面，侧边栏和命令面板都会优先显示。置顶状态进入工作区快照，重启后继续保留。
 
-适合场景：长期 Agent 会话、远程修复会话、构建任务、主线开发目录。
+适合场景：长期 Agent 终端、远程修复终端、构建任务、主线开发目录。
 
 ### 4. 终端聚焦时 chrome 淡化
 
-终端获得焦点时，标题栏、侧栏和检查器自动降到约 60% 不透明度；鼠标移到 chrome 上或焦点离开终端即恢复。不改布局、不重排终端列宽；真正收起侧栏 / 检查器仍是 ⌘\ / ⌘⇧\。
+终端获得焦点时，标题栏、侧栏和检查面板自动降到约 60% 不透明度；鼠标移到 chrome 上或焦点离开终端即恢复。不改布局、不重排终端列宽；真正收起侧栏 / 检查面板仍是 ⌘\ / ⌘⇧\。
 
 ### 6. 远程 Git 审查（1.8.0）
 
-SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓库状态和 diff，不占用交互 shell；远程没有 git 时降级为「非仓库」。
+SSH 终端也能看 changes 面板：通过一次性 exec channel 读远程仓库状态和 diff，不占用交互 shell；远程没有 git 时降级为「非仓库」。
 
 ### 7. 远程/本地内容搜索（1.10.0）
 
 文件面板支持按内容搜索（grep）：本地走 `fs_grep`，远程走 `ssh_fs_grep`，结果形状一致；名称/内容两种模式可切换，远程结果带 LRU 缓存并随 Refresh 一起失效。
 
-### 8. 统一会话动态（1.9.0）
+### 8. 统一终端动态（1.9.0）
 
-侧栏按“需要处理 / 正在运行 / 可恢复”聚合 SSH、命令与 Agent 的派生状态；点击可回到对应会话，没有可操作状态时整条隐藏。
+侧栏按“需要处理 / 正在运行 / 可恢复”聚合 SSH、命令与 Agent 的派生状态；点击可回到对应终端，没有可操作状态时整条隐藏。
 
 ### 9. SSH config 导入（1.8.0）
 
@@ -42,9 +42,9 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 侧栏、标题栏菜单和命令面板都能打开原生目录选择器。三处入口共享并发守卫与错误处理，取消无副作用，创建后的真实 PTY cwd 与所选目录一致。
 
-### 14. 统一会话动态与恢复（1.12.0）
+### 14. 统一终端动态与恢复（1.12.0）
 
-原全局 Agent 活动条扩展为“需要处理 / 正在运行 / 可恢复”三组，状态完全由 SSH 连接证据、命令结果、Agent 忙闲、未读和恢复意图派生。动作只聚焦会话、打开 SSH 重连或填入恢复命令，不自动运行命令。
+原全局 Agent 活动条扩展为“需要处理 / 正在运行 / 可恢复”三组，状态完全由 SSH 连接证据、命令结果、Agent 忙闲、未读和恢复意图派生。动作只聚焦终端、打开 SSH 重连或填入恢复命令，不自动运行命令。
 
 ### 15. 搜索与 Diff 的取消和按需加载
 
@@ -68,7 +68,7 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 20. SSH 传输与远端变更（1.17.1 及之后）
 
-文件面板支持覆盖确认的上传、批量上传/下载、真实进度、取消和 journal 恢复。远端 mkdir / rename / delete 走带前置条件的 `ssh_fs_mutate_v1`。检查器为 SSH 会话提供 Transfers 与 Forwarding 视图。
+文件面板支持覆盖确认的上传、批量上传/下载、真实进度、取消和 journal 恢复。远端 mkdir / rename / delete 走带前置条件的 `ssh_fs_mutate_v1`。检查面板为 SSH 终端提供 Transfers 与 Forwarding 视图。
 
 ### 21. 设置快捷键页与终端交互触发器
 
@@ -84,13 +84,13 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 25. 纸面同源终端与 SSH 按主机分组（2.0.0）
 
-默认 Light/Dark 终端画布、墨色与 ANSI 色改为和外壳同一组暖纸 / 暖墨 token；SSH 会话按主机分组并复用连接。规范见 [DEFAULT_TERMINAL_PALETTE.md](./DEFAULT_TERMINAL_PALETTE.md) 与 [SIDEBAR_SSH.md](./SIDEBAR_SSH.md)。
+默认 Light/Dark 终端画布、墨色与 ANSI 色改为和外壳同一组暖纸 / 暖墨 token；SSH 终端按主机分组并复用连接。规范见 [DEFAULT_TERMINAL_PALETTE.md](./DEFAULT_TERMINAL_PALETTE.md) 与 [SIDEBAR_SSH.md](./SIDEBAR_SSH.md)。
 
 ## 下一阶段建议
 
 下一代（v3.1 → v4.0）升级路线已批准，见 [NEXT_GEN_ROADMAP.md](./NEXT_GEN_ROADMAP.md)。功能取舍与主路径缺口见 [PRODUCT_REVIEW.md](./archive/PRODUCT_REVIEW.md)：优先把 Preview 和最近目录接到已有流程上，而不是再铺新面。
 
-侧栏已按主机分组之后，标题栏展示当前设备工作面，见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。不要再把全部终端和跨设备文件平铺成第二条会话列表，也不要做成第二行设备页签。
+侧栏已按主机分组之后，标题栏展示当前设备工作面，见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。不要再把全部终端和跨设备文件平铺成第二条终端列表，也不要做成第二行设备页签。
 
 ### 1. 发布后的真实环境回归矩阵
 
@@ -98,13 +98,13 @@ SSH 会话也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 ### 2. 终端本职缺口（对标其他终端）
 
-对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 的优先项里，拖文件插入路径、OSC 99、跳到最近 Attention、有上限的滚屏/命令块导出已经落地。下一批仍是 Unicode grapheme 宽度、Kitty keyboard（等 xterm.js 上游）和跨会话搜索。完整矩阵与明确不抄的厨房水槽见 [TERMINAL_COMPETITIVE_GAPS.md](./archive/TERMINAL_COMPETITIVE_GAPS.md)。
+对照 iTerm2 / Ghostty / Warp / Wave / cmux / Kitty / Tabby 的优先项里，拖文件插入路径、OSC 99、跳到最近 Attention、有上限的滚屏/命令块导出已经落地。下一批仍是 Unicode grapheme 宽度、Kitty keyboard（等 xterm.js 上游）和跨终端搜索。完整矩阵与明确不抄的厨房水槽见 [TERMINAL_COMPETITIVE_GAPS.md](./archive/TERMINAL_COMPETITIVE_GAPS.md)。
 
 ## 性能方向
 
-1. 会话列表继续保持 memo 化，过滤、分组、排序要和渲染拆开。
-2. ~~Git 状态刷新做队列和去重，避免多会话同时触发重复 IPC。~~（已落地：`sessions.ts` 节流 + nonce 批量合并）
+1. 终端列表继续保持 memo 化，过滤、分组、排序要和渲染拆开。
+2. ~~Git 状态刷新做队列和去重，避免多终端同时触发重复 IPC。~~（已落地：`sessions.ts` 节流 + nonce 批量合并）
 3. 大 diff：虚拟滚动、按文件加载和过期请求取消均已落地，继续守住渲染与传输上限。
 4. 远程文件搜索：结果 LRU、分段加载和请求取消均已落地，继续用真实大目录验证延迟与上限。
 5. 布局和工作区快照继续走防抖保存，避免交互时频繁写磁盘。
-6. 批量 Git 刷新继续跳过远程会话，避免把 SSH 伪路径交给本地 Git。
+6. 批量 Git 刷新继续跳过远程终端，避免把 SSH 伪路径交给本地 Git。

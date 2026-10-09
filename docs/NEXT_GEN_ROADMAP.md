@@ -7,7 +7,7 @@
 | 维度 | 现状 | 信号 |
 |---|---|---|
 | 产品主线 | 真实终端 + 按主机/目录分组的侧栏 + 只读 Git review + 有边界的文件/SSH | GOAL 明确：没有自动进入的下一阶段 |
-| 最近两周重心 | SSH 失败码/跳板机、HerdR/tmux/zellij 感知、半透明外壳、侧栏会话身份 | 用户真实在用 **SSH + 多路复用器 + Agent**，这是下一代的发力点 |
+| 最近两周重心 | SSH 失败码/跳板机、HerdR/tmux/zellij 感知、半透明外壳、侧栏终端身份 | 用户真实在用 **SSH + 多路复用器 + Agent**，这是下一代的发力点 |
 | 渲染 | 3.0.3 为修 CJK/字形错位，**所有平台退回 DOM 渲染** | 大输出、多分屏下性能倒退；WebGL 代码（atlas 隔离/fallback）仍在但闲置 |
 | 代码体量 | `ssh/hosts.rs` 3.6k、`ssh/sftp.rs` 3.3k、`ssh/connection.rs` 2.8k、`FilePreview.tsx` 1.9k、`FileExplorer.tsx` 1.6k 行 | SSH 模块已是回归主风险源 |
 | 测试 | Node 逻辑 + Vitest(happy-dom) + cargo test；**没有 E2E / 真实 webview / 真实 SSH 门禁** | ROADMAP 第 1 项“真实环境回归矩阵”一直未落地 |
@@ -23,9 +23,9 @@
 
 目标：发布 main 上积压的修复，同时补上以后每次发版都要用的护栏。
 
-1. **发布积压改动**：SSH 失败码/跳板机卡片、HerdR 状态、半透明/模糊、侧栏会话身份等整理进 CHANGELOG，发 3.1.0。
+1. **发布积压改动**：SSH 失败码/跳板机卡片、HerdR 状态、半透明/模糊、侧栏终端身份等整理进 CHANGELOG，发 3.1.0。
 2. **E2E 冒烟门禁（新）**
-   - 前端层：Playwright 跑 Vite 页面 + mock Tauri IPC（`@tauri-apps/api/mocks`），覆盖新建会话、分屏、Inspector 切换、SSH 连接表单、设置页。
+   - 前端层：Playwright 跑 Vite 页面 + mock Tauri IPC（`@tauri-apps/api/mocks`），覆盖新建终端、分屏、Inspector 切换、SSH 连接表单、设置页。
    - 真实层：Linux CI 用 `tauri-driver`(WebDriver) 跑 1–2 条黄金路径；macOS 保留手动 QA 清单（`archive/VISUAL_QA.md`）。
 3. **真实 SSH 回归矩阵**（ROADMAP 第 1 项落地）：CI 里起 `openssh-server` 容器 + 跳板机容器，矩阵覆盖 key / password / keyboard-interactive / agent、bash / zsh、首连 host key、被动断开重连、ProxyJump、大目录 grep。已有 `benchmark` feature 下的 RTT fixture 可复用。
 4. **SSH 模块拆分**（纯重构，零行为变化）：`hosts.rs` → profile 存储 / config 导入 / 分组；`sftp.rs` → 浏览 / 读写 / safe-write；`connection.rs` → 握手 / 认证状态机 / generation 发布。前端 `FilePreview.tsx` 按预览类型拆子组件并懒加载。
@@ -42,11 +42,11 @@
    - 方案：WebGL 作为“设置 → 终端 → 渲染器（自动/GPU/兼容）”，自动模式在字形自检通过后才启用；已有 `terminal-benchmark.ts` 扩成发版前基准（大输出吞吐、4 分屏 FPS、CJK 对齐截图比对）。
    - 跟踪 xterm.js 6.x 的 WebGL/DOM 修复，必要时评估 `@xterm/addon-webgl` 新版。
 2. **Unicode grapheme 宽度**：接 `@xterm/addon-unicode-graphemes`（或 Unicode 15 宽度表），和 CJK 标点压缩禁用逻辑统一测试。
-3. **跨会话搜索**：在已有命令块 / scrollback marker 基础上做 ⌘⇧F 全会话搜索（只搜内存中的 scrollback，不做持久索引——守住“不做 Event Store”的边界）。
-4. **多窗口（候选，需批准）**：竞品全员具备、Tunara 单窗。先做“把会话拖出为新窗口”，store 需要按窗口分片，快照结构升级；成本较高，建议单独立项。
+3. **跨终端搜索**：在已有命令块 / scrollback marker 基础上做 ⌘⇧F 全终端搜索（只搜内存中的 scrollback，不做持久索引——守住“不做 Event Store”的边界）。
+4. **多窗口（候选，需批准）**：竞品全员具备、Tunara 单窗。先做“把终端拖出为新窗口”，store 需要按窗口分片，快照结构升级；成本较高，建议单独立项。
 5. **Kitty keyboard 协议**：继续等 xterm.js 上游，本阶段只做跟踪与开关预留。
 
-验收：大输出吞吐恢复到 WebGL 基线的 ±10%；CJK/emoji 对齐截图比对通过；跨会话搜索 1 万行/会话 × 10 会话 < 100 ms。
+验收：大输出吞吐恢复到 WebGL 基线的 ±10%；CJK/emoji 对齐截图比对通过；跨终端搜索 1 万行/终端 × 10 终端 < 100 ms。
 
 ---
 
@@ -55,7 +55,7 @@
 这是 Tunara 相对 iTerm/Ghostty/Warp 最有差异化的方向，也是最近提交最集中的地方。
 
 1. **多路复用器适配层**：把 `herdr.rs` 的“只读快照 → 白名单字段 → IPC”模式抽象成 `MultiplexerAdapter`，接入 tmux（`tmux list-panes -F`）和 zellij（`zellij action list-clients`/插件）。侧栏、Inspector 跟随焦点 pane、Needs-you 聚合全部走统一接口。
-2. **远程 Agent 感知**：SSH 会话内的 Claude Code / Codex 状态目前依赖 OSC；增加可选的远程 hook（post-connect 命令已有基础）把状态通过 OSC 回传，不在远端常驻进程。
+2. **远程 Agent 感知**：SSH 终端内的 Claude Code / Codex 状态目前依赖 OSC；增加可选的远程 hook（post-connect 命令已有基础）把状态通过 OSC 回传，不在远端常驻进程。
 3. **远程 Preview**：Preview 已支持显式 SSH tunnel，补“终端里出现远端 localhost URL → 一键建本地转发并打开 Preview”，复用 forwarding 模块。
 4. **连接体验**：跳板机多跳链路可视化、断线自动重连策略按主机持久化（已部分落地）、连接复用状态在标题栏可见。
 5. **SSH 配置兼容性**：`Include`、`Match host`、`IdentityAgent`（1Password/Secretive）等 ssh_config 常用指令，按真实用户 config 做兼容矩阵。
@@ -70,8 +70,8 @@
 |---|---|---|
 | A. Linux 正式支持（AppImage/deb，签名 + 自动更新） | 远程开发用户很多在 Linux 桌面；CI 已编译 Linux | 需要 WebKitGTK 渲染/剪贴板/IME 实机验收、Preview 原生能力降级说明 |
 | B. macOS Intel / Universal 包 | 成本低，覆盖老机器 | 用户量有限 |
-| C. 工作区快照 v2（多窗口 + 远程会话恢复） | 配合 v3.2 多窗口 | 需要迁移旧快照（`archive/MIGRATION.md` 模式） |
-| D. 自动化接口（本地 socket/CLI，只读查询会话状态） | 让外部脚本/Agent 查询 Tunara 状态，类比 cmux | 必须只读，避免滑向 GOAL 明确不做的“自动写 PTY / orchestration” |
+| C. 工作区快照 v2（多窗口 + 远程终端恢复） | 配合 v3.2 多窗口 | 需要迁移旧快照（`archive/MIGRATION.md` 模式） |
+| D. 自动化接口（本地 socket/CLI，只读查询终端状态） | 让外部脚本/Agent 查询 Tunara 状态，类比 cmux | 必须只读，避免滑向 GOAL 明确不做的“自动写 PTY / orchestration” |
 
 建议：v4.0 选 **A + C**，D 作为只读 CLI 小步试点。
 
