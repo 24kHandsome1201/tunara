@@ -53,6 +53,37 @@ symlink and preview `--port 1431` avoids changing the feature checkout.
 - Theme/locale changes should use Settings UI. Preferences may reset on reload
   in the mock; verify the theme rather than assuming persistence.
 
+## Linux and localization
+
+- Source `~/.nvm/nvm.sh` when pnpm or Node is not on PATH.
+- If Playwright reports its browser executable is absent, run
+  `pnpm exec playwright install chromium`.
+- Before recording non-Latin UI, check `fc-list :lang=zh` and visually confirm
+  glyphs; minimal Linux images may have no CJK fonts. Install Noto Sans CJK (or a
+  user-local copy under `~/.local/share/fonts`), run `fc-cache -f`, and restart
+  Chromium.
+- Use a readable desktop resolution before maximizing; a large virtual desktop
+  scaled into the recording makes text illegible.
+- Settings segmented language and renderer options have `role="radio"`, not
+  `button`. Settings is one scrollable document; several controls keep
+  `settings.appearance.*` keys but live under the Terminal section.
+- Selecting Auto renderer with a terminal open can finish the GPU check
+  immediately; assert the real status instead of expecting the pending text.
+- The explorer hidden-file control uses a native `title` tooltip (the titlebar
+  uses a custom `[role=tooltip]`). Capture native tooltips with a desktop
+  screenshot; page screenshots omit them.
+- CDP screenshots during overlay entrance transitions may blur; wait for stable
+  rendering first.
+
+## SSH fixture boundaries
+
+- The stock mock may not implement `ssh_open_v2`; submitting the SSH dialog can
+  yield a disconnected session rather than a ready SSH terminal.
+- A disconnected SSH session still shows forwarding heading and empty-state
+  copy, but that does not prove active forwarding or SSH functionality.
+- When extending an authorized mocked backend, intercept IPC command contracts
+  rather than mutating frontend stores, and disclose the fixture boundary.
+
 ## Evidence
 
 Assert both visible screenshots and semantic state. Wait for transitions before
