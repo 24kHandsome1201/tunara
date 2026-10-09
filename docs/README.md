@@ -11,8 +11,8 @@
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | 纸面视觉主张：色彩、字体、圆角、布局与交互约定 |
 | [DEFAULT_TERMINAL_PALETTE.md](./DEFAULT_TERMINAL_PALETTE.md) | 默认 Light/Dark 终端调色板与外壳 token 的对应关系 |
 | [AGENT_DETECTION.md](./AGENT_DETECTION.md) | Agent 如何被检测、生命周期如何跟踪，以及新增一个 agent 要改哪里 |
-| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 检查器交互模型：自动选择、锁定、各视图职责 |
-| [SIDEBAR_SSH.md](./SIDEBAR_SSH.md) | 左侧栏如何按本机目录 / SSH 主机分组会话 |
+| [INSPECTOR_PANELS.md](./INSPECTOR_PANELS.md) | 检查面板交互模型：默认视图与各视图职责 |
+| [SIDEBAR_SSH.md](./SIDEBAR_SSH.md) | 左侧栏如何按本机目录 / SSH 主机分组终端 |
 | [TERMINAL_INTERACTIONS.md](./TERMINAL_INTERACTIONS.md) | 右键、复制、安全粘贴与终端快捷键的触发边界 |
 | [TERMINAL_SELECTION_COPY.md](./TERMINAL_SELECTION_COPY.md) | 选区复制 / 粘贴（⌘C、右键）的产品合同 |
 | [LIMITED_LARGE_FILE_VIEWING.md](./LIMITED_LARGE_FILE_VIEWING.md) | 大文本/日志的前 N / 后 N 行受限查看合同与 IPC 限额 |

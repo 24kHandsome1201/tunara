@@ -25,7 +25,7 @@
   <img src="assets/screenshots/tunara-split-agents.jpg" width="960" alt="Tunara 在分栏终端工作区里同时运行 Claude Code 和 Codex">
 </p>
 
-Tunara 是一个终端。左边侧栏按项目和机器分组你的会话，agent 需要你时你会知道。右边随手看一眼它改了什么。
+Tunara 是一个终端。左边侧栏按项目和机器分组你的终端，agent 需要你时你会知道。右边随手看一眼它改了什么。
 
 ## 安装
 

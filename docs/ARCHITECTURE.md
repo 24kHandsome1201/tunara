@@ -31,7 +31,7 @@ fixed three-pane layout under a custom titlebar:
   [`TerminalView`](../src/ui/TerminalView.tsx)): the actual terminals. xterm.js +
   WebGL, one per session, split into a recursive layout of up to four panes.
 - **Right: `InspectorPanel`** ([`src/ui/InspectorPanel.tsx`](../src/ui/InspectorPanel.tsx)):
-  contextual Inspector (Chinese UI: 检查器). It defaults to Files and keeps the
+  contextual Inspector (Chinese UI: 检查面板). It defaults to Files and keeps the
   user's last choice; changes, transfers, and session activity never switch the
   current view (there is no Auto/Locked mode). Files and Changes are always-shown
   tabs; Preview and Transfers appear when they have a source or activity; the
