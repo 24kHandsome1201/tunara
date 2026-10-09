@@ -125,10 +125,13 @@ their own commands.
 | `ssh_fs_read_dir` | List a remote directory over SFTP | `sshReadDir`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_read_file` | Read a remote file over SFTP | `sshReadFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_file_view_head_v1` | Bounded remote text head (same limits as local `fs_file_view_head_v1`) | [`LIMITED_LARGE_FILE_VIEWING.md`](./LIMITED_LARGE_FILE_VIEWING.md) |
+| `ssh_file_view_tail_v1` | Bounded remote text tail (last N lines) | [`file-view-bridge.ts`](../src/modules/fs/file-view-bridge.ts) |
+| `ssh_fs_read_if_changed_v1` | Poll an open remote preview; LSTAT change hints only, never accepted as write fingerprints | [`file-view-bridge.ts`](../src/modules/fs/file-view-bridge.ts) |
 | `ssh_fs_write_text_file` | Conflict-checked, atomic remote text save | `sshWriteTextFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_reconcile_text_write` | Reconcile an outcome-unknown remote save after reconnect | `sshReconcileTextWrite`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_download` / `ssh_fs_upload` / `ssh_fs_cancel_upload` | Legacy single-file transfer adapters (unchanged wire names) | [`transfer-bridge.ts`](../src/modules/ssh/transfer-bridge.ts) |
 | `ssh_transfer_download` / `ssh_transfer_upload` / `ssh_transfer_cancel` | Journaled transfers with progress channels | [`transfer-store.ts`](../src/modules/ssh/transfer-store.ts) |
+| `ssh_upload_preflight_v1` / `ssh_upload_materialize_v1` / `ssh_upload_materialization_reconcile_v1` | Backend-owned batch upload plan (opaque, binding-scoped), directory materialization, and observe-only reconcile | [`transfer-bridge.ts`](../src/modules/ssh/transfer-bridge.ts) |
 | `validate_manifest` | Expand a local or remote folder into a bounded transfer manifest | [`transfer-bridge.ts`](../src/modules/ssh/transfer-bridge.ts) |
 | `ssh_transfer_journal_*` / `ssh_transfer_recovery_*` | Persist, list, clean, and reconcile interrupted transfers | [`transfer_journal.rs`](../src-tauri/src/modules/ssh/transfer_journal.rs) |
 | `ssh_fs_mutate_v1` / `ssh_fs_reconcile_mutation_v1` | Precondition-checked mkdir / rename / delete | [`remote-fs/bridge.ts`](../src/modules/ssh/remote-fs/bridge.ts) |
@@ -145,10 +148,15 @@ their own commands.
 | `fs_read_dir` | List a local directory | `fsReadDir`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_read_file` | Read a file (text/binary/image/too-large classified) | `fsReadFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_write_text_file` | Fingerprint-checked atomic text save | `fsWriteTextFile`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
+| `fs_export_text_file` | Create or replace a user-chosen export from a Save dialog (no fingerprint; symlinks and non-files fail closed) | [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_file_view_head_v1` / `fs_cancel_file_view_v1` | Bounded first-N-line text view (local; SSH uses `ssh_file_view_head_v1`) | [`LIMITED_LARGE_FILE_VIEWING.md`](./LIMITED_LARGE_FILE_VIEWING.md) |
+| `fs_file_view_tail_v1` | Bounded last-N-line text view (local) | [`file-view-bridge.ts`](../src/modules/fs/file-view-bridge.ts) |
+| `fs_resolve_dir` | Resolve `~` / relative start dirs to an absolute path backend-side | [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
+| `fs_scan_recent_repos` | Empty-state scan for nearby git repositories | [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_search` | Fuzzy filename search under a root | `fsSearch`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) |
 | `fs_grep` | Content grep under a root | `fsGrep`, [`fs-bridge.ts`](../src/modules/fs/fs-bridge.ts) (via [`FileExplorer.tsx`](../src/ui/FileExplorer.tsx)) |
 | `fs_cancel_search` | Cancel the active local or remote search generation | `fsCancelGrep` / `cancelRemoteSearch` in the filesystem bridges |
+| `cancel_operation_v1` | Domain-scoped cancel by request id (currently the remote Git snapshot) | `cancelRemoteGitSnapshot`, [`git-bridge.ts`](../src/modules/git/git-bridge.ts) |
 
 ### `git` — status / diff / watch [`modules/git`](../src-tauri/src/modules/git/mod.rs)
 
@@ -184,6 +192,7 @@ the shell PATH.
 | Command | Does | Frontend caller |
 |---|---|---|
 | `open_in_editor` | Open `path` (optional line/column) in the configured editor | `openInEditor`, [`open.ts`](../src/modules/editor/open.ts) |
+| `remote_edit_staging_path` | Allocate a local staging file so an external editor can edit a remote file; the frontend uploads on change | [`remote-external-edit.ts`](../src/modules/ssh/remote-external-edit.ts) |
 
 ### `config` — text config file [`modules/config`](../src-tauri/src/modules/config.rs)
 

@@ -154,7 +154,7 @@ Overlays: Settings · Command Palette · SSH 连接 · Host key
 | 资源引用 | 远程路径不得落到本地编辑器 IPC | [`resource-ref.ts`](../src/modules/resources/resource-ref.ts) |
 | 阅读面板 | 分屏、属于终端、‹ › 历史、SSH 断线自动恢复 | [`FilePreview.tsx`](../src/ui/FilePreview.tsx) · [`src/ui/MainArea.tsx`](../src/ui/MainArea.tsx) |
 
-标题栏设备标签合同的历史说明见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)；当前产品不再用标题栏打开文件。
+打开的文件不进标题栏，只在阅读面板里打开。
 
 ---
 
