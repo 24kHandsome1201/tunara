@@ -101,7 +101,7 @@ chore(deps): bump xterm to 6.x
 src/                    # React 前端
 ├── app/                # 应用入口、初始化、快捷键、主题、壳层布局
 ├── modules/
-│   ├── terminal/       # xterm.js 会话、OSC handler、agent 生命周期
+│   ├── terminal/       # xterm.js 终端、OSC handler、agent 生命周期
 │   ├── fs/             # 文件系统桥接
 │   ├── git/            # Git 桥接
 │   ├── agent/          # Agent 注册表
@@ -116,7 +116,7 @@ src/                    # React 前端
 
 src-tauri/src/          # Rust 后端
 ├── modules/
-│   ├── pty/            # PTY 会话管理（portable-pty）
+│   ├── pty/            # PTY 管理（portable-pty）
 │   ├── git/            # Git 操作（git2）
 │   ├── fs/             # 文件系统（目录树、搜索、grep、受限 head）
 │   ├── agent/          # Agent CLI 预检 + hooks

@@ -2,27 +2,27 @@
 
 ## Goal
 
-Tunara 是 terminal-first 的本地开发工作台：保持真实 PTY 与 SSH 语义，同时提供轻量 workspace/worktree 上下文、只读 review、Preview 和 Agent 辅助。
+Tunara 是 terminal-first 的本地开发工作台：保持真实 PTY 与 SSH 语义，同时提供轻量仓库/worktree 上下文、只读 review、Preview 和 Agent 辅助。
 
-它不替代 shell、Git、浏览器、编辑器或 Agent。Tunara 的职责是让这些真实工具在同一个 workspace 中更容易观察、切换、衔接和验证，并把最终决定留给用户。
+它不替代 shell、Git、浏览器、编辑器或 Agent。Tunara 的职责是让这些真实工具在同一个工作区中更容易观察、切换、衔接和验证，并把最终决定留给用户。
 
 ## 产品原则
 
 - **Terminal-grounded**：终端输入、输出、alternate screen、标题栏、WebGL 与剪贴板边界保持真实且可降级。
-- **Workspace-first**：本地与 SSH session 都绑定明确来源；review 与 Preview 不猜测来源。
-- **Local-first**：会话与用户设置留在本机；失败不能阻断普通终端。
+- **仓库优先（Repository-first）**：本地与 SSH 终端都绑定明确的仓库来源；review 与 Preview 不猜测来源。
+- **Local-first**：终端与用户设置留在本机；失败不能阻断普通终端。
 - **Safe writes**：Markdown/单文件编辑及 SSH safe-write 保持冲突检测和显式确认。
 - **Contextual, not all-in-one**：Inspector 提供当前任务所需上下文，不建设 IDE 或 Agent 聊天壳。
 
 ## 当前已交付范围
 
-1. Workspace/worktree 感知与只读 Git review。
+1. 仓库/worktree 感知与只读 Git review。
 2. 稳定的本地 PTY、SSH、SFTP、resume 与终端恢复。
 3. Markdown 阅读和有边界的单文件轻编辑。
-4. Workspace-bound Preview，包括来源验证、导航、安全重启准备和显式 SSH tunnel。
-5. 轻量 Agent 检测、可用的生命周期状态、Attention 与 resume；优先支持 Claude Code、Codex、Cursor、OpenCode，其他 catalog 项提供基础识别。
+4. 绑定仓库的 Preview，包括来源验证、导航、安全重启准备和显式 SSH tunnel。
+5. 轻量 Agent 检测、可用的生命周期状态、Attention 与 resume；只识别 Claude Code、Codex、Cursor、OpenCode，其他 coding agent 按普通终端进程处理。
 
-一条完整但透明的使用路径是：进入 repository/worktree，恢复终端和上下文，阅读或轻改文件，观察绑定的 Preview，审阅真实文件变化，再由用户决定后续 Git 操作。
+一条完整但透明的使用路径是：进入仓库/worktree，恢复工作区，阅读或轻改文件，观察绑定的 Preview，审阅真实文件变化，再由用户决定后续 Git 操作。
 
 ## 平台支持
 
@@ -48,7 +48,7 @@ Agent 支持只服务于“看见当前状态并回到真实终端”：
 - 持久 Agent Timeline/Event Store、事件全文搜索、富 payload 展示或后台上传。
 - 以结构化解析 Agent stdout 代替真实终端。
 - 自动 stage、commit、push、merge、rebase、发布或破坏性回滚。
-- 插件市场、云 workspace、遥测体系或完整移动端远程控制。
+- 插件市场、云工作区、遥测体系或完整移动端远程控制。
 
 ## 完成与回归
 

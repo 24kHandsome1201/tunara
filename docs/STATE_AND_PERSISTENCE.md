@@ -1,6 +1,6 @@
 # State & Persistence
 
-Tunara keeps renderer state in three Zustand stores and persists a single
+Tunara keeps renderer state in two Zustand stores and persists a single
 versioned workspace snapshot to a Tauri plugin-store file. This doc covers the
 store split, what gets persisted vs. what is ephemeral, the save/restore
 lifecycle, the legacy `conduit-*` migration, and the sanitizers that defend the
@@ -12,12 +12,11 @@ restore path against corrupt or outdated data.
 | `src/state/ui.ts` | Layout / appearance prefs / toasts / SSH host-key prompt; loads & writes the user config |
 | `src/state/persist.ts` | Plugin-store I/O, legacy migration, and save/load entry points |
 | `src/state/persist-snapshot.ts` | `WorkspaceSnapshotV1` shape, durable-session helpers, and pure snapshot sanitizers |
-| `src/state/workflows.ts` | Command-template workflows store |
 | `src/state/recent-commands.ts` | `pushRecentCommand` / `sanitizeRecentCommands` (pure helpers) |
 | `src/state/recent-dirs.ts` | `pushRecentDir` / `sanitizeRecentDirs` (pure helpers) |
 | `src/app/useInit.ts` | Wires it all together: restore on mount, debounced + interval + on-close save |
 
-## 1. The three Zustand stores
+## 1. The two Zustand stores
 
 ### `useSessionsStore` (`src/state/sessions.ts`)
 
@@ -89,17 +88,16 @@ etc.) and adds:
 ready: boolean                       // set true once useInit finishes restore
 configLoaded / configPath / configError  // user-config load status
 sidebarVisible / panelVisible
-overlay: OverlayType                 // null | "settings" | "command-palette" | "ssh"
+overlay: OverlayType                 // null | "settings" | "command-palette" | "terminal-search" | "ssh"
 split: SplitState                    // recursive pane tree, max 4 leaves ({ root })
 inspectorTab: InspectorTab           // last selected view: changes | files | preview
                                      // SSH: + transfers | forwarding
-                                     // Auto/Locked and Preview-opened are runtime-only
+                                     // Preview-opened is runtime-only
 readers: Record<sessionId, SessionReaderState>  // per-session file reader
 focusedPaneId: string | null         // terminal session id or reader:<sessionId>
 toasts: Toast[]                      // capped, last 3
 hostKeyPrompt: HostKeyPrompt | null  // pending SSH TOFU confirmation
 keyboardInteractivePrompts: KeyboardInteractivePrompt[]  // parked SSH keyboard-interactive questions
-pendingWorkflow: PendingWorkflow | null
 collapsedDirs: Record<string, true>
 collapsedDiffSections: Record<string, true>
 commandUsage: Record<string, number> // command-palette recency, capped at 50
@@ -135,13 +133,6 @@ on load.
    are persisted into the snapshot file, *not* the config file. `useInit`
    subscribes to those keys and triggers a snapshot save.
 
-### `useWorkflowsStore` (`src/state/workflows.ts`)
-
-Stores user-defined command templates that can be launched from the command
-palette. The store is restored from and written into the workspace snapshot;
-unlike the removed fixed Runbook catalog, it does not inject built-in recovery
-or rollback actions.
-
 ## 2. Persistence layer (`src/state/persist.ts`)
 
 ### `WorkspaceSnapshotV1`
@@ -160,7 +151,7 @@ interface WorkspaceSnapshotV1 {
   recentDirs: string[];
   recentCommands: string[];
   commandUsage: Record<string, number>;            // palette recency
-  workflows: Workflow[];                            // user command templates
+  hostFilePrefs: Record<string, HostFilePrefsV1>;   // per-host favorite/recent remote paths, Files follow-cwd
   recentSessionIds?: string[];                     // session recency
 }
 ```
@@ -201,8 +192,7 @@ Saving is orchestrated in `src/app/useInit.ts` against
 
 - **Debounced (500 ms)** — `scheduleSave()` fires on any change to the sessions
   list, to the watched UI-store keys (`collapsedDirs`, `collapsedDiffSections`,
-  `split`, `inspectorTab`, `sidebarVisible`, `panelVisible`, `commandUsage`), or
-  to the workflows list.
+  `split`, `inspectorTab`, `sidebarVisible`, `panelVisible`, `commandUsage`).
 - **On window close** — `win.onCloseRequested` preempts the close, flushes any
   pending debounce, awaits a synchronous final save, then hides the window.
 - **On an interval** — the 30 s backstop checks
@@ -221,7 +211,7 @@ result. On success it rebuilds `Session` objects from the persisted
 slice via `fromPersistedSession` (re-attaching `agentResume`, forcing
 `runState: "idle"` and a pending restore `connection`), merges them with
 any sessions already created this run, re-derives `activeSessionId`, restores
-the `split`/layout/`commandUsage` into the UI store, loads `workflows`,
+the `split`/layout/`commandUsage` into the UI store,
 restores `recentSessionIds` for session recency, and restores terminal buffers via
 `restoreTerminalSnapshots`. Viewport Y is applied after the serialized buffer
 write completes, and later user scrolls are captured by the snapshot scheduler.
@@ -269,7 +259,6 @@ returns a known-good shape (or drops the item) rather than trusting it.
 | `sanitizeRecentCommands(raw)` | `recent-commands.ts` | Strings only, trimmed, no newlines, de-duped, capped at `RECENT_COMMAND_LIMIT` (30) |
 | `sanitizeRecentSessionIds(raw)` | `persist-snapshot.ts` | Existing session ids only, de-duped, capped at 40; seeds the active id when missing |
 | Remote session sanitization | `persist-snapshot.ts` | White-lists host/port/user/identity path/shell-integration flag; drops any credential-like runtime fields before save or restore |
-| Workflow sanitization | `persist-snapshot.ts` | Array of `Workflow`, each run through `sanitizeWorkflow` (from `src/modules/workflows/template.ts`); invalid entries dropped |
 
 `sanitizeSnapshot` is the linchpin: `loadWorkspaceSnapshot` and
 `saveWorkspaceSnapshot` both route the stored blob through it. Recoverable
