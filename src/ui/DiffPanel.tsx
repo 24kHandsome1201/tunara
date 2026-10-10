@@ -557,6 +557,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const files = session.changes?.files ?? EMPTY_FILES;
   const branch = session.branch || "";
   const summary = useMemo(() => composeChangesSummary(files, t), [files, t]);
+  const remoteDisconnected = isRemote && session.ptyId === undefined;
   const notGit = session.gitState === "notGit" || (!isRemote && !repoPath);
   const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
 
@@ -639,7 +640,9 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       )}
 
       <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="scroll-fade-y">
-        {loading ? (
+        {remoteDisconnected ? (
+          <PanelEmptyState label={t("diff.empty.remote_unavailable")} sublabel={t("diff.empty.remote_unavailable_hint")} />
+        ) : loading ? (
           <PanelLoadingState label={t("diff.loading")} />
         ) : notGit ? (
           <PanelEmptyState label={t("diff.empty.not_git")} sublabel={displayPath} />
@@ -686,7 +689,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
         )}
       </div>
 
-      {!notGit && !loading && (
+      {!remoteDisconnected && !notGit && !loading && (
         <div style={{ borderTop: "1px solid var(--c-border-1)", padding: "6px 12px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
             {remoteLabel(remote) || "Git"}
