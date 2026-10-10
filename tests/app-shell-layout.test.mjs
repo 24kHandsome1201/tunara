@@ -9,6 +9,7 @@ import {
   SPLIT_HANDLE_WIDTH,
   auxiliarySurfaceToCloseOnCompactResize,
   auxiliarySurfaceToCloseOnOpen,
+  compactPanelAutoCollapseAction,
   resolveAppShellLayout,
 } from "../src/app/lib/app-shell-layout.ts";
 
@@ -133,4 +134,13 @@ test("resizing into compact mode closes the Inspector before two drawers can cov
   assert.equal(auxiliarySurfaceToCloseOnCompactResize(compact), "panel");
   assert.equal(auxiliarySurfaceToCloseOnCompactResize({ ...compact, panelVisible: false }), null);
   assert.equal(auxiliarySurfaceToCloseOnCompactResize({ ...defaults, viewportWidth: 1200 }), null);
+});
+
+test("the Inspector auto-collapses in narrow layouts and restores when dockable", () => {
+  const compact = { ...defaults, viewportWidth: 820 };
+  const wide = { ...defaults, viewportWidth: 1200, panelVisible: false };
+  assert.equal(compactPanelAutoCollapseAction(compact, false), "collapse");
+  assert.equal(compactPanelAutoCollapseAction(wide, true), "restore");
+  assert.equal(compactPanelAutoCollapseAction({ ...compact, panelVisible: false }, false), null);
+  assert.equal(compactPanelAutoCollapseAction({ ...defaults, viewportWidth: 1200 }, false), null);
 });
