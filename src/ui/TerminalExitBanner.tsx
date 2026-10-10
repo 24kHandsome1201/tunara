@@ -281,8 +281,8 @@ export function PtyErrorBanner({ session, error, failure }: PtyErrorBannerProps)
   // Re-derive the SSH failure text from the raw error so a language switch
   // after the failure does not leave the detail in the previous language.
   const detail = isRemote ? (failure !== undefined ? safeSshFailure(failure).message : error) : t("pty.error.subtitle");
-  const phase = session.connection?.failedAtPhase;
-  const phaseLabel = phase ? t(`connection.failedAt.${phase}`) : "";
+  const phase: string | undefined = session.connection?.failedAtPhase;
+  const phaseLabel = phase ? t(`connection.failedAt.${phase === "auth" ? "authenticating" : phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
   const retryLabel = remediation?.label ?? (retrying ? t("ssh.connecting") : t("common.retry"));
 
