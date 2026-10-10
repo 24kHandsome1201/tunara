@@ -558,6 +558,7 @@ select.ui-control {
   display: flex;
   align-items: center;
   gap: 7px;
+  font-size: var(--fs-secondary);
   padding: 7px 9px;
   border: 1px solid var(--c-border-2);
   border-radius: var(--r-btn);

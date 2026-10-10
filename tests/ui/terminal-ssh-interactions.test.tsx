@@ -762,6 +762,26 @@ test("session cards announce lifecycle, unread, and transport state", () => {
   expect(screen.getByRole("button", { name: /Deploy, Failed, Unread, Remote SSH session/ })).toBeTruthy();
 });
 
+test("session cards omit consecutive duplicate lifecycle and connection labels", () => {
+  render(<SessionCard
+    session={{
+      id: "duplicate-failure-label",
+      title: "Deploy",
+      dir: "/srv/app",
+      branch: "main",
+      runState: "failed",
+      updatedAt: 1,
+      remote: { host: "ssh.example", port: 22, user: "deploy" },
+      connection: { transport: "ssh", phase: "failed", source: "transport", updatedAt: 1 },
+    }}
+    active
+    onSelect={() => {}}
+  />);
+
+  const label = screen.getByRole("button", { name: /Deploy/ }).getAttribute("aria-label") ?? "";
+  expect(label.match(/Failed/g)).toHaveLength(1);
+});
+
 test("session menu exposes bounded keyboard reorder actions", () => {
   const sessions: Session[] = [
     { id: "one", title: "One", dir: "/repo", branch: "main", runState: "idle", updatedAt: 1 },
@@ -783,6 +803,8 @@ test("session menu exposes bounded keyboard reorder actions", () => {
   const down = items.find((item): item is MenuItem => isMenuItem(item) && item.id === "session:move-down");
   expect(up?.disabled).toBe(true);
   expect(down?.disabled).toBe(false);
+  expect(up?.icon).toBe("arrow-up");
+  expect(down?.icon).toBe("arrow-down");
 
   down?.action();
 

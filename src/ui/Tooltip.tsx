@@ -91,6 +91,8 @@ export function Tooltip({
       onFocus={show}
       onBlur={hide}
       onClick={hide}
+      onPointerDown={hide}
+      onContextMenu={hide}
       onKeyDown={(event) => {
         if (event.key === "Escape") hide();
       }}
