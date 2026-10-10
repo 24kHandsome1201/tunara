@@ -1113,6 +1113,7 @@ function EditorSurface({
       if (result.fingerprint === fingerprintRef.current) return;
       setContent(result.content); setSavedContent(result.content); setFingerprint(result.fingerprint);
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- resubscribe on the binding's stable ids, not on the binding object identity
   }), [active, bindingReady, filePath, refreshKey, resource.binding?.logicalSessionId,
     resource.binding?.physicalPtyId, resource.binding?.transportGeneration, resource.transport]);
 
@@ -1627,6 +1628,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         if (!cancelled) readingRef.current = false;
       });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- filePath and the binding ids are folded into contentKey
   }, [active, contentKey, readAttempt, remote, remotePtyId, remoteBindingReady,
     bindingLogicalId, bindingPtyId, bindingGeneration]);
 
@@ -1718,6 +1720,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         if (active && remoteBindingReady && next) setHeadResult((current) => sameFileHeadResult(current, next) ? current : next);
       },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the resource's stable ids, not on the resource object identity
   }, [active, remoteBindingReady, filePath, headLineLimit, headResult, followTail, resource?.transport,
     resource?.logicalSessionId, resource?.path, bindingLogicalId, bindingPtyId, bindingGeneration]);
 
@@ -1737,6 +1740,7 @@ export function FilePreview({ active = true, sessionId, filePath, fileName, reso
         if (active && remoteBindingReady && next) setResult((current) => (current?.kind === "image" && sameImageResult(current, next) ? current : next));
       },
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the resource's stable ids, not on the resource object identity
   }, [active, remoteBindingReady, filePath, remote, resource?.transport, resource?.logicalSessionId,
     resource?.path, bindingLogicalId, bindingPtyId, bindingGeneration, result?.kind]);
 

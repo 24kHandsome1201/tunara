@@ -16,6 +16,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - 终端失败横幅的阶段标签改用 `connection.failedAt.*` 名词(如「解析主机」),不再在已失败状态下显示「正在解析主机」等进行时文案。
 - `THIRD_PARTY_NOTICES.md` 移除已在 1cc12db 删除的 Fluent Emoji 吉祥物条目;`docs/archive/PRODUCT_REVIEW.md` 不再链接已删除的 `TITLEBAR_DEVICE_TABS.md`。
 - 重新生成 `src-tauri/gen/schemas/macOS-schema.json`,补齐 clipboard-manager 权限项,`pnpm tauri:dev` 后工作树保持干净。
+- `FilePreview.tsx` 四处刷新订阅 effect 的依赖改为显式说明:依赖绑定/资源的稳定 id(logicalSessionId/physicalPtyId/transportGeneration/path)而非对象引用,`pnpm lint` 回到 0 warning。
 
 ## [3.1.1] - 2026-10-01
 
