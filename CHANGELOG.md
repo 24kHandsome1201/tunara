@@ -17,6 +17,7 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 - `THIRD_PARTY_NOTICES.md` 移除已在 1cc12db 删除的 Fluent Emoji 吉祥物条目;`docs/archive/PRODUCT_REVIEW.md` 不再链接已删除的 `TITLEBAR_DEVICE_TABS.md`。
 - 重新生成 `src-tauri/gen/schemas/macOS-schema.json`,补齐 clipboard-manager 权限项,`pnpm tauri:dev` 后工作树保持干净。
 - `FilePreview.tsx` 四处刷新订阅 effect 的依赖改为显式说明:依赖绑定/资源的稳定 id(logicalSessionId/physicalPtyId/transportGeneration/path)而非对象引用,`pnpm lint` 回到 0 warning。
+- SSH 连接失败横幅的错误详情改为渲染时按原始错误重新本地化(`PtyErrorBanner` 新增 `failure` 入参),失败后切换语言不再出现中英混排;英文 `connection.failedAt.*` 改为名词短语(如 “Host resolution”),与进行态 `connection.phase.*` 区分。
 
 ## [3.1.1] - 2026-10-01
 

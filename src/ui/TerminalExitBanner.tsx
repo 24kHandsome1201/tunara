@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
+import { safeSshFailure, SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 import { reconnectPrefillFromSession, type Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 import { StatusDot } from "./shared";
@@ -254,6 +254,8 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
 interface PtyErrorBannerProps {
   session: Session;
   error: string;
+  /** Raw ssh_open error; when present the detail is localized at render time. */
+  failure?: unknown;
 }
 
 /**
@@ -261,13 +263,15 @@ interface PtyErrorBannerProps {
  * signal was a silent red inline line in the dead pane. The retry action
  * spawns a fresh terminal in the same cwd, mirroring the exit banner.
  */
-export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
+export function PtyErrorBanner({ session, error, failure }: PtyErrorBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
   const rootRef = useFocusPrimaryActionOnMount();
   const remediation = useSessionRemediationAction(session);
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
-  const detail = isRemote ? error : t("pty.error.subtitle");
+  // Re-derive the SSH failure text from the raw error so a language switch
+  // after the failure does not leave the detail in the previous language.
+  const detail = isRemote ? (failure !== undefined ? safeSshFailure(failure).message : error) : t("pty.error.subtitle");
   const phase = session.connection?.failedAtPhase;
   const phaseLabel = phase ? t(`connection.failedAt.${phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;

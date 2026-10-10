@@ -84,6 +84,7 @@ function TerminalViewImpl({
   activeRef.current = active;
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [openFailure, setOpenFailure] = useState<unknown>(undefined);
   const session = useSessionsStore((s) => s.sessions.find((x) => x.id === sessionId));
   const search = useTerminalSearch(sessionId);
   const blocks = useTerminalBlocks(termRef);
@@ -453,10 +454,12 @@ function TerminalViewImpl({
         const safeError = cur?.remote ? safeSshFailure(e).message : String(e);
         if (handleSshReconnectFailure(sessionIdRef.current, e, (cleanup) => cleanups.push(cleanup))) {
           if (useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionIdRef.current)?.connection?.phase === "needsUserAction") {
+            if (cur?.remote) setOpenFailure(e);
             setOpenError(safeError);
           }
           return;
         }
+        if (cur?.remote) setOpenFailure(e);
         setOpenError(safeError);
         reportSshOpenFailure(sessionIdRef.current, cur?.remote, e);
         if (!cur?.remote) {
@@ -621,7 +624,7 @@ function TerminalViewImpl({
         useSessionsStore.getState().closeSession(sessionId);
       }} />}
       {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
-      {openError !== null && session && <PtyErrorBanner session={session} error={openError} />}
+      {openError !== null && session && <PtyErrorBanner session={session} error={openError} failure={openFailure} />}
       {showRestoredHistory && ptyReady && exitCode === null && openError === null && session?.connection?.phase === "ready" && <RestoredHistoryNotice remote={Boolean(session.remote)} onDismiss={() => { setShowRestoredHistory(false); const token = issueFocusReturnToken(sessionId); if (token) returnTerminalFocus(token); }} />}
     </>
   );
