@@ -12,6 +12,7 @@ import {
   type PtyHandlers,
 } from "@/modules/terminal/lib/pty-bridge";
 import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
+import { getResolvedLanguage, setLanguage } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { ContextMenu, isMenuItem, type MenuItem } from "@/ui/ContextMenu";
@@ -880,4 +881,26 @@ test.each([
     commandName === "ssh_host_key_decision" ? { accept: false } : { responses: null },
   );
   expect(document.activeElement).toBe(outside);
+});
+
+test("SSH failure detail follows a language switch made after the failure", () => {
+  const previous = getResolvedLanguage();
+  act(() => setLanguage("zh-CN"));
+  try {
+    render(
+      <PtyErrorBanner
+        session={remoteSession}
+        error="无法连接主机"
+        failure="resolve example.invalid: nodename nor servname provided, or not known"
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("无法连接主机");
+
+    act(() => setLanguage("en"));
+    const text = screen.getByRole("alert").textContent ?? "";
+    expect(text).toContain("Couldn't reach host");
+    expect(text).not.toContain("无法连接主机");
+  } finally {
+    act(() => setLanguage(previous));
+  }
 });
