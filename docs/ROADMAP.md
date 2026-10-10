@@ -90,7 +90,7 @@ SSH 终端也能看 changes 面板：通过一次性 exec channel 读远程仓�
 
 下一代（v3.1 → v4.0）升级路线已批准，见 [NEXT_GEN_ROADMAP.md](./NEXT_GEN_ROADMAP.md)。功能取舍与主路径缺口见 [PRODUCT_REVIEW.md](./archive/PRODUCT_REVIEW.md)：优先把 Preview 和最近目录接到已有流程上，而不是再铺新面。
 
-侧栏已按主机分组之后，标题栏展示当前设备工作面，见 [TITLEBAR_DEVICE_TABS.md](./TITLEBAR_DEVICE_TABS.md)。不要再把全部终端和跨设备文件平铺成第二条终端列表，也不要做成第二行设备页签。
+侧栏已按主机分组；标题栏不再展示设备工作面或文件标签。不要再把全部终端和跨设备文件平铺成第二条终端列表，也不要做成第二行设备页签。
 
 ### 1. 发布后的真实环境回归矩阵
 
