@@ -1,6 +1,7 @@
 import type { Session } from "./types";
 import { useT } from "@/modules/i18n";
 import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
+import { dedupeConsecutiveLabelParts } from "./lib/accessible-label";
 
 export function WorkspaceSourceChip({ session }: { session: Session }) {
   const t = useT();
@@ -19,7 +20,12 @@ export function WorkspaceSourceChip({ session }: { session: Session }) {
   const branch = worktree.detached
     ? t("workspace.detached")
     : worktree.branch ?? t("workspace.unknown_branch");
-  const title = `${workspace.repository.host ? `${workspace.repository.host} / ` : ""}${workspace.repository.name} / ${worktree.path} / ${branch}`;
+  const title = dedupeConsecutiveLabelParts([
+    workspace.repository.host ?? "",
+    workspace.repository.name,
+    worktree.path,
+    branch,
+  ]).join(" / ");
 
   return (
     <span

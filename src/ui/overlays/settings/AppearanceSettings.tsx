@@ -133,9 +133,9 @@ export function AppearanceSettings() {
               }
             }}
             spellCheck={false}
-            style={{ flex: "1 1 260px", minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-body)" }}
+            style={{ flex: "1 1 0", minWidth: 0, height: 30, border: "1px solid var(--c-border-2)", borderRadius: "var(--r-btn)", background: "var(--c-bg-white)", color: "var(--c-text-primary)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: "var(--fs-body)" }}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, whiteSpace: "nowrap" }}>
             <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-4)" }}>{t("settings.appearance.font_size")}</span>
             <Stepper display={`${fontSize}px`} valueMinWidth={48} decrementLabel={`${t("common.decrement")} · ${t("settings.appearance.font_size")}`} incrementLabel={`${t("common.increment")} · ${t("settings.appearance.font_size")}`} onDecrement={() => setFontSize(Math.max(10, fontSize - 1))} onIncrement={() => setFontSize(Math.min(22, fontSize + 1))} />
           </div>
@@ -147,7 +147,7 @@ export function AppearanceSettings() {
               height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
               background: nerdFontFallback ? "var(--c-accent)" : "var(--c-bg-white)",
               color: nerdFontFallback ? "var(--c-on-accent)" : "var(--c-text-3)",
-              fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
+              fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap",
             }}
           >
             {t("settings.appearance.nerd_font")}
@@ -160,7 +160,7 @@ export function AppearanceSettings() {
               height: 30, padding: "0 10px", borderRadius: "var(--r-btn)", border: "1px solid var(--c-border-2)", cursor: "pointer",
               background: fontLigatures ? "var(--c-accent)" : "var(--c-bg-white)",
               color: fontLigatures ? "var(--c-on-accent)" : "var(--c-text-3)",
-              fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0,
+              fontSize: "var(--fs-secondary)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap",
             }}
           >
             {t("settings.appearance.ligatures")}

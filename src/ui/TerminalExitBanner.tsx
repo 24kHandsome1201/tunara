@@ -113,12 +113,13 @@ function CloseSessionButton({ session }: { session: Session }) {
  * primary action must stay the last button: pane activation and attention
  * reveal focus the last button inside the `[role="alert"]` bar.
  */
-function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
+function PaneRecoveryBar({ rootRef, role, tone, label, context, messageWrap = false, children }: {
   rootRef: RefObject<HTMLDivElement | null>;
   role: "alert" | "status";
   tone: string;
   label: string;
   context?: ReactNode;
+  messageWrap?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -155,8 +156,11 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
             color: "var(--c-text-2)",
             lineHeight: "16px",
             overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            textOverflow: messageWrap ? undefined : "ellipsis",
+            whiteSpace: messageWrap ? "normal" : "nowrap",
+            display: messageWrap ? "-webkit-box" : undefined,
+            WebkitLineClamp: messageWrap ? 2 : undefined,
+            WebkitBoxOrient: messageWrap ? "vertical" : undefined,
             flex: "1 1 auto",
             minWidth: 0,
           }}
@@ -165,7 +169,7 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
         </span>
         {context}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}>
+      <div style={{ display: "flex", flexWrap: messageWrap ? "nowrap" : "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}>
         {children}
       </div>
     </div>
@@ -296,6 +300,7 @@ export function PtyErrorBanner({ session, error, failure }: PtyErrorBannerProps)
       tone="var(--c-error)"
       label={summary}
       context={<SessionRemediationNotice session={session} compact showAction={false} />}
+      messageWrap
     >
       <ConnectionDiagnosticButton session={session} />
       <CloseSessionButton session={session} />

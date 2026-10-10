@@ -117,3 +117,37 @@ test("SSH connect overlay opens and validates the form", async ({ page, backend 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });
+
+test("failed SSH banner clamps its message and keeps recovery actions together", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Connect SSH" }).click();
+
+  const dialog = page.locator('[role="dialog"][aria-labelledby="ssh-connect-title"]');
+  await dialog.locator("#ssh-connect-host").fill("deploy@example.test");
+  await dialog.getByRole("button", { name: "Connect", exact: true }).click();
+
+  const message = page.locator('[role="alert"] span[title^="SSH connection failed"]');
+  await expect(message).toBeVisible();
+  const messageStyle = await message.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      display: style.display,
+      lineClamp: style.webkitLineClamp,
+      boxOrient: style.webkitBoxOrient,
+      whiteSpace: style.whiteSpace,
+      overflow: style.overflow,
+    };
+  });
+  expect(["-webkit-box", "flow-root"]).toContain(messageStyle.display);
+  expect(messageStyle.lineClamp).toBe("2");
+  expect(messageStyle.boxOrient).toBe("vertical");
+  expect(messageStyle.whiteSpace).toBe("normal");
+  expect(messageStyle.overflow).toBe("hidden");
+
+  const actionStyle = await page.getByRole("alert").getByRole("button").first().evaluate((button) => {
+    const style = getComputedStyle(button.parentElement!);
+    return { flexWrap: style.flexWrap, alignItems: style.alignItems };
+  });
+  expect(actionStyle).toEqual({ flexWrap: "nowrap", alignItems: "center" });
+});

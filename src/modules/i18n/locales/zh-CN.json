@@ -893,7 +893,7 @@
   "sidebar.session.status.running": "运行中",
   "sidebar.session.status.done": "已完成",
   "sidebar.session.status.failed": "失败",
-  "sidebar.session.status.idle": "等待中…",
+  "sidebar.session.status.idle": "空闲",
   "sidebar.session.unread": "未读",
   "sidebar.session.local": "本地终端",
   "clipboard.copy_success": "已复制",

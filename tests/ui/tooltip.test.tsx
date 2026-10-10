@@ -54,6 +54,30 @@ describe("Tooltip", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  test("hides on pointer down and context menu so it cannot cover menu content", () => {
+    render(
+      <Tooltip label="Repo actions">
+        <button type="button" aria-label="Repo actions" />
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button");
+    const show = () => {
+      fireEvent.mouseEnter(trigger);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.getByRole("tooltip")).toBeTruthy();
+    };
+
+    show();
+    fireEvent.pointerDown(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    show();
+    fireEvent.contextMenu(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   test("renders the bubble in document.body so transformed ancestors cannot reposition it", () => {
     const { container } = render(
       <div style={{ transform: "translateY(-1px)" }}>
