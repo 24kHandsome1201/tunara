@@ -133,7 +133,7 @@ export function SidebarSessionGroup({
                 <div
                   onPointerDown={(e) => {
                     if (!canReorder) return;
-                    if (e.pointerType === "touch") return;
+                    if (e.pointerType === "touch" || e.button !== 0) return;
                     if ((e.target as HTMLElement).closest(".session-card-close") || (e.target as HTMLElement).closest(".hover-close")) return;
                     onDragStart(e, s.id, key, idx);
                   }}

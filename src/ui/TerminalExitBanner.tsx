@@ -269,7 +269,7 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
   const detail = isRemote ? error : t("pty.error.subtitle");
   const phase = session.connection?.failedAtPhase;
-  const phaseLabel = phase ? t(`connection.phase.${phase}`) : "";
+  const phaseLabel = phase ? t(`connection.failedAt.${phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
   const retryLabel = remediation?.label ?? t("common.retry");
 
