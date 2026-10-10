@@ -121,6 +121,28 @@ test("SSH connect overlay opens and validates the form", async ({ page, backend 
 test("failed SSH banner clamps its message and keeps recovery actions together", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
+  await page.evaluate(() => {
+    const internals = window.__TAURI_INTERNALS__ as typeof window.__TAURI_INTERNALS__ & {
+      invoke: (command: string, args?: unknown) => Promise<unknown>;
+    };
+    const invoke = internals.invoke.bind(internals);
+    internals.invoke = (command, args) => {
+      if (command === "ssh_open_v2") {
+        return Promise.reject({
+          diagnostic: {
+            schemaVersion: 1,
+            stage: "DNS",
+            code: "dnsFailed",
+            severity: "error",
+            retryable: true,
+            hopRole: "direct",
+            timestamp: Date.now(),
+          },
+        });
+      }
+      return invoke(command, args);
+    };
+  });
   await page.getByRole("button", { name: "Connect SSH" }).click();
 
   const dialog = page.locator('[role="dialog"][aria-labelledby="ssh-connect-title"]');
@@ -129,6 +151,8 @@ test("failed SSH banner clamps its message and keeps recovery actions together",
 
   const message = page.locator('[role="alert"] span[title^="SSH connection failed"]');
   await expect(message).toBeVisible();
+  await expect(message).toContainText("Couldn't resolve the host name. Check the address or your DNS/VPN.");
+  await page.getByRole("button", { name: "Close inspector" }).click();
   const messageStyle = await message.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
@@ -150,4 +174,16 @@ test("failed SSH banner clamps its message and keeps recovery actions together",
     return { flexWrap: style.flexWrap, alignItems: style.alignItems };
   });
   expect(actionStyle).toEqual({ flexWrap: "nowrap", alignItems: "center" });
+
+  await page.setViewportSize({ width: 820, height: 700 });
+  const actionGroup = page.getByRole("alert").locator(".pane-recovery-bar__actions");
+  const [messageBox, actionBox] = await Promise.all([message.boundingBox(), actionGroup.boundingBox()]);
+  expect(messageBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(actionBox!.y).toBeGreaterThanOrEqual(messageBox!.y + messageBox!.height);
+  const messageSize = await message.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }));
+  expect(messageSize.scrollHeight).toBeLessThanOrEqual(messageSize.clientHeight + 1);
 });

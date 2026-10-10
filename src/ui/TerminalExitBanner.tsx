@@ -128,6 +128,7 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, messageWrap = fa
       role={role}
       aria-atomic="true"
       data-pane-recovery-bar
+      className={messageWrap ? "pane-recovery-bar--wrap" : undefined}
       style={{
         position: "absolute",
         left: 8,
@@ -169,7 +170,10 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, messageWrap = fa
         </span>
         {context}
       </div>
-      <div style={{ display: "flex", flexWrap: messageWrap ? "nowrap" : "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}>
+      <div
+        className={messageWrap ? "pane-recovery-bar__actions" : undefined}
+        style={{ display: "flex", flexWrap: messageWrap ? "nowrap" : "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}
+      >
         {children}
       </div>
     </div>
