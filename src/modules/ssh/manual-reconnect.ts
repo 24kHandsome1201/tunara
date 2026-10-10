@@ -74,7 +74,7 @@ export async function retrySshSessionInPlace(
 
   const latest = useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id);
   if (!latest?.remote) return "failed";
-  applySshInPlaceReconnect(session.id, latest.remote, forwards);
+  applySshInPlaceReconnect(session.id, latest.remote, forwards, { pendingSavedHost: latest.pendingSavedHost });
   useUIStore.getState().showTerminal();
   return "reconnecting";
 }
