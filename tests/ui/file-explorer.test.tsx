@@ -1075,7 +1075,7 @@ describe("FileExplorer workspace files", () => {
 
     render(<FileExplorer sessionId="remote" rootDir="deploy@example" remote />);
 
-    expect(await screen.findByText("SSH disconnected · no cached files available")).toBeTruthy();
+    expect(screen.queryByText("SSH disconnected · no cached files available")).toBeNull();
     expect(screen.getByText("Remote files are unavailable")).toBeTruthy();
     expect(screen.getByText("Reconnect SSH to load this directory.")).toBeTruthy();
     expect(screen.queryByText("Loading")).toBeNull();
@@ -1099,9 +1099,9 @@ describe("FileExplorer workspace files", () => {
     mockIPC((command) => { throw new Error(`unexpected command: ${command}`); });
 
     render(<FileExplorer sessionId="remote-reconnect" rootDir="/srv/app" remote />);
-    const status = await screen.findByText("SSH disconnected · no cached files available");
-    expect(status.getAttribute("role")).toBe("status");
-    expect(status.getAttribute("title")).toBe("SSH disconnected · no cached files available");
+    expect(await screen.findByText("Remote files are unavailable")).toBeTruthy();
+    expect(screen.getByText("Reconnect SSH to load this directory.")).toBeTruthy();
+    expect(screen.queryByText("SSH disconnected · no cached files available")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reconnect" })).toBeNull();
   });
 

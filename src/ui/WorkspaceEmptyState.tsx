@@ -79,8 +79,13 @@ export function WorkspaceEmptyState({
   return (
     <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, overflowY: "auto", padding: 24 }}>
       <div style={{ width: "min(560px, 100%)", display: "flex", flexDirection: "column", gap: 20 }}>
-        <div style={{ textAlign: "center", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
-          {t("app.empty.guide")}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <h2 style={{ margin: 0, textAlign: "center", fontSize: "var(--fs-title)", color: "var(--c-text-1)", fontWeight: 600 }}>
+            {t("app.empty.title")}
+          </h2>
+          <div style={{ textAlign: "center", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+            {t("app.empty.guide")}
+          </div>
         </div>
         <div role="group" aria-label={t("app.empty.actions")} className="workspace-empty-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           <button type="button" onClick={onNewTerminal} className="hover-accent-bg" style={{ ...launchButtonStyle, background: "var(--c-accent)", color: "var(--c-on-accent)", borderColor: "var(--c-accent)" }}>

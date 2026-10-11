@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
@@ -10,6 +10,7 @@ import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/l
 import { copyText } from "./lib/clipboard";
 import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
 import { enableSavedHostAutoReconnect } from "@/modules/ssh/save-successful-host";
+import { retrySshSessionInPlace } from "@/modules/ssh/manual-reconnect";
 import { SessionRemediationNotice, useSessionRemediationAction } from "./SessionRemediationNotice";
 
 /**
@@ -267,31 +268,31 @@ interface PtyErrorBannerProps {
 }
 
 /**
- * Banner shown when the local PTY failed to open (B2). Without it the only
- * signal was a silent red inline line in the dead pane. The retry action
- * spawns a fresh terminal in the same cwd, mirroring the exit banner.
+ * Banner shown when a local PTY or SSH open fails. Retry reuses stored
+ * non-secret SSH parameters when they are sufficient for an in-place reconnect.
  */
 export function PtyErrorBanner({ session, error, failure }: PtyErrorBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
   const rootRef = useFocusPrimaryActionOnMount();
   const remediation = useSessionRemediationAction(session);
+  const [retrying, setRetrying] = useState(false);
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
   // Re-derive the SSH failure text from the raw error so a language switch
   // after the failure does not leave the detail in the previous language.
   const detail = isRemote ? (failure !== undefined ? safeSshFailure(failure).message : error) : t("pty.error.subtitle");
-  const phase = session.connection?.failedAtPhase;
-  const phaseLabel = phase ? t(`connection.failedAt.${phase}`) : "";
+  const phase: string | undefined = session.connection?.failedAtPhase;
+  const phaseLabel = phase ? t(`connection.failedAt.${phase === "auth" ? "authenticating" : phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
-  const retryLabel = remediation?.label ?? t("common.retry");
+  const retryLabel = remediation?.label ?? (retrying ? t("ssh.connecting") : t("common.retry"));
 
   const retry = () => {
     if (isRemote) {
-      // Remote open failure: route back to the SSH dialog so the user can
-      // re-enter credentials (one-shot, never persisted).
-      if (session.remote) {
-        useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
-      }
+      if (!session.remote) return;
+      setRetrying(true);
+      void retrySshSessionInPlace(session).then((result) => {
+        if (result !== "reconnecting") setRetrying(false);
+      });
       return;
     }
     restartLocalInPlace(session);
@@ -308,7 +309,7 @@ export function PtyErrorBanner({ session, error, failure }: PtyErrorBannerProps)
     >
       <ConnectionDiagnosticButton session={session} />
       <CloseSessionButton session={session} />
-      <AccentActionButton onClick={remediation?.run ?? retry} title={retryLabel} ariaLabel={retryLabel}>
+      <AccentActionButton onClick={remediation?.run ?? retry} title={retryLabel} ariaLabel={retryLabel} disabled={retrying}>
         <RestartIcon size={10} />
         {retryLabel}
       </AccentActionButton>

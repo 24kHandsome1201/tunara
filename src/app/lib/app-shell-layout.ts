@@ -27,6 +27,16 @@ export interface AppShellLayout {
 
 export type AuxiliarySurface = "sidebar" | "panel";
 
+export function compactPanelAutoCollapseAction(
+  input: AppShellLayoutInput,
+  autoCollapsed: boolean,
+): "collapse" | "restore" | null {
+  const wouldOverlay = resolveAppShellLayout({ ...input, panelVisible: true }).panelOverlay;
+  if (input.panelVisible && wouldOverlay) return "collapse";
+  if (!input.panelVisible && autoCollapsed && !wouldOverlay) return "restore";
+  return null;
+}
+
 /**
  * A resize can make two previously docked surfaces become drawers without a
  * user toggle. Close the Inspector first so compact windows never retain two

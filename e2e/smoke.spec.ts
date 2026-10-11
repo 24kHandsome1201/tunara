@@ -8,6 +8,24 @@ test("boots and shows a terminal backed by the mocked PTY", async ({ page, backe
   expect(await backend.callCount("ssh_hosts_load")).toBeGreaterThan(0);
 });
 
+test("empty workspace has an accessible title", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "No terminals open", level: 2 })).toBeVisible();
+});
+
+test("Inspector auto-collapses in a narrow window and restores when wide", async ({ page, backend }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openLocalTerminal(page, backend);
+  const inspector = page.locator(".tunara-panel");
+  await expect(inspector).toBeVisible();
+
+  await page.setViewportSize({ width: 820, height: 900 });
+  await expect(inspector).toHaveAttribute("aria-hidden", "true");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(inspector).toBeVisible();
+});
+
 test("typing echoes through the mocked PTY", async ({ page, backend }) => {
   await openLocalTerminal(page, backend);
   await page.keyboard.type("echo hello-e2e");
