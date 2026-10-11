@@ -2065,3 +2065,14 @@ html[data-window-translucent] .file-editor-footer {
 html[data-window-translucent] .scroll-fade-y {
   --scroll-fade-bg: transparent;
 }
+
+.pane-recovery-bar--wrap {
+  container-type: inline-size;
+}
+
+@container (max-width: 620px) {
+  .pane-recovery-bar--wrap > .pane-recovery-bar__actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
