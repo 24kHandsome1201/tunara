@@ -30,6 +30,7 @@ import { normalizePostConnectCommand } from "@/modules/ssh/hosts-model";
 import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort } from "@/modules/ssh/connect-target";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
+import { applySshInPlaceReconnect } from "@/modules/ssh/manual-reconnect";
 import { diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
 import type { RemoteInfo } from "../types";
 import { useFocusTrap } from "./useFocusTrap";
@@ -581,30 +582,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     );
 
     if (existingSession?.remote && sameEndpoint) {
-      const reconnectNonce = (existingSession.reconnectNonce ?? 0) + 1;
-      const reconnectLifecycle = (existingSession.sshReconnectLifecycle ?? 0) + 1;
-      useSessionsStore.getState().updateSession(existingSession.id, {
-        remote,
-        dir: existingSession.dir,
-        title: existingSession.title,
-        ptyId: undefined,
-        transportGeneration: undefined,
-        sshReconnectAttempt: undefined,
-        sshReconnectLifecycle: reconnectLifecycle,
-        sshReconnectNeedsCredential: false,
-        sshReconnectForwards: reconnectForwards,
-        pendingSavedHost,
-        runState: "idle",
-        startedAt: undefined,
-        completedAt: undefined,
-        lastExitCode: undefined,
-        terminalProgress: undefined,
-        ...postConnectPendingInput(remote),
-        reconnectNonce,
-        terminalMountNonce: reconnectNonce,
-      });
-      useSessionsStore.getState().handleConnectionEvent(existingSession.id, { type: "reconnectRequested" });
-      useSessionsStore.getState().setActive(existingSession.id);
+      applySshInPlaceReconnect(existingSession.id, remote, reconnectForwards, { pendingSavedHost });
     } else {
       addSession({ ...session, ...postConnectPendingInput(remote), pendingSavedHost });
     }

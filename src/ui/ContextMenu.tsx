@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { returnTerminalFocus, type TerminalFocusReturnToken } from "@/modules/terminal/lib/binding-aware-async-action";
 import type { ModalFocusReturnToken } from "./overlays/Modal";
 import {
+  ArrowDown,
+  ArrowUp,
   ClipboardText,
   CopySimple,
   DownloadSimple,
@@ -17,7 +19,7 @@ import {
   TrashSimple,
 } from "@/ui/icons";
 
-export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin";
+export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "arrow-up" | "arrow-down";
 
 export interface MenuItem {
   id?: string;
@@ -70,6 +72,8 @@ function MenuIcon({ name }: { name: MenuIconName }) {
     search: MagnifyingGlass,
     pin: PushPin,
     close: TrashSimple,
+    "arrow-up": ArrowUp,
+    "arrow-down": ArrowDown,
   }[name];
   return <Icon icon={glyph} size={14} />;
 }

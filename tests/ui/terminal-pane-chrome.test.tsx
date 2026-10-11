@@ -52,6 +52,24 @@ test("a credential remediation replaces the open-error retry instead of adding a
   expect(within(bar).queryByRole("button", { name: "Retry" })).toBeNull();
 });
 
+test("PTY error text wraps and keeps recovery actions together", () => {
+  setLanguage("en");
+  const session: Session = {
+    ...disconnected,
+    connection: { ...disconnected.connection!, phase: "failed" },
+  };
+  const detail = "Couldn't resolve the host name. Check the address or your DNS/VPN.";
+  renderInPane(<PtyErrorBanner session={session} error={detail} />);
+
+  const bar = screen.getByRole("alert");
+  const message = screen.getByTitle(`SSH connection failed · ${detail}`);
+  expect(message.style.whiteSpace).toBe("normal");
+  expect(message.style.overflow).toBe("hidden");
+  const actions = bar.querySelector("button")?.parentElement;
+  expect(actions?.style.flexWrap).toBe("nowrap");
+  expect(actions?.style.alignItems).toBe("center");
+});
+
 test("status labels truncate on one line with the full text as a tooltip", () => {
   setLanguage("zh-CN");
   const local: Session = { id: "local", title: "Local", dir: "/tmp", branch: "", runState: "idle", updatedAt: 1 };

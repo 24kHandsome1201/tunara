@@ -108,7 +108,9 @@ export function DirGroupHeader({
         {workspace && (
           <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
             <span aria-hidden="true" style={{ color: "var(--c-text-6)" }}>└</span>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{workspace.worktreeName}</span>
+            {workspace.worktreeName !== groupName && (
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{workspace.worktreeName}</span>
+            )}
             <span style={{ color: "var(--c-text-6)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {workspace.detached ? t("workspace.detached_short") : workspace.branch}
             </span>
