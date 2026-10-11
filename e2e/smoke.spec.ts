@@ -8,6 +8,24 @@ test("boots and shows a terminal backed by the mocked PTY", async ({ page, backe
   expect(await backend.callCount("ssh_hosts_load")).toBeGreaterThan(0);
 });
 
+test("empty workspace has an accessible title", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "No terminals open", level: 2 })).toBeVisible();
+});
+
+test("Inspector auto-collapses in a narrow window and restores when wide", async ({ page, backend }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openLocalTerminal(page, backend);
+  const inspector = page.locator(".tunara-panel");
+  await expect(inspector).toBeVisible();
+
+  await page.setViewportSize({ width: 820, height: 900 });
+  await expect(inspector).toHaveAttribute("aria-hidden", "true");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(inspector).toBeVisible();
+});
+
 test("typing echoes through the mocked PTY", async ({ page, backend }) => {
   await openLocalTerminal(page, backend);
   await page.keyboard.type("echo hello-e2e");
@@ -116,4 +134,74 @@ test("SSH connect overlay opens and validates the form", async ({ page, backend 
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+});
+
+test("failed SSH banner clamps its message and keeps recovery actions together", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+  await page.evaluate(() => {
+    const internals = window.__TAURI_INTERNALS__ as typeof window.__TAURI_INTERNALS__ & {
+      invoke: (command: string, args?: unknown) => Promise<unknown>;
+    };
+    const invoke = internals.invoke.bind(internals);
+    internals.invoke = (command, args) => {
+      if (command === "ssh_open_v2") {
+        return Promise.reject({
+          diagnostic: {
+            schemaVersion: 1,
+            stage: "DNS",
+            code: "dnsFailed",
+            severity: "error",
+            retryable: true,
+            hopRole: "direct",
+            timestamp: Date.now(),
+          },
+        });
+      }
+      return invoke(command, args);
+    };
+  });
+  await page.getByRole("button", { name: "Connect SSH" }).click();
+
+  const dialog = page.locator('[role="dialog"][aria-labelledby="ssh-connect-title"]');
+  await dialog.locator("#ssh-connect-host").fill("deploy@example.test");
+  await dialog.getByRole("button", { name: "Connect", exact: true }).click();
+
+  const message = page.locator('[role="alert"] span[title^="SSH connection failed"]');
+  await expect(message).toBeVisible();
+  await expect(message).toContainText("Couldn't resolve the host name. Check the address or your DNS/VPN.");
+  await page.getByRole("button", { name: "Close inspector" }).click();
+  const messageStyle = await message.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      display: style.display,
+      lineClamp: style.webkitLineClamp,
+      boxOrient: style.webkitBoxOrient,
+      whiteSpace: style.whiteSpace,
+      overflow: style.overflow,
+    };
+  });
+  expect(["-webkit-box", "flow-root"]).toContain(messageStyle.display);
+  expect(messageStyle.lineClamp).toBe("2");
+  expect(messageStyle.boxOrient).toBe("vertical");
+  expect(messageStyle.whiteSpace).toBe("normal");
+  expect(messageStyle.overflow).toBe("hidden");
+
+  const actionStyle = await page.getByRole("alert").getByRole("button").first().evaluate((button) => {
+    const style = getComputedStyle(button.parentElement!);
+    return { flexWrap: style.flexWrap, alignItems: style.alignItems };
+  });
+  expect(actionStyle).toEqual({ flexWrap: "nowrap", alignItems: "center" });
+
+  await page.setViewportSize({ width: 820, height: 700 });
+  const actionGroup = page.getByRole("alert").locator(".pane-recovery-bar__actions");
+  const [messageBox, actionBox] = await Promise.all([message.boundingBox(), actionGroup.boundingBox()]);
+  expect(messageBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(actionBox!.y).toBeGreaterThanOrEqual(messageBox!.y + messageBox!.height);
+  const messageSize = await message.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }));
+  expect(messageSize.scrollHeight).toBeLessThanOrEqual(messageSize.clientHeight + 1);
 });

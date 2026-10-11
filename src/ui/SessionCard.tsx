@@ -11,6 +11,7 @@ import { SessionCueDot } from "./SessionCueDot";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
+import { dedupeConsecutiveLabelParts } from "./lib/accessible-label";
 import { formatShortcut } from "./formatShortcut";
 import { CloseIcon } from "./shared";
 import { Icon, PushPin, Terminal } from "@/ui/icons";
@@ -165,7 +166,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
         : t("sidebar.session.multiplexer.hint", { name: terminalMultiplexerLabel(multiplexer) });
   const connectionPhase = sshCardConnectionPhase(session);
   const connectionTone = connectionPhase ? sshConnectionPhaseTone(connectionPhase) : null;
-  const accessibleLabel = [
+  const accessibleLabel = dedupeConsecutiveLabelParts([
     primary,
     lifecycleLabel,
     connectionPhase ? t(`connection.phase.${connectionPhase}`) : "",
@@ -173,7 +174,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
     session.unread ? t("sidebar.session.unread") : "",
     readerDirty ? t("sidebar.session.unsaved") : "",
     session.remote ? `${t("sidebar.session.remote")}, ${sshEndpointLabel(session.remote)}` : t("sidebar.session.local"),
-  ].filter(Boolean).join(", ");
+  ]).join(", ");
   const detailTitle = [subtitle, session.lastCommand, session.shellTitle, multiplexerHint]
     .filter(Boolean)
     .join(" · ");

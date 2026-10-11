@@ -16,6 +16,7 @@ export function AccentActionButton({
   onClick,
   title,
   ariaLabel,
+  disabled,
   className = "hover-accent-bg",
   style,
 }: {
@@ -23,6 +24,7 @@ export function AccentActionButton({
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   title?: string;
   ariaLabel?: string;
+  disabled?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }) {
@@ -32,6 +34,7 @@ export function AccentActionButton({
       onClick={onClick}
       title={title}
       aria-label={ariaLabel}
+      disabled={disabled}
       className={className}
       style={{
         height: "var(--h-btn-sm)",
@@ -42,7 +45,8 @@ export function AccentActionButton({
         color: "var(--c-accent)",
         fontSize: "var(--fs-meta)",
         fontWeight: 600,
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.65 : undefined,
         padding: "0 10px",
         display: "flex",
         alignItems: "center",
