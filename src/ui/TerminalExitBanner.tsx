@@ -1,8 +1,8 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
-import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
+import { safeSshFailure, SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
 import { reconnectPrefillFromSession, type Session } from "./types";
 import { AccentActionButton, RestartIcon } from "./lib/ui-primitives";
 import { StatusDot } from "./shared";
@@ -10,6 +10,7 @@ import { connectionDiagnostic, type ConnectionPhase } from "@/modules/terminal/l
 import { copyText } from "./lib/clipboard";
 import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
 import { enableSavedHostAutoReconnect } from "@/modules/ssh/save-successful-host";
+import { retrySshSessionInPlace } from "@/modules/ssh/manual-reconnect";
 import { SessionRemediationNotice, useSessionRemediationAction } from "./SessionRemediationNotice";
 
 /**
@@ -113,12 +114,13 @@ function CloseSessionButton({ session }: { session: Session }) {
  * primary action must stay the last button: pane activation and attention
  * reveal focus the last button inside the `[role="alert"]` bar.
  */
-function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
+function PaneRecoveryBar({ rootRef, role, tone, label, context, messageWrap = false, children }: {
   rootRef: RefObject<HTMLDivElement | null>;
   role: "alert" | "status";
   tone: string;
   label: string;
   context?: ReactNode;
+  messageWrap?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -127,6 +129,7 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
       role={role}
       aria-atomic="true"
       data-pane-recovery-bar
+      className={messageWrap ? "pane-recovery-bar--wrap" : undefined}
       style={{
         position: "absolute",
         left: 8,
@@ -155,8 +158,11 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
             color: "var(--c-text-2)",
             lineHeight: "16px",
             overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            textOverflow: messageWrap ? undefined : "ellipsis",
+            whiteSpace: messageWrap ? "normal" : "nowrap",
+            display: messageWrap ? "-webkit-box" : undefined,
+            WebkitLineClamp: messageWrap ? 2 : undefined,
+            WebkitBoxOrient: messageWrap ? "vertical" : undefined,
             flex: "1 1 auto",
             minWidth: 0,
           }}
@@ -165,7 +171,10 @@ function PaneRecoveryBar({ rootRef, role, tone, label, context, children }: {
         </span>
         {context}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}>
+      <div
+        className={messageWrap ? "pane-recovery-bar__actions" : undefined}
+        style={{ display: "flex", flexWrap: messageWrap ? "nowrap" : "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginLeft: "auto" }}
+      >
         {children}
       </div>
     </div>
@@ -254,32 +263,36 @@ export function TerminalExitBanner({ session, exitCode }: TerminalExitBannerProp
 interface PtyErrorBannerProps {
   session: Session;
   error: string;
+  /** Raw ssh_open error; when present the detail is localized at render time. */
+  failure?: unknown;
 }
 
 /**
- * Banner shown when the local PTY failed to open (B2). Without it the only
- * signal was a silent red inline line in the dead pane. The retry action
- * spawns a fresh terminal in the same cwd, mirroring the exit banner.
+ * Banner shown when a local PTY or SSH open fails. Retry reuses stored
+ * non-secret SSH parameters when they are sufficient for an in-place reconnect.
  */
-export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
+export function PtyErrorBanner({ session, error, failure }: PtyErrorBannerProps) {
   const t = useT();
   const isRemote = !!session.remote;
   const rootRef = useFocusPrimaryActionOnMount();
   const remediation = useSessionRemediationAction(session);
+  const [retrying, setRetrying] = useState(false);
   const title = isRemote ? t("ssh.error.title") : t("pty.error.title");
-  const detail = isRemote ? error : t("pty.error.subtitle");
-  const phase = session.connection?.failedAtPhase;
-  const phaseLabel = phase ? t(`connection.failedAt.${phase}`) : "";
+  // Re-derive the SSH failure text from the raw error so a language switch
+  // after the failure does not leave the detail in the previous language.
+  const detail = isRemote ? (failure !== undefined ? safeSshFailure(failure).message : error) : t("pty.error.subtitle");
+  const phase: string | undefined = session.connection?.failedAtPhase;
+  const phaseLabel = phase ? t(`connection.failedAt.${phase === "auth" ? "authenticating" : phase}`) : "";
   const summary = phaseLabel ? `${title} · ${phaseLabel} · ${detail}` : `${title} · ${detail}`;
-  const retryLabel = remediation?.label ?? t("common.retry");
+  const retryLabel = remediation?.label ?? (retrying ? t("ssh.connecting") : t("common.retry"));
 
   const retry = () => {
     if (isRemote) {
-      // Remote open failure: route back to the SSH dialog so the user can
-      // re-enter credentials (one-shot, never persisted).
-      if (session.remote) {
-        useUIStore.getState().openSshConnect(reconnectPrefillFromSession(session));
-      }
+      if (!session.remote) return;
+      setRetrying(true);
+      void retrySshSessionInPlace(session).then((result) => {
+        if (result !== "reconnecting") setRetrying(false);
+      });
       return;
     }
     restartLocalInPlace(session);
@@ -292,10 +305,11 @@ export function PtyErrorBanner({ session, error }: PtyErrorBannerProps) {
       tone="var(--c-error)"
       label={summary}
       context={<SessionRemediationNotice session={session} compact showAction={false} />}
+      messageWrap
     >
       <ConnectionDiagnosticButton session={session} />
       <CloseSessionButton session={session} />
-      <AccentActionButton onClick={remediation?.run ?? retry} title={retryLabel} ariaLabel={retryLabel}>
+      <AccentActionButton onClick={remediation?.run ?? retry} title={retryLabel} ariaLabel={retryLabel} disabled={retrying}>
         <RestartIcon size={10} />
         {retryLabel}
       </AccentActionButton>

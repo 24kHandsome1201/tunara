@@ -8,10 +8,12 @@ import {
   openPty,
   recordPtyExit,
   SSH_DISCONNECTED_EXIT_CODE,
+  type ForwardReconnectIntent,
   type PtyEvent,
   type PtyHandlers,
 } from "@/modules/terminal/lib/pty-bridge";
 import { createTerminalPtyGenerationGate } from "@/modules/terminal/lib/terminal-pty-generation";
+import { getResolvedLanguage, setLanguage } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { ContextMenu, isMenuItem, type MenuItem } from "@/ui/ContextMenu";
@@ -681,6 +683,91 @@ const remoteSession: Session = {
   },
 };
 
+const agentReconnectSession: Session = {
+  ...remoteSession,
+  id: "ssh-agent-retry-session",
+  remote: { ...remoteSession.remote!, authMethod: "agent" },
+  connection: {
+    transport: "ssh",
+    phase: "failed",
+    source: "renderer",
+    updatedAt: 1,
+    failedAtPhase: "authenticating",
+  },
+  ptyId: 41,
+  transportGeneration: "generation-agent",
+};
+
+function expectRetryDialog(session: Session) {
+  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+  useUIStore.setState({ overlay: null, sshPrefill: null });
+  const view = render(<PtyErrorBanner session={session} error="SSH authentication failed" />);
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(useUIStore.getState().overlay).toBe("ssh");
+  expect(useUIStore.getState().sshPrefill).toMatchObject({
+    host: session.remote?.host,
+    user: session.remote?.user,
+    reconnectSessionId: session.id,
+  });
+  view.unmount();
+}
+
+test("agent-auth SSH Retry reconnects in place and shows pending feedback", async () => {
+  let resolveSnapshot!: (intents: ForwardReconnectIntent[]) => void;
+  mockIPC((command) => {
+    if (command === "ssh_forwarding_reconnect_snapshot") {
+      return new Promise<ForwardReconnectIntent[]>((resolve) => { resolveSnapshot = resolve; });
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useSessionsStore.setState({ sessions: [agentReconnectSession], activeSessionId: agentReconnectSession.id });
+  useUIStore.setState({ overlay: null, sshPrefill: null });
+  const handleConnectionEvent = vi.spyOn(useSessionsStore.getState(), "handleConnectionEvent");
+
+  render(<PtyErrorBanner session={agentReconnectSession} error="SSH authentication failed" />);
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  const pendingRetry = screen.getByRole("button", { name: "Connecting…" }) as HTMLButtonElement;
+  expect(pendingRetry.disabled).toBe(true);
+  expect(useUIStore.getState().overlay).toBeNull();
+
+  await act(async () => { resolveSnapshot([]); });
+  await waitFor(() => expect(useSessionsStore.getState().sessions[0]?.reconnectNonce).toBe(1));
+  expect(useSessionsStore.getState().sessions[0]?.sshReconnectLifecycle).toBe(1);
+  expect(handleConnectionEvent).toHaveBeenCalledWith(agentReconnectSession.id, { type: "reconnectRequested" });
+  expect(useUIStore.getState().overlay).toBeNull();
+});
+
+test("password SSH Retry opens the prefilled dialog", () => {
+  expectRetryDialog(remoteSession);
+  expect(useUIStore.getState().sshPrefill?.authMethod).toBe("password");
+});
+
+test("credential-required SSH Retry opens the prefilled dialog", () => {
+  expectRetryDialog({ ...agentReconnectSession, sshReconnectNeedsCredential: true });
+});
+
+test("failed auth phase SSH Retry opens the prefilled dialog", () => {
+  const authPhaseSession = {
+    ...agentReconnectSession,
+    connection: { ...agentReconnectSession.connection!, failedAtPhase: "auth" },
+  } as unknown as Session;
+  expectRetryDialog(authPhaseSession);
+});
+
+test("jump-host password SSH Retry opens the prefilled dialog", () => {
+  expectRetryDialog({
+    ...agentReconnectSession,
+    remote: {
+      ...agentReconnectSession.remote!,
+      route: {
+        profileId: "jump-profile",
+        jump: { host: "jump.example", port: 22, user: "jump", authMethod: "password" },
+      },
+    },
+  });
+});
+
 test("SSH failure and disconnect banners announce dynamic status", () => {
   const view = render(<PtyErrorBanner session={remoteSession} error="password authentication failed" />);
   expect(screen.getByRole("alert").textContent).toContain("SSH connection failed");
@@ -761,6 +848,26 @@ test("session cards announce lifecycle, unread, and transport state", () => {
   expect(screen.getByRole("button", { name: /Deploy, Failed, Unread, Remote SSH session/ })).toBeTruthy();
 });
 
+test("session cards omit consecutive duplicate lifecycle and connection labels", () => {
+  render(<SessionCard
+    session={{
+      id: "duplicate-failure-label",
+      title: "Deploy",
+      dir: "/srv/app",
+      branch: "main",
+      runState: "failed",
+      updatedAt: 1,
+      remote: { host: "ssh.example", port: 22, user: "deploy" },
+      connection: { transport: "ssh", phase: "failed", source: "transport", updatedAt: 1 },
+    }}
+    active
+    onSelect={() => {}}
+  />);
+
+  const label = screen.getByRole("button", { name: /Deploy/ }).getAttribute("aria-label") ?? "";
+  expect(label.match(/Failed/g)).toHaveLength(1);
+});
+
 test("session menu exposes bounded keyboard reorder actions", () => {
   const sessions: Session[] = [
     { id: "one", title: "One", dir: "/repo", branch: "main", runState: "idle", updatedAt: 1 },
@@ -782,6 +889,8 @@ test("session menu exposes bounded keyboard reorder actions", () => {
   const down = items.find((item): item is MenuItem => isMenuItem(item) && item.id === "session:move-down");
   expect(up?.disabled).toBe(true);
   expect(down?.disabled).toBe(false);
+  expect(up?.icon).toBe("arrow-up");
+  expect(down?.icon).toBe("arrow-down");
 
   down?.action();
 
@@ -880,4 +989,26 @@ test.each([
     commandName === "ssh_host_key_decision" ? { accept: false } : { responses: null },
   );
   expect(document.activeElement).toBe(outside);
+});
+
+test("SSH failure detail follows a language switch made after the failure", () => {
+  const previous = getResolvedLanguage();
+  act(() => setLanguage("zh-CN"));
+  try {
+    render(
+      <PtyErrorBanner
+        session={remoteSession}
+        error="无法连接主机"
+        failure="resolve example.invalid: nodename nor servname provided, or not known"
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("无法连接主机");
+
+    act(() => setLanguage("en"));
+    const text = screen.getByRole("alert").textContent ?? "";
+    expect(text).toContain("Couldn't reach host");
+    expect(text).not.toContain("无法连接主机");
+  } finally {
+    act(() => setLanguage(previous));
+  }
 });
