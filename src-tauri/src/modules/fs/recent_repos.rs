@@ -228,7 +228,10 @@ mod tests {
     use super::{scan_recent_git_repos_with, ScanLimits};
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
     struct TestDir {
         path: PathBuf,
@@ -241,11 +244,12 @@ mod tests {
                 .expect("clock")
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "tunara-recent-repos-{}-{}",
+                "tunara-recent-repos-{}-{}-{}",
                 std::process::id(),
-                suffix
+                suffix,
+                NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
             ));
-            fs::create_dir_all(&path).expect("create fixture root");
+            fs::create_dir(&path).expect("create unique fixture root");
             Self { path }
         }
     }

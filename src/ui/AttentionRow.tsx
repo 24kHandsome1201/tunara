@@ -71,8 +71,8 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
           letterSpacing: emphasized ? "0.01em" : undefined,
         }}
       >
-        {label}
-        {reason && <span style={{ marginLeft: "auto", paddingLeft: 8, fontWeight: 400, fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reason}</span>}
+        <span style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{label}</span>
+        {reason && <span style={{ marginLeft: "auto", paddingLeft: 8, minWidth: 0, fontWeight: 400, fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reason}</span>}
       </button>
     </div>
   );

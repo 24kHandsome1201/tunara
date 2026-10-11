@@ -15,8 +15,8 @@ import { OverlayLoadingFallback } from "@/ui/overlays/OverlayLoadingFallback";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from "react";
 import { openNewTerminalDirectoryDialog } from "@/modules/session/new-terminal-directory";
 import {
-  auxiliarySurfaceToCloseOnCompactResize,
   auxiliarySurfaceToCloseOnOpen,
+  compactPanelAutoCollapseAction,
   resolveAppShellLayout,
 } from "./lib/app-shell-layout";
 import { resolveResizeHandleWidth } from "./lib/resize-handle";
@@ -307,6 +307,9 @@ export default function App() {
   const viewportWidth = useUIStore((s) => s.viewportWidth);
   const terminalColumnCount = useUIStore((s) => splitHorizontalPaneCount(s.split));
   const setViewportWidth = useUIStore((s) => s.setViewportWidth);
+  const autoCollapsedPanelRef = useRef(false);
+  const panelLayoutKeyRef = useRef<string | null>(null);
+  const observedPanelVisibleRef = useRef(panelVisible);
 
   useAppServices(ready);
 
@@ -318,15 +321,34 @@ export default function App() {
   }, [setViewportWidth]);
 
   useLayoutEffect(() => {
-    const surface = auxiliarySurfaceToCloseOnCompactResize({
+    const layoutKey = `${viewportWidth}:${sidebarVisible}:${sidebarWidth}:${panelWidth}:${terminalColumnCount}`;
+    const layoutKeyChanged = panelLayoutKeyRef.current !== layoutKey;
+    if (!layoutKeyChanged) {
+      if (observedPanelVisibleRef.current !== panelVisible) {
+        autoCollapsedPanelRef.current = false;
+        observedPanelVisibleRef.current = panelVisible;
+      }
+      return;
+    }
+    panelLayoutKeyRef.current = layoutKey;
+    observedPanelVisibleRef.current = panelVisible;
+    const action = compactPanelAutoCollapseAction({
       viewportWidth,
       sidebarVisible,
       panelVisible,
       sidebarWidth,
       panelWidth,
       terminalColumnCount,
-    });
-    if (surface === "panel") useUIStore.getState().setPanelVisible(false);
+    }, autoCollapsedPanelRef.current);
+    if (action === "collapse") {
+      autoCollapsedPanelRef.current = true;
+      observedPanelVisibleRef.current = false;
+      useUIStore.getState().setPanelVisible(false);
+    } else if (action === "restore") {
+      autoCollapsedPanelRef.current = false;
+      observedPanelVisibleRef.current = true;
+      useUIStore.getState().setPanelVisible(true);
+    }
   }, [panelVisible, panelWidth, sidebarVisible, sidebarWidth, terminalColumnCount, viewportWidth]);
 
   if (!ready) return <AppSplash />;

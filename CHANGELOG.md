@@ -10,6 +10,15 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 修复
+- 侧栏终端卡片的鼠标右键菜单在 macOS 上恢复可用：拖拽排序只在主键按下时启动,不再用指针捕获吞掉 WebKit 在 mousedown 阶段触发的 contextmenu;新增组件测试覆盖右键/左键指针顺序。
+- SSH 终端未连接或连接失败时,改动面板显示「远程改动暂不可用 · 请重新连接 SSH 后读取 Git 状态」,不再误报为「非 Git 仓库」。
+- 终端失败横幅的阶段标签改用 `connection.failedAt.*` 名词(如「解析主机」),不再在已失败状态下显示「正在解析主机」等进行时文案。
+- `THIRD_PARTY_NOTICES.md` 移除已在 1cc12db 删除的 Fluent Emoji 吉祥物条目;`docs/archive/PRODUCT_REVIEW.md` 不再链接已删除的 `TITLEBAR_DEVICE_TABS.md`。
+- 重新生成 `src-tauri/gen/schemas/macOS-schema.json`,补齐 clipboard-manager 权限项,`pnpm tauri:dev` 后工作树保持干净。
+- `FilePreview.tsx` 四处刷新订阅 effect 的依赖改为显式说明:依赖绑定/资源的稳定 id(logicalSessionId/physicalPtyId/transportGeneration/path)而非对象引用,`pnpm lint` 回到 0 warning。
+- SSH 连接失败横幅的错误详情改为渲染时按原始错误重新本地化(`PtyErrorBanner` 新增 `failure` 入参),失败后切换语言不再出现中英混排;英文 `connection.failedAt.*` 改为名词短语(如 “Host resolution”),与进行态 `connection.phase.*` 区分。
+
 ## [3.1.1] - 2026-10-01
 
 ### 修复

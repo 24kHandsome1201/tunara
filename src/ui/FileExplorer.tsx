@@ -1214,11 +1214,11 @@ export function FileExplorer({
           {mutationPrepareError}
         </div>
       )}
-      {remoteDisconnected && (
+      {remoteDisconnected && hasCachedRemoteListing && (
         // Status only: the inspector follows the active session, whose terminal
         // pane recovery bar already owns the single Reconnect action.
-        <div role="status" aria-live="polite" title={t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")} style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {t(hasCachedRemoteListing ? "explorer.remote_disconnected" : "explorer.remote_disconnected_no_cache")}
+        <div role="status" aria-live="polite" title={t("explorer.remote_disconnected")} style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t("explorer.remote_disconnected")}
         </div>
       )}
       <ExplorerNav
