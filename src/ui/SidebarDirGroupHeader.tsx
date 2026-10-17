@@ -86,23 +86,26 @@ export function DirGroupHeader({
         />
       )}
       {kind === "ssh" ? <HostIcon /> : <FolderIcon />}
-      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={pathTitle}>
+      <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: workspace ? 2 : 0 }} title={kind === "ssh" ? `${pathTitle} · ${t("workspace.ssh")}` : pathTitle}>
         <span
           style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 5,
+            minWidth: 0,
             fontSize: "var(--fs-meta)",
             fontWeight: workspace || kind === "ssh" ? 650 : 600,
             fontFamily: "var(--font-mono)",
             color: workspace || kind === "ssh" ? "var(--c-text-5)" : "var(--c-text-3)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
             letterSpacing: workspace || kind === "ssh" ? "0.02em" : undefined,
             textAlign: "left",
           }}
         >
-          {kind === "ssh" ? label : workspace ? workspace.repositoryName : label}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {kind === "ssh" ? label : workspace ? workspace.repositoryName : label}
+          </span>
           {kind === "ssh" && (
-            <span style={{ marginLeft: 5, color: "var(--c-text-6)", fontSize: "var(--fs-meta)", fontWeight: 600 }}>{t("workspace.ssh")}</span>
+            <span style={{ flexShrink: 0, color: "var(--c-text-6)", fontSize: "var(--fs-meta)", fontWeight: 600, whiteSpace: "nowrap" }}>{t("workspace.ssh")}</span>
           )}
         </span>
         {workspace && (

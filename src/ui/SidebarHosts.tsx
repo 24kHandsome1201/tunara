@@ -86,13 +86,18 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
             const latest = representativeSession(live, activeSessionId);
             const online = live.some((session) => readyBindingForSession(session));
             const connecting = !online && live.some((session) => session.connection && !["failed", "disconnected", "exited"].includes(session.connection.phase));
+            const name = hostProfileButtonLabel(profile);
+            const endpoint = `${profile.user}@${profile.host}${profile.port === 22 ? "" : `:${profile.port}`}`;
+            const sources = [source === "saved" ? t("ssh.source.saved") : t("ssh.source.config")];
+            if (entry.configProfile) sources.push(t("ssh.source.config"));
+            const detail = [endpoint, ...sources].join(" · ");
             return (
               <button
                 key={`${entry.key}:${profile.host}`}
                 className="hover-bg sidebar-host-row"
                 data-status={online ? "online" : connecting ? "connecting" : "offline"}
-                aria-label={hostProfileButtonLabel(profile)}
-                title={latest ? t("sidebar.hosts.focus_session") : hostProfileButtonLabel(profile)}
+                aria-label={name}
+                title={`${latest ? t("sidebar.hosts.focus_session") : name}\n${detail}`}
                 onClick={() => {
                   if (latest) {
                     onSelectSession(latest.id);
@@ -103,8 +108,11 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
               >
                 <span className="sidebar-host-status-dot" aria-hidden="true" />
                 <span className="sidebar-host-copy">
-                  <strong>{hostProfileButtonLabel(profile)}</strong>
-                  <small>{profile.user}@{profile.host}{profile.port === 22 ? "" : `:${profile.port}`} · {source === "saved" ? t("ssh.source.saved") : t("ssh.source.config")}{entry.configProfile ? ` · ${t("ssh.source.config")}` : ""}</small>
+                  <strong>{name}</strong>
+                  <small>
+                    <span className="sidebar-host-endpoint">{endpoint}</span>
+                    {sources.map((label) => <span key={label} className="sidebar-host-source">{label}</span>)}
+                  </small>
                 </span>
               </button>
             );

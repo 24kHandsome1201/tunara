@@ -743,9 +743,21 @@ select.ui-control {
 .sidebar-host-row[data-status="connecting"] .sidebar-host-status-dot { background: var(--c-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-warning) 13%, transparent); }
 .sidebar-host-copy { min-width: 0; display: block; }
 .sidebar-host-copy strong,
-.sidebar-host-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-host-endpoint { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-host-copy strong { color: var(--c-text-2); font-size: var(--fs-secondary); font-weight: 600; }
-.sidebar-host-copy small { margin-top: 1px; color: var(--c-text-6); font: var(--fs-meta-sm) var(--font-mono); }
+/* Only the endpoint truncates; source tags keep their full width. */
+.sidebar-host-copy small { margin-top: 1px; display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--c-text-6); font: var(--fs-meta-sm) var(--font-mono); }
+.sidebar-host-endpoint { min-width: 0; }
+.sidebar-host-source {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: var(--r-badge-sm);
+  background: var(--c-bg-3);
+  color: var(--c-text-5);
+  font-family: var(--font-ui);
+  line-height: 15px;
+  white-space: nowrap;
+}
 .sidebar-hosts-state { padding: 7px 8px; color: var(--c-text-6); font-size: var(--fs-meta); line-height: var(--lh-copy); }
 .sidebar-hosts-more { padding: 5px 8px; color: var(--c-accent-text); font-size: var(--fs-meta); text-align: center; }
 
