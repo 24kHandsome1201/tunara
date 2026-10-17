@@ -779,7 +779,8 @@ select.ui-control {
 .explorer-breadcrumb { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .explorer-breadcrumb-link,
 .explorer-breadcrumb-current {
-  height: 20px;
+  height: 24px;
+  margin-block: -2px;
   padding: 0 5px;
   border-radius: var(--r-btn);
   border: none;
@@ -834,8 +835,9 @@ select.ui-control {
 }
 .explorer-search-mode,
 .explorer-search-clear {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  margin: -3px;
   border-radius: var(--r-btn);
   border: none;
   background: transparent;

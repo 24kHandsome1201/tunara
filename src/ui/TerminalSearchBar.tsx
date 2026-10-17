@@ -19,8 +19,9 @@ interface TerminalSearchBarProps {
 }
 
 const SEARCH_BUTTON_STYLE: CSSProperties = {
-  width: 22,
-  height: 22,
+  width: 24,
+  height: 24,
+  margin: -1,
   borderRadius: "var(--r-btn)",
   border: "none",
   background: "transparent",
