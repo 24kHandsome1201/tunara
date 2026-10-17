@@ -57,7 +57,7 @@ function renderHighlighted(line: string, query: string): React.ReactNode {
         key={`m${segIdx++}`}
         style={{
           background: "var(--c-accent-bg-light)",
-          color: "var(--c-accent)",
+          color: "var(--c-accent-text)",
           borderRadius: 2,
           padding: "0 1px",
         }}
@@ -170,7 +170,7 @@ export function MiniDiff({
         <span style={{ minWidth: 0, flex: 1, fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={error}>
           {t("diff.mini.load_failed")}
         </span>
-        <button type="button" onClick={onRetry} className="hover-accent-bg" style={{ border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", color: "var(--c-accent)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "2px 7px" }}>
+        <button type="button" onClick={onRetry} className="hover-accent-bg" style={{ border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", color: "var(--c-accent-text)", cursor: "pointer", fontSize: "var(--fs-meta)", padding: "2px 7px" }}>
           {t("common.retry")}
         </button>
       </div>

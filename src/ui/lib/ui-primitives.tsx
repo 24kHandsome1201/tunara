@@ -42,7 +42,7 @@ export function AccentActionButton({
         borderRadius: "var(--r-btn)",
         border: "1px solid var(--c-accent-border)",
         background: "var(--c-accent-bg-soft)",
-        color: "var(--c-accent)",
+        color: "var(--c-accent-text)",
         fontSize: "var(--fs-meta)",
         fontWeight: 600,
         cursor: disabled ? "default" : "pointer",

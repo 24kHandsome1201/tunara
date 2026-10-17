@@ -6,8 +6,12 @@
   /* 与 DEFAULT_SETTINGS.accent (#c2683c) 同色的 OKLCH 表达；仅作启动前的
      静态回退，运行时由 useTheme/shell-tint-boot 按用户设置覆写。 */
   --c-accent: oklch(61.3% 0.129 45.4);
+  /* Accent-colored text below 18px (links, selected pills, toggles, marks):
+     ≥ 4.5:1 on --c-bg-* and --c-accent-bg-light. --c-accent stays for fills,
+     borders, focus rings and icons. */
+  --c-accent-text: oklch(50% 0.13 45.4);
   /* Text/icons drawn on top of --c-accent; ≥ 4.5:1 on the default terracotta. */
-  --c-on-accent: #18181b;
+  --c-on-accent: #0c0a09;
   --c-accent-bg-light: oklch(93.5% 0.035 49);
   --c-accent-bg-soft: oklch(97% 0.014 49);
   --c-accent-border: oklch(86.5% 0.048 47);
@@ -283,7 +287,8 @@ html[data-reduce-motion] {
 /* --c-accent and derived vars (--c-accent-bg-light, --c-accent-bg-soft, --c-accent-border)
    are set dynamically by useTheme.ts to avoid flash when user picks a non-default accent. */
 .dark {
-  --c-on-accent: #18181b;
+  --c-accent-text: oklch(78% 0.11 45.4);
+  --c-on-accent: #0c0a09;
   --c-text-primary: oklch(91% 0.008 55);
   --c-text-2: oklch(84% 0.008 55);
   --c-text-3: oklch(72% 0.008 55);

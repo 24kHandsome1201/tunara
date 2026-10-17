@@ -21,7 +21,7 @@ for (const theme of ["Light", "Dark"] as const) {
         await expect.poll(async () => button.evaluate((element) => {
           const style = getComputedStyle(element);
           return style.color;
-        })).toBe("rgb(24, 24, 27)");
+        })).toBe("rgb(12, 10, 9)");
 
         const colors = await button.evaluate((element) => {
           const style = getComputedStyle(element);

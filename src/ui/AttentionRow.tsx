@@ -67,7 +67,7 @@ export function AttentionRow({ sessions, onSelectSession }: AttentionRowProps) {
           fontFamily: "var(--font-ui)",
           fontSize: "var(--fs-secondary)",
           fontWeight: emphasized ? 700 : 500,
-          color: emphasized ? "var(--c-accent)" : "var(--c-text-5)",
+          color: emphasized ? "var(--c-accent-text)" : "var(--c-text-5)",
           letterSpacing: emphasized ? "0.01em" : undefined,
         }}
       >

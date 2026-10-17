@@ -367,7 +367,7 @@ export function ConnectingOverlay({
               borderRadius: "var(--r-btn)",
               border: "1px solid var(--c-accent-border)",
               background: "var(--c-accent-bg-soft)",
-              color: "var(--c-accent)",
+              color: "var(--c-accent-text)",
               fontSize: "var(--fs-secondary)",
               fontWeight: 600,
               cursor: "pointer",
