@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { auditI18n, parseDynamicPattern } from "../scripts/i18n-audit.mjs";
+import { auditI18n, loadLocaleValues, parseDynamicPattern } from "../scripts/i18n-audit.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const script = resolve(root, "scripts/i18n-audit.mjs");
@@ -41,6 +41,18 @@ test("en and zh-CN locale key sets are identical", () => {
   assert.deepEqual(result.onlyInEn, []);
   assert.deepEqual(result.onlyInZhCN, []);
   assert.equal(result.localeCounts.en, result.localeCounts["zh-CN"]);
+});
+
+test("en and zh-CN values use the same {{placeholder}} set for every key", () => {
+  const placeholders = (value) => [...String(value).matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) => match[1]).sort();
+  const en = loadLocaleValues(root, "src/modules/i18n/locales/en.json");
+  const zh = loadLocaleValues(root, "src/modules/i18n/locales/zh-CN.json");
+  const drift = [...en].flatMap(([key, value]) => {
+    const enSet = placeholders(value).join(",");
+    const zhSet = placeholders(zh.get(key)).join(",");
+    return enSet === zhSet ? [] : [`${key}: en {${enSet}} vs zh-CN {${zhSet}}`];
+  });
+  assert.deepEqual(drift, []);
 });
 
 test("referenced i18n keys exist in the dictionaries", () => {

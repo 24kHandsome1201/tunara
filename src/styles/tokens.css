@@ -448,7 +448,8 @@ html[data-reduce-motion] {
 
 .explorer-sort-button {
   width: 100%;
-  height: 22px;
+  height: 24px;
+  margin-block: -1px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -524,6 +525,7 @@ html[data-reduce-motion] {
 /* The container's :focus-within ring is the single focus indicator here. */
 .sidebar-search input:focus-visible { outline: none; }
 .explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
+.explorer-search input:focus-visible { outline: none; }
 
 /* ── Utility classes ── */
 
