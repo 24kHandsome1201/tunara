@@ -1091,13 +1091,20 @@ button.explorer-listing-action {
 .sidebar-resize-handle:hover::after,
 .sidebar-resize-handle:focus-visible::after { opacity: 1; background: var(--c-accent); width: 3px; }
 
-/* Dir group header: + / × buttons fade on hover */
+/* Dir group header: + / × buttons fade on hover.
+   The scale lives on the glyph so the 24px hit target never shrinks. */
 .dir-group-header .dir-group-add,
-.dir-group-header .dir-group-close { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); transform: scale(0.8); }
+.dir-group-header .dir-group-close { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.dir-group-header .dir-group-add > svg,
+.dir-group-header .dir-group-close > svg { transition: transform var(--dur-fast) var(--ease-out); transform: scale(0.8); }
 .dir-group-header:hover .dir-group-add,
 .dir-group-header:hover .dir-group-close,
 .dir-group-header .dir-group-add:focus-visible,
-.dir-group-header .dir-group-close:focus-visible { opacity: 1; transform: scale(1); }
+.dir-group-header .dir-group-close:focus-visible { opacity: 1; }
+.dir-group-header:hover .dir-group-add > svg,
+.dir-group-header:hover .dir-group-close > svg,
+.dir-group-header .dir-group-add:focus-visible > svg,
+.dir-group-header .dir-group-close:focus-visible > svg { transform: scale(1); }
 /* Dir group header: 容器整行 hover 底色；折叠切换是内部真实 button */
 .dir-group-header { transition: background var(--dur-fast) var(--ease-out); border-radius: var(--r-btn); }
 .dir-group-header:hover { background: var(--c-bg-hover); }
