@@ -8,9 +8,14 @@ export const SECTION_LABEL_INLINE: React.CSSProperties = { fontSize: "var(--fs-b
 export const SECTION_HINT: React.CSSProperties = { fontSize: "var(--fs-secondary)", color: "var(--c-text-4)", marginTop: 6 };
 export const TOGGLE_ROW: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", height: 28, marginBottom: 10 };
 
+// The button is the 24px hit target; the visible 36×20 track sits inside it.
 const TOGGLE_BUTTON: React.CSSProperties = {
-  width: 36, height: 20, borderRadius: 10, border: "none", padding: 2, cursor: "pointer",
-  display: "flex", alignItems: "center", flexShrink: 0,
+  width: 36, height: 24, borderRadius: 12, border: "none", padding: 0, cursor: "pointer",
+  display: "flex", alignItems: "center", flexShrink: 0, background: "transparent",
+};
+const TOGGLE_TRACK: React.CSSProperties = {
+  width: 36, height: 20, borderRadius: 10, padding: 2,
+  display: "flex", alignItems: "center",
   transition: "background var(--dur-base) var(--ease-out)",
 };
 const TOGGLE_KNOB: React.CSSProperties = {
@@ -51,9 +56,11 @@ export function Toggle({ checked, onChange, ariaLabel }: { checked: boolean; onC
       role="switch"
       aria-checked={checked}
       aria-label={ariaLabel}
-      style={{ ...TOGGLE_BUTTON, background: checked ? "var(--c-accent)" : "var(--c-bg-3)" }}
+      style={TOGGLE_BUTTON}
     >
-      <div style={{ ...TOGGLE_KNOB, transform: checked ? "translateX(16px)" : "translateX(0)" }} />
+      <span aria-hidden="true" style={{ ...TOGGLE_TRACK, background: checked ? "var(--c-accent)" : "var(--c-bg-3)" }}>
+        <span style={{ ...TOGGLE_KNOB, transform: checked ? "translateX(16px)" : "translateX(0)" }} />
+      </span>
     </button>
   );
 }

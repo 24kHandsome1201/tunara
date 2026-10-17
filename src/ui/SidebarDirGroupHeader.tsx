@@ -179,7 +179,8 @@ export function DirGroupHeader({
             border: "none",
             background: "transparent",
             cursor: "pointer",
-            padding: 0,
+            padding: "3px 0",
+            margin: "-3px 0",
             font: "inherit",
             color: "inherit",
           }}
@@ -200,8 +201,9 @@ export function DirGroupHeader({
           onClick={(e) => { e.stopPropagation(); onNewTerminal(); }}
           aria-label={newTerminalLabel}
           style={{
-            width: 18,
-            height: 18,
+            width: 24,
+            height: 24,
+            margin: -3,
             borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
@@ -225,8 +227,9 @@ export function DirGroupHeader({
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
           aria-label={closeAllTitle}
           style={{
-            width: 18,
-            height: 18,
+            width: 24,
+            height: 24,
+            margin: -3,
             borderRadius: "var(--r-badge-sm)",
             border: "none",
             background: "transparent",
