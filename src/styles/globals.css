@@ -566,6 +566,15 @@ select.ui-control {
 }
 .ssh-connect-choice[data-selected="true"] { border-color: var(--c-accent); }
 .ssh-connect-choice--compact { gap: 6px; padding: 6px; }
+/* Inspector forwarding form: one choice per row so a narrow panel never
+   splits a radio from its label. Choice/toggle visuals reuse ssh-connect-*. */
+.forwarding-form { display: grid; gap: 8px; min-width: 0; }
+.forwarding-choice-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.forwarding-choice-list .ssh-connect-choice > span { min-width: 0; overflow-wrap: anywhere; }
+.forwarding-field { display: grid; gap: 4px; min-width: 0; }
+.forwarding-field > .ui-control { width: 100%; min-width: 0; }
+.forwarding-field-label { padding: 0; margin-bottom: 4px; font-size: var(--fs-secondary); color: var(--c-text-4); }
+.forwarding-field > .forwarding-field-label { margin-bottom: 0; }
 .ssh-connect-toggle { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: var(--fs-secondary); }
 .ssh-connect-toggle > input { margin-top: 2px; }
 .ssh-connect-field-label { font-size: var(--fs-secondary); }

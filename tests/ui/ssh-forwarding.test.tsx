@@ -306,3 +306,25 @@ test("starts and stops loopback-only remote forwarding onto a local target port"
     ruleId: "rf-1",
   });
 });
+
+test("forward type choices are one labelled radio per row with the selected card marked", async () => {
+  mockIPC((command) => {
+    if (command.endsWith("_forward_list")) return [];
+    throw new Error(`unexpected command: ${command}`);
+  });
+
+  render(<ForwardingPanel binding={binding} session={session} />);
+  await screen.findByText("No active forwarding listeners");
+  const group = screen.getByRole("radiogroup", { name: "Forward type" });
+  expect(group.className).toContain("forwarding-choice-list");
+  const radios = screen.getAllByRole("radio");
+  expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual(["Local", "Dynamic (SOCKS5)", "Remote"]);
+  expect(radios.every((radio) => radio.parentElement?.parentElement === group)).toBe(true);
+  expect(screen.getByLabelText("Local").closest("label")?.getAttribute("data-selected")).toBe("true");
+
+  fireEvent.click(screen.getByText("Remote"));
+  expect((screen.getByLabelText("Remote") as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByLabelText("Remote").closest("label")?.getAttribute("data-selected")).toBe("true");
+  expect(screen.getByLabelText("Local").closest("label")?.hasAttribute("data-selected")).toBe(false);
+  expect(screen.getByLabelText("Remote port")).toBeTruthy();
+});

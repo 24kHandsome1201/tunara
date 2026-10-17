@@ -30,6 +30,8 @@ interface ForwardingPanelProps {
 
 type FieldKey = "localPort" | "targetHost" | "targetPort";
 
+const FORWARD_KINDS = ["local", "dynamic", "remote"] as const;
+
 function parsePort(value: string, allowZero: boolean): number | null {
   if (!/^\d+$/.test(value)) return null;
   const port = Number(value);
@@ -39,7 +41,7 @@ function parsePort(value: string, allowZero: boolean): number | null {
 
 export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
   const t = useT();
-  const [kind, setKind] = useState<"local" | "dynamic" | "remote">("local");
+  const [kind, setKind] = useState<(typeof FORWARD_KINDS)[number]>("local");
   const [localPort, setLocalPort] = useState("0");
   const [targetHost, setTargetHost] = useState("");
   const [targetPort, setTargetPort] = useState("");
@@ -208,31 +210,51 @@ export function ForwardingPanel({ binding, session }: ForwardingPanelProps) {
       )}
       {!binding && <p role="status">{t("forwarding.unavailable")}</p>}
       {binding && (
-        <form onSubmit={(event) => { void submit(event); }} style={{ display: "grid", gap: 8 }}>
-          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend>{t("forwarding.kind")}</legend>
-            <label><input className="ui-choice" type="radio" name="forward-kind" checked={kind === "local"} onChange={() => setKind("local")} /> {t("forwarding.local")}</label>{" "}
-            <label><input className="ui-choice" type="radio" name="forward-kind" checked={kind === "dynamic"} onChange={() => setKind("dynamic")} /> {t("forwarding.dynamic")}</label>{" "}
-            <label><input className="ui-choice" type="radio" name="forward-kind" checked={kind === "remote"} onChange={() => setKind("remote")} /> {t("forwarding.remote")}</label>
+        <form onSubmit={(event) => { void submit(event); }} className="forwarding-form">
+          <fieldset className="ssh-connect-fieldset">
+            <legend className="forwarding-field-label">{t("forwarding.kind")}</legend>
+            <div role="radiogroup" aria-label={t("forwarding.kind")} className="forwarding-choice-list">
+              {FORWARD_KINDS.map((option) => (
+                <label key={option} className="hover-bg ssh-connect-choice" data-selected={kind === option ? "true" : undefined}>
+                  <input className="ui-choice" type="radio" name="forward-kind" value={option} checked={kind === option} onChange={() => setKind(option)} />
+                  <span>{t(`forwarding.${option}`)}</span>
+                </label>
+              ))}
+            </div>
           </fieldset>
-          <label>{kind === "remote" ? t("forwarding.remote_port") : t("forwarding.local_port")} <input className="ui-control" inputMode="numeric" value={localPort} onChange={(event) => { setLocalPort(event.target.value); setFieldErrors((current) => ({ ...current, localPort: false })); }} aria-invalid={fieldErrors.localPort ? "true" : undefined} aria-describedby="forwarding-port-hint" /></label>
+          <label className="forwarding-field">
+            <span className="forwarding-field-label">{kind === "remote" ? t("forwarding.remote_port") : t("forwarding.local_port")}</span>
+            <input className="ui-control" inputMode="numeric" value={localPort} onChange={(event) => { setLocalPort(event.target.value); setFieldErrors((current) => ({ ...current, localPort: false })); }} aria-invalid={fieldErrors.localPort ? "true" : undefined} aria-describedby="forwarding-port-hint" />
+          </label>
           {fieldAlert("localPort", "forwarding.field.invalid_port")}
           <span id="forwarding-port-hint" style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)" }}>{t(kind === "remote" ? "forwarding.remote_port_hint" : "forwarding.port_hint")}</span>
           {kind === "local" && (
             <>
-              <label>{t("forwarding.target_host")} <input className="ui-control" value={targetHost} onChange={(event) => { setTargetHost(event.target.value); setFieldErrors((current) => ({ ...current, targetHost: false })); }} aria-invalid={fieldErrors.targetHost ? "true" : undefined} /></label>
+              <label className="forwarding-field">
+                <span className="forwarding-field-label">{t("forwarding.target_host")}</span>
+                <input className="ui-control" value={targetHost} onChange={(event) => { setTargetHost(event.target.value); setFieldErrors((current) => ({ ...current, targetHost: false })); }} aria-invalid={fieldErrors.targetHost ? "true" : undefined} />
+              </label>
               {fieldAlert("targetHost", "forwarding.field.invalid_host")}
-              <label>{t("forwarding.target_port")} <input className="ui-control" inputMode="numeric" value={targetPort} onChange={(event) => { setTargetPort(event.target.value); setFieldErrors((current) => ({ ...current, targetPort: false })); }} aria-invalid={fieldErrors.targetPort ? "true" : undefined} /></label>
+              <label className="forwarding-field">
+                <span className="forwarding-field-label">{t("forwarding.target_port")}</span>
+                <input className="ui-control" inputMode="numeric" value={targetPort} onChange={(event) => { setTargetPort(event.target.value); setFieldErrors((current) => ({ ...current, targetPort: false })); }} aria-invalid={fieldErrors.targetPort ? "true" : undefined} />
+              </label>
               {fieldAlert("targetPort", "forwarding.field.invalid_port")}
             </>
           )}
           {kind === "remote" && (
             <>
-              <label>{t("forwarding.local_target_port")} <input className="ui-control" inputMode="numeric" value={targetPort} onChange={(event) => { setTargetPort(event.target.value); setFieldErrors((current) => ({ ...current, targetPort: false })); }} aria-invalid={fieldErrors.targetPort ? "true" : undefined} /></label>
+              <label className="forwarding-field">
+                <span className="forwarding-field-label">{t("forwarding.local_target_port")}</span>
+                <input className="ui-control" inputMode="numeric" value={targetPort} onChange={(event) => { setTargetPort(event.target.value); setFieldErrors((current) => ({ ...current, targetPort: false })); }} aria-invalid={fieldErrors.targetPort ? "true" : undefined} />
+              </label>
               {fieldAlert("targetPort", "forwarding.field.invalid_port")}
             </>
           )}
-          <label><input className="ui-choice" type="checkbox" checked={recreateOnReconnect} onChange={(event) => setRecreateOnReconnect(event.target.checked)} /> {t("forwarding.recreate")}</label>
+          <label className="ssh-connect-toggle">
+            <input className="ui-choice" type="checkbox" checked={recreateOnReconnect} onChange={(event) => setRecreateOnReconnect(event.target.checked)} />
+            <span>{t("forwarding.recreate")}</span>
+          </label>
           <button type="submit" className="ui-button ui-button--primary" disabled={loading}>{t("forwarding.start")}</button>
         </form>
       )}
