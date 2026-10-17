@@ -830,7 +830,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 <span className="ssh-connect-hint">{t("ssh.postConnectCommandHint")}</span>
               </label>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer", minHeight: 24, margin: "-4px 0" }}>
+                <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer", paddingBlock: 5, marginBlock: -4 }}>
                   {loadingConfig ? t("ssh.config.loading") : t("ssh.config.refresh")}
                 </button>
                 <span role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
@@ -854,7 +854,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)", flexShrink: 0 }}>
-          <button type="button" className="hover-bg" onClick={() => setAdvancedOpen((openAdvanced) => !openAdvanced)} style={{ border: "none", background: "transparent", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", cursor: "pointer", padding: 0, minHeight: 24, margin: "-6px 0" }}>
+          <button type="button" className="hover-bg" onClick={() => setAdvancedOpen((openAdvanced) => !openAdvanced)} style={{ border: "none", background: "transparent", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", cursor: "pointer", padding: "6px 0", margin: "-6px 0" }}>
             {t("ssh.advanced")}
           </button>
           <div style={{ display: "flex", gap: 8 }}>

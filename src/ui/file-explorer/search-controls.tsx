@@ -3,7 +3,7 @@ import { useT } from "@/modules/i18n";
 export function SearchRetryButton({ label, onRetry }: { label: string; onRetry: () => void }) {
   return (
     <div style={{ display: "flex", justifyContent: "center", paddingTop: 6 }}>
-      <button className="hover-bg" onClick={onRetry} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "transparent", cursor: "pointer", padding: "2px 10px", minHeight: 24, margin: "-2px 0" }}>{label}</button>
+      <button className="hover-bg" onClick={onRetry} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "transparent", cursor: "pointer", padding: "4px 10px", margin: "-2px 0" }}>{label}</button>
     </div>
   );
 }
