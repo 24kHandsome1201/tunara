@@ -234,7 +234,8 @@ test("a saved host that matches an ssh config entry is listed once", async () =>
   fireEvent.click(await screen.findByRole("button", { name: /SSH hosts · 1/ }));
   const rows = await screen.findAllByRole("button", { name: "qa-local" });
   expect(rows).toHaveLength(1);
-  expect(rows[0].textContent).toContain("Saved · SSH config");
+  expect([...rows[0].querySelectorAll(".sidebar-host-source")].map((tag) => tag.textContent)).toEqual(["Saved", "SSH config"]);
+  expect(rows[0].getAttribute("title")).toBe("qa-local\nqauser@127.0.0.1:2222 · Saved · SSH config");
   fireEvent.click(rows[0]);
   await waitFor(() => expect(useUIStore.getState().overlay).toBe("ssh"));
   expect(useUIStore.getState().sshPrefill).toMatchObject({ host: "127.0.0.1", port: 2222, user: "qauser", identityFile: "~/.ssh/id_qa" });
