@@ -612,7 +612,7 @@ select.ui-control {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   background: var(--c-accent-bg-soft);
   border-color: var(--c-accent-border);
   font-weight: 650;
@@ -722,7 +722,7 @@ select.ui-control {
   font-size: var(--fs-secondary);
   font-weight: 650;
 }
-.sidebar-hosts-manage[aria-current="page"] { color: var(--c-accent); background: var(--c-accent-bg-soft); }
+.sidebar-hosts-manage[aria-current="page"] { color: var(--c-accent-text); background: var(--c-accent-bg-soft); }
 .sidebar-hosts-manage-icon { width: 20px; height: 20px; display: grid; place-items: center; }
 .sidebar-host-row {
   min-height: 40px;
@@ -747,7 +747,7 @@ select.ui-control {
 .sidebar-host-copy strong { color: var(--c-text-2); font-size: var(--fs-secondary); font-weight: 600; }
 .sidebar-host-copy small { margin-top: 1px; color: var(--c-text-6); font: var(--fs-meta-sm) var(--font-mono); }
 .sidebar-hosts-state { padding: 7px 8px; color: var(--c-text-6); font-size: var(--fs-meta); line-height: var(--lh-copy); }
-.sidebar-hosts-more { padding: 5px 8px; color: var(--c-accent); font-size: var(--fs-meta); text-align: center; }
+.sidebar-hosts-more { padding: 5px 8px; color: var(--c-accent-text); font-size: var(--fs-meta); text-align: center; }
 
 @container ssh-connect-dialog (max-width: 680px) {
   .ssh-connect-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(150px, 34%) minmax(0, 1fr); }
@@ -871,7 +871,7 @@ select.ui-control {
 }
 .explorer-chip-button[data-active="true"] {
   background: var(--c-accent-bg-light);
-  color: var(--c-accent);
+  color: var(--c-accent-text);
 }
 .explorer-tools { justify-content: space-between; flex-wrap: nowrap; }
 .explorer-places,
@@ -893,7 +893,7 @@ select.ui-control {
   min-width: var(--h-titlebar-control);
   padding: 0 5px;
   gap: 2px;
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   background: var(--c-accent-bg-light);
 }
 .explorer-download-count { font-size: var(--fs-meta); font-weight: 650; }
@@ -905,7 +905,7 @@ select.ui-control {
   border-radius: var(--r-btn);
   border: 0;
   background: var(--c-accent-bg-soft);
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1149,7 +1149,7 @@ button.explorer-listing-action {
 .file-editor-identity { gap: 7px; min-width: 0; }
 .file-editor-actions { gap: var(--sp-2); flex-shrink: 0; }
 .file-editor-kicker {
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   font-size: var(--fs-badge);
   font-weight: 700;
   letter-spacing: .06em;
@@ -1362,10 +1362,10 @@ button.explorer-listing-action {
 }
 .file-editor-syntax::-webkit-scrollbar { display: none; }
 .file-editor-syntax-line { display: inline; }
-.syntax-tokens [data-syntax="heading"] { color: var(--c-accent); font-weight: 700; }
+.syntax-tokens [data-syntax="heading"] { color: var(--c-accent-text); font-weight: 700; }
 .syntax-tokens [data-syntax="marker"] { color: var(--c-text-6); }
 .syntax-tokens [data-syntax="code"] { color: var(--c-warning-text); }
-.syntax-tokens [data-syntax="link"] { color: var(--c-accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--c-accent) 35%, transparent); text-underline-offset: 2px; }
+.syntax-tokens [data-syntax="link"] { color: var(--c-accent-text); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--c-accent) 35%, transparent); text-underline-offset: 2px; }
 .syntax-tokens [data-syntax="tag"] { color: var(--c-success); }
 .syntax-tokens [data-syntax="value"] { color: var(--c-text-4); font-style: italic; }
 /* Kind colors mix existing paper tokens instead of Shiki hex. Saturation stays
@@ -1387,7 +1387,7 @@ button.explorer-listing-action {
 .syntax-tokens [data-syntax="log-error"] { color: var(--c-error); }
 .syntax-tokens [data-syntax="log-warn"] { color: var(--c-warning-text); }
 .syntax-tokens [data-syntax="log-ip"] { color: color-mix(in oklch, var(--c-info) 55%, var(--c-text-4)); }
-.syntax-tokens [data-syntax="log-url"] { color: var(--c-accent); }
+.syntax-tokens [data-syntax="log-url"] { color: var(--c-accent-text); }
 .syntax-tokens [data-syntax="log-string"] { color: color-mix(in oklch, var(--c-success) 68%, var(--c-text-3)); }
 .syntax-tokens [data-syntax="log-number"] { color: var(--c-warning-text); }
 .file-editor-code textarea::selection { background: var(--c-accent-bg-light); color: var(--c-text-primary); }
@@ -1662,7 +1662,7 @@ select:focus-visible {
 .preview-source-card input { padding: 0 8px; }
 .preview-source-card button[aria-pressed="true"] {
   background: var(--c-accent-bg-light);
-  color: var(--c-accent);
+  color: var(--c-accent-text);
 }
 
 /* SSH host dashboard: card grid and compact details are one stable main
@@ -1708,7 +1708,7 @@ select:focus-visible {
 .ssh-dashboard-kicker {
   display: block;
   margin-bottom: 3px;
-  color: var(--c-accent);
+  color: var(--c-accent-text);
   font: 750 var(--fs-badge) var(--font-mono);
   letter-spacing: .14em;
 }
@@ -1956,7 +1956,7 @@ select:focus-visible {
   animation: attentionIn var(--dur-slow) var(--ease-out);
 }
 .attention-row-button[data-kind="needs-you"] {
-  color: var(--c-accent);
+  color: var(--c-accent-text);
 }
 .workspace-empty-actions {
   position: relative;

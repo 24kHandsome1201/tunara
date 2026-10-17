@@ -129,7 +129,7 @@ export const CONNECTION_TONE_COLORS: Record<ConnectionPhaseTone, { color: string
   neutral: { color: "var(--c-text-5)", background: "var(--c-bg-3)" },
   error: { color: "var(--c-error)", background: "var(--c-error-bg)" },
   warning: { color: "var(--c-warning-text)", background: "var(--c-warning-bg)" },
-  progress: { color: "var(--c-accent)", background: "color-mix(in srgb, var(--c-accent) 14%, transparent)" },
+  progress: { color: "var(--c-accent-text)", background: "color-mix(in srgb, var(--c-accent) 14%, transparent)" },
 };
 
 export function sshConnectionPhaseTone(

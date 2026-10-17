@@ -18,7 +18,7 @@ export function SearchLimitControl({ canLoadMore, loading, onLoadMore }: { canLo
       type="button"
       onClick={onLoadMore}
       className="hover-bg"
-      style={{ margin: "4px var(--sp-2)", padding: "4px 8px", color: "var(--c-accent)", fontSize: "var(--fs-meta)", border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", cursor: "pointer" }}
+      style={{ margin: "4px var(--sp-2)", padding: "4px 8px", color: "var(--c-accent-text)", fontSize: "var(--fs-meta)", border: "1px solid var(--c-accent-border)", borderRadius: "var(--r-btn)", background: "var(--c-accent-bg-soft)", cursor: "pointer" }}
     >
       {t("explorer.load_more")}
     </button>

@@ -138,6 +138,30 @@ test("theme-aware primary controls stay AA for the default terracotta accent", (
   }
 });
 
+test("accent text and on-accent text stay AA for the default terracotta accent", () => {
+  const css = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+  const lightBlock = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
+  const darkBlock = css.slice(css.indexOf(".dark {"), css.indexOf(".hover-bg"));
+  const accent = "#c2683c";
+  const surfaceKeys = ["--c-bg-white", "--c-bg-1", "--c-bg-2", "--c-bg-3", "--c-bg-hover"];
+
+  for (const [theme, block, base, amount] of [["light", lightBlock, "#ffffff", 0.12], ["dark", darkBlock, "#18181b", 0.18]]) {
+    const accentText = oklchToHex(parseOklch(block, "--c-accent-text"));
+    for (const surfaceKey of surfaceKeys) {
+      const ratio = contrastRatio(accentText, oklchToHex(parseOklch(block, surfaceKey)));
+      assert.ok(ratio >= 4.5, `${theme} --c-accent-text is ${ratio.toFixed(2)}:1 on ${surfaceKey}`);
+    }
+    const selectedFill = mixHex(accent, base, amount);
+    const selectedRatio = contrastRatio(accentText, selectedFill);
+    assert.ok(selectedRatio >= 4.5, `${theme} --c-accent-text is ${selectedRatio.toFixed(2)}:1 on --c-accent-bg-light`);
+
+    const onAccent = block.match(/--c-on-accent:\s*(#[0-9a-f]{6})/i)?.[1];
+    assert.ok(onAccent, `missing ${theme} --c-on-accent`);
+    const onAccentRatio = contrastRatio(onAccent, accent);
+    assert.ok(onAccentRatio >= 4.5, `${theme} --c-on-accent is ${onAccentRatio.toFixed(2)}:1 on --c-accent`);
+  }
+});
+
 test("boot appearance helpers round-trip through localStorage", () => {
   const storage = new Map();
   const original = globalThis.localStorage;

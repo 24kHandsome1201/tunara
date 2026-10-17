@@ -130,7 +130,7 @@ export function CliSettings({ resolvedClis, cliError, overrideError, preflights,
                     <button
                       onClick={() => saveOverride(code, cliBin, overrideDraft)}
                       className="hover-bg"
-                      style={{ padding: "0 12px", height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-accent-border)", background: "var(--c-accent-bg-light)", color: "var(--c-accent)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                      style={{ padding: "0 12px", height: 30, borderRadius: "var(--r-btn)", border: "1px solid var(--c-accent-border)", background: "var(--c-accent-bg-light)", color: "var(--c-accent-text)", fontSize: "var(--fs-secondary)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
                     >
                       {t("settings.cli.override_save")}
                     </button>

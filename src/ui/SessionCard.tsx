@@ -466,7 +466,7 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
               // glyph plus tooltip still distinguish transport on the card.
               <span
                 title={sshEndpointLabel(session.remote)}
-                style={{ flexShrink: 0, color: "var(--c-accent)", fontSize: "var(--fs-meta)" }}
+                style={{ flexShrink: 0, color: "var(--c-accent-text)", fontSize: "var(--fs-meta)" }}
                 aria-hidden="true"
               >
                 ⇄

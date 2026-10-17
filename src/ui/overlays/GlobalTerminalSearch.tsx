@@ -74,7 +74,7 @@ const TOGGLE_STYLE: React.CSSProperties = {
 function toggleStyle(active: boolean): React.CSSProperties {
   return {
     ...TOGGLE_STYLE,
-    color: active ? "var(--c-accent)" : "var(--c-text-5)",
+    color: active ? "var(--c-accent-text)" : "var(--c-text-5)",
     background: active ? "var(--c-accent-bg-light)" : "transparent",
     border: active ? "1px solid var(--c-accent-border)" : "1px solid transparent",
   };
@@ -322,7 +322,7 @@ export function GlobalTerminalSearch({ onClose }: { onClose: () => void }) {
                         </span>
                         <span style={{ fontSize: "var(--fs-secondary)", fontFamily: "var(--font-mono)", color: "var(--c-text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre", minWidth: 0 }}>
                           {snippet.before}
-                          <mark style={{ background: "var(--c-accent-bg-light)", color: "var(--c-accent)", borderRadius: 2, fontWeight: 600 }}>{snippet.match}</mark>
+                          <mark style={{ background: "var(--c-accent-bg-light)", color: "var(--c-accent-text)", borderRadius: 2, fontWeight: 600 }}>{snippet.match}</mark>
                           {snippet.after}
                         </span>
                       </div>

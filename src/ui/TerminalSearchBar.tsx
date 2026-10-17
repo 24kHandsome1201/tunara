@@ -123,7 +123,7 @@ export function TerminalSearchBar({
         className="hover-bg"
         style={{
           ...TOGGLE_STYLE,
-          color: useRegex ? "var(--c-accent)" : "var(--c-text-5)",
+          color: useRegex ? "var(--c-accent-text)" : "var(--c-text-5)",
           background: useRegex ? "var(--c-accent-bg-light)" : undefined,
           border: useRegex ? "1px solid var(--c-accent-border)" : "1px solid transparent",
           borderRadius: "var(--r-badge-sm)",
@@ -140,7 +140,7 @@ export function TerminalSearchBar({
         className="hover-bg"
         style={{
           ...TOGGLE_STYLE,
-          color: caseSensitive ? "var(--c-accent)" : "var(--c-text-5)",
+          color: caseSensitive ? "var(--c-accent-text)" : "var(--c-text-5)",
           background: caseSensitive ? "var(--c-accent-bg-light)" : undefined,
           border: caseSensitive ? "1px solid var(--c-accent-border)" : "1px solid transparent",
           borderRadius: "var(--r-badge-sm)",

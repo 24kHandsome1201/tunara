@@ -223,7 +223,7 @@ function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQ
         const key = `${index}:${part.slice(0, 48)}`;
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
-            <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent)" }}>
+            <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent-text)" }}>
               <HighlightedText text={part.slice(1, -1)} query={findQuery} cursor={cursor} />
             </code>
           );
@@ -238,10 +238,10 @@ function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQ
         if (linkMatch) {
           const href = linkMatch[2].trim();
           if (href.startsWith("#")) {
-            return <a key={key} href={href} onClick={(event) => { event.preventDefault(); focusMarkdownHref(href); }} style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></a>;
+            return <a key={key} href={href} onClick={(event) => { event.preventDefault(); focusMarkdownHref(href); }} style={{ color: "var(--c-accent-text)", textDecoration: "underline", textUnderlineOffset: 2 }}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></a>;
           }
           if (/^https?:\/\//i.test(href)) {
-            return <a key={key} href={href} target="_blank" rel="noreferrer noopener" style={{ color: "var(--c-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></a>;
+            return <a key={key} href={href} target="_blank" rel="noreferrer noopener" style={{ color: "var(--c-accent-text)", textDecoration: "underline", textUnderlineOffset: 2 }}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></a>;
           }
           return <span key={key}><HighlightedText text={linkMatch[1]} query={findQuery} cursor={cursor} /></span>;
         }

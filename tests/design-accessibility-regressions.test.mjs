@@ -25,7 +25,7 @@ test("waiting confirmation uses a dedicated readable text token", () => {
   assert.match(tokens, /--c-warning-text:\s*oklch\(43%/);
   assert.match(tokens, /--c-warning-bg:/);
   assert.match(card, /data-confirm=\{confirmClose \? "true" : undefined\}/);
-  assert.match(row, /var\(--c-accent\)/);
+  assert.match(row, /var\(--c-accent-text\)/);
   assert.match(row, /attention\.row\.needs_you/);
 });
 

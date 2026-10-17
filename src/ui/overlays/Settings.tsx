@@ -104,7 +104,7 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
           <nav aria-label={t("settings.navigation")} style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
             {sections.map((section) => (
-              <button key={section} type="button" aria-current={activeSection === section ? "page" : undefined} onClick={() => jumpTo(section)} className="hover-bg" style={{ border: `1px solid ${activeSection === section ? "var(--c-accent-border)" : "var(--c-border-1)"}`, borderRadius: "999px", background: activeSection === section ? "var(--c-accent-bg-light)" : "transparent", color: activeSection === section ? "var(--c-accent)" : "var(--c-text-4)", fontWeight: activeSection === section ? 600 : 400, padding: "4px 9px", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>
+              <button key={section} type="button" aria-current={activeSection === section ? "page" : undefined} onClick={() => jumpTo(section)} className="hover-bg" style={{ border: `1px solid ${activeSection === section ? "var(--c-accent-border)" : "var(--c-border-1)"}`, borderRadius: "999px", background: activeSection === section ? "var(--c-accent-bg-light)" : "transparent", color: activeSection === section ? "var(--c-accent-text)" : "var(--c-text-4)", fontWeight: activeSection === section ? 600 : 400, padding: "4px 9px", fontSize: "var(--fs-secondary)", cursor: "pointer" }}>
                 {t(`settings.section.${section}`)}
               </button>
             ))}
