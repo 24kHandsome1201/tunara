@@ -17,6 +17,27 @@
 #
 # Revisit when `rsa` ships a fixed release or russh exposes a way to build
 # without the RSA feature.
+#
+# RUSTSEC-2026-0367 / 0368 / 0369 — `zip` < 9.0.0 extraction hardening:
+# SUID/SGID bits preserved, symlinks pointing outside the destination, and
+# Unix permissions applied through symlinks. We pull `zip` ONLY transitively
+# through `tauri-plugin-updater`, which pins `zip ^4` (see `cargo tree -i zip`),
+# so the lockfile cannot be bumped to a patched release.
+#
+# Why the residual risk is acceptable for Tunara:
+#  - The updater only extracts update bundles whose minisign signature was
+#    verified against the public key baked into the app; an attacker would need
+#    the signing key to ship a crafted archive.
+#  - Extraction happens in a fresh temp directory and the app runs as the
+#    current user, so there is no privilege boundary to escalate across.
+#  - We never call `zip` directly from Tunara code.
+#
+# Revisit when tauri-plugin-updater releases a version depending on `zip >= 9`.
 
 [advisories]
-ignore = ["RUSTSEC-2023-0071"]
+ignore = [
+  "RUSTSEC-2023-0071",
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+]
