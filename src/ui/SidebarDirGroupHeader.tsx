@@ -104,9 +104,6 @@ export function DirGroupHeader({
           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {kind === "ssh" ? label : workspace ? workspace.repositoryName : label}
           </span>
-          {kind === "ssh" && (
-            <span style={{ flexShrink: 0, color: "var(--c-text-6)", fontSize: "var(--fs-meta)", fontWeight: 600, whiteSpace: "nowrap" }}>{t("workspace.ssh")}</span>
-          )}
         </span>
         {workspace && (
           <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
