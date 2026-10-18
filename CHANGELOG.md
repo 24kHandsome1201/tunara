@@ -7,10 +7,12 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/DEPENDENCY_ADVISORIES.md](docs/DEPENDENCY_ADVISORIES.md)**.
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
+- **RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369** (`zip` < 9 extraction: SUID/SGID bits, symlink escape, permissions through symlinks) — pulled transitively only via `tauri-plugin-updater`, which pins `zip ^4`, so the lockfile cannot reach the fixed 9.x line. The updater extracts only minisign-verified bundles into a temp directory as the current user, and Tunara never calls `zip` directly. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `tauri-plugin-updater` depends on `zip >= 9`.**
 
 ## [Unreleased]
 
 ### 修复
+- `cargo audit`：忽略 `zip` 的 RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369（`tauri-plugin-updater` 锁定 `zip ^4`，无法经 Cargo.lock 升级；updater 仅解压签名校验过的更新包），理由记录在 `src-tauri/.cargo/audit.toml` 与 `docs/DEPENDENCY_ADVISORIES.md`，CI 恢复绿色。
 - 侧栏终端卡片的鼠标右键菜单在 macOS 上恢复可用：拖拽排序只在主键按下时启动,不再用指针捕获吞掉 WebKit 在 mousedown 阶段触发的 contextmenu;新增组件测试覆盖右键/左键指针顺序。
 - SSH 终端未连接或连接失败时,改动面板显示「远程改动暂不可用 · 请重新连接 SSH 后读取 Git 状态」,不再误报为「非 Git 仓库」。
 - 终端失败横幅的阶段标签改用 `connection.failedAt.*` 名词(如「解析主机」),不再在已失败状态下显示「正在解析主机」等进行时文案。

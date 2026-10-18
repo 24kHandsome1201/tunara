@@ -56,12 +56,7 @@ jobs:
         # pinned by tauri-plugin-updater (zip ^4). Rationale lives in
         # src-tauri/.cargo/audit.toml; the exceptions are passed explicitly so
         # they stay visible in CI.
-        run: >-
-          cargo audit
-          --ignore RUSTSEC-2023-0071
-          --ignore RUSTSEC-2026-0367
-          --ignore RUSTSEC-2026-0368
-          --ignore RUSTSEC-2026-0369
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369
 
   pnpm-audit:
     name: pnpm audit
