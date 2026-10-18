@@ -147,7 +147,7 @@ test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs"
   const auditToml = read("src-tauri/.cargo/audit.toml");
   const advisories = read("docs/DEPENDENCY_ADVISORIES.md");
   const changelog = read("CHANGELOG.md");
-  const expected = ["RUSTSEC-2023-0071"];
+  const expected = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0367", "RUSTSEC-2026-0368", "RUSTSEC-2026-0369"];
 
   const workflowIgnores = [...workflow.matchAll(/cargo audit((?: --ignore RUSTSEC-\d{4}-\d+)+)/g)]
     .flatMap((match) => [...match[1].matchAll(/RUSTSEC-\d{4}-\d+/g)].map((item) => item[0]));
