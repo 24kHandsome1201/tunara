@@ -738,6 +738,31 @@ test("agent-auth SSH Retry reconnects in place and shows pending feedback", asyn
   expect(useUIStore.getState().overlay).toBeNull();
 });
 
+test.each(["agent", "password"] as const)("live SSH session menu reconnects with %s authentication", async (authMethod) => {
+  mockIPC((command) => {
+    if (command === "ssh_forwarding_reconnect_snapshot") return [];
+    throw new Error(`unexpected command: ${command}`);
+  });
+  const session: Session = {
+    ...agentReconnectSession,
+    remote: { ...agentReconnectSession.remote!, authMethod, postConnectCommand: "tmux attach" },
+    connection: { transport: "ssh", phase: "ready", source: "backend", updatedAt: 1 },
+  };
+  useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+  useUIStore.setState({ overlay: null, sshPrefill: null });
+  const items = buildSessionMenuItems({ session, t: (key) => key, externalEditor: "vscode", onSelectSession: () => {} });
+  render(<ContextMenu items={items} position={{ x: 0, y: 0 }} onClose={() => {}} />);
+  fireEvent.click(screen.getByRole("menuitem", { name: "common.reconnect" }));
+  if (authMethod === "password") {
+    expect(useUIStore.getState().sshPrefill).toMatchObject({ reconnectSessionId: session.id, postConnectCommand: "tmux attach" });
+    expect(useSessionsStore.getState().sessions[0].ptyId).toBe(41);
+  } else {
+    await waitFor(() => expect(useSessionsStore.getState().sessions[0].connection?.phase).toBe("reconnecting"));
+    expect(useSessionsStore.getState().sessions).toHaveLength(1);
+    expect(useSessionsStore.getState().sessions[0]).toMatchObject({ id: session.id, reconnectNonce: 1, pendingInput: "tmux attach", pendingInputSubmit: true });
+  }
+});
+
 test("password SSH Retry opens the prefilled dialog", () => {
   expectRetryDialog(remoteSession);
   expect(useUIStore.getState().sshPrefill?.authMethod).toBe("password");

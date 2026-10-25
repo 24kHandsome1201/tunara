@@ -1171,7 +1171,6 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminalFileLinks, /const resource = options\.createResource\(path, match\.line, match\.column\);\s*if \(resource\) void openResource\(resource\)/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
   assert.match(terminalFileLinkParser, /resolveTerminalFileLinkPath/);
-  assert.match(pendingInput, /pty\.write\(submit \? input \+ "\\n" : input\)/);
   assert.match(pendingInput, /clearTimeout\(timer\)/);
   assert.match(terminal, /registerTerminalOsc9Handler\(term/);
   assert.match(terminal, /emitTerminalNotification\(sessionIdRef\.current, notification\)/);
@@ -1707,7 +1706,8 @@ test("review follow-up keeps terminal and sidebar hotspots split into focused pi
   // actions; their state machines remain extracted into terminal lib modules.
   // 625→630 covers the OSC 133 seen-marker used by command-block metadata.
   // 630→640 covers inline-image always-on wiring after wallpaper removal.
-  assert.ok(terminal.split("\n").length < 640);
+  // 640→650 covers post-connect input for every SSH terminal opener.
+  assert.ok(terminal.split("\n").length < 650);
   // 408→430 covers the pass-1 sidebar a11y copy (named expand/collapse, SSH chip).
   assert.ok(sidebar.split("\n").length < 430);
 });

@@ -146,6 +146,28 @@ export function installMockBackend(): TunaraE2EHandle {
       }, 0);
       return pty.id;
     },
+    ssh_open_v2: (args) => {
+      const request = args?.request as { logicalSessionId: string; shell: { cols: number; rows: number } };
+      const id = handlers.pty_open({ ...request.shell, logicalSessionId: request.logicalSessionId, onEvent: args?.onEvent }) as number;
+      const binding = {
+        logicalSessionId: request.logicalSessionId,
+        physicalPtyId: id,
+        transportGeneration: `e2e-ssh-${id}`,
+      };
+      return { ...binding, binding, warnings: [] };
+    },
+    ssh_cancel_open: () => null,
+    ssh_forwarding_reconnect_snapshot: () => [],
+    ssh_forwarding_reconnect_rebuild: () => [],
+    ssh_fs_home: () => HOME,
+    ssh_fs_read_dir: () => [],
+    ssh_remote_git_snapshot_v1: (args) => ({
+      ...(args?.request as Record<string, unknown>),
+      observedAt: Date.now(),
+      freshness: "fresh",
+      unavailableFields: [],
+      error: { kind: "notRepository", retryable: false },
+    }),
     pty_write: (args) => {
       const pty = ptyById(args?.id);
       if (!pty) throw new Error("pty_write: unknown pty");

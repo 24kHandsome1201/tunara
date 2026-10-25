@@ -136,6 +136,57 @@ test("SSH connect overlay opens and validates the form", async ({ page, backend 
   await expect(dialog).toBeHidden();
 });
 
+test("SSH startup command runs once on connect, split, duplicate and manual reconnect", async ({ page, backend }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Connect SSH" }).click();
+  const dialog = page.locator('[role="dialog"][aria-labelledby="ssh-connect-title"]');
+  await dialog.locator("#ssh-connect-host").fill("deploy@example.test");
+  await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
+  await dialog.locator("#ssh-post-connect-command").fill("echo startup-ready");
+  await dialog.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect.poll(() => backend.ptyWrites(1)).toBe("echo startup-ready\r");
+  await expect(page.locator(".xterm-rows").first()).toContainText("e2e$ echo startup-ready");
+  const [originalId] = await terminalSessionIds(page);
+
+  // No exit/disconnect event: a seemingly live, stalled SSH terminal must
+  // still offer a way to replace its transport, without adding a session.
+  await page.locator(".xterm-helper-textarea").first().focus();
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Reconnect", exact: true }).click();
+  await expect.poll(() => backend.openPtyIds()).toEqual([2]);
+  expect(await terminalSessionIds(page)).toEqual([originalId]);
+  await expect.poll(() => backend.ptyWrites(2)).toBe("echo startup-ready\r");
+
+  await page.keyboard.press("Meta+d");
+  await expect.poll(() => backend.openPtyIds()).toEqual([2, 3]);
+  await expect.poll(() => backend.ptyWrites(3)).toBe("echo startup-ready\r");
+
+  const card = page.getByRole("button", { name: /Remote SSH session/ }).last();
+  await card.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Reconnect", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "New window on this host", exact: true }).click();
+  await expect.poll(() => backend.openPtyIds()).toEqual([2, 3, 4]);
+  await expect.poll(() => backend.ptyWrites(4)).toBe("echo startup-ready\r");
+  // Subsequent output/rerenders must not replay the already consumed input.
+  await backend.emitPtyOutput(4, "\r\nindependent output\r\n");
+  await expect(page.locator(".xterm-rows").last()).toContainText("independent output");
+  expect(await backend.ptyWrites(2)).toBe("echo startup-ready\r");
+  expect(await backend.ptyWrites(3)).toBe("echo startup-ready\r");
+  expect(await backend.ptyWrites(4)).toBe("echo startup-ready\r");
+
+  const panesBeforeReconnect = await terminalSessionIds(page);
+  await card.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Reconnect", exact: true }).click();
+  await expect.poll(() => backend.openPtyIds()).toEqual([2, 3, 5]);
+  await expect.poll(() => backend.ptyWrites(5)).toBe("echo startup-ready\r");
+  expect(await terminalSessionIds(page)).toEqual(panesBeforeReconnect);
+  const opens = await page.evaluate(() => window.__TUNARA_E2E__!.state.calls
+    .filter((call) => call.cmd === "ssh_open_v2")
+    .map((call) => call.args?.request as { forceNewConnection: boolean; shareWithLogicalSessionId: string | null }));
+  expect(opens.map((request) => request.forceNewConnection)).toEqual([false, true, false, false, true]);
+  expect(opens[4].shareWithLogicalSessionId).not.toBeNull();
+});
+
 test("failed SSH banner clamps its message and keeps recovery actions together", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");

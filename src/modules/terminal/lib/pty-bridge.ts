@@ -420,7 +420,7 @@ export function openSessionPty(
   cols: number,
   rows: number,
   handlers: PtyHandlers,
-  opts: { cwd?: string; remote?: RemoteOpenInfo; shareWithLogicalSessionId?: string },
+  opts: { cwd?: string; remote?: RemoteOpenInfo; shareWithLogicalSessionId?: string; forceNewConnection?: boolean },
 ): Promise<PtySession> {
   if (opts.remote) {
     return openSshPty(logicalSessionId, cols, rows, handlers, {
@@ -436,6 +436,7 @@ export function openSessionPty(
       injectShellIntegration: opts.remote.injectShellIntegration,
       jump: opts.remote.jump,
       shareWithLogicalSessionId: opts.shareWithLogicalSessionId,
+      forceNewConnection: opts.forceNewConnection,
     });
   }
   // A local reopen of the same logical session also supersedes any old SSH
@@ -474,6 +475,8 @@ export type SshConnectOptions = SshConnectEndpointOptions & {
   jump?: SshConnectEndpointOptions;
   /** Multiplex a new shell onto this live logical session's TCP transport. */
   shareWithLogicalSessionId?: string;
+  /** Bypass even apparently live sibling transports when reconnecting. */
+  forceNewConnection?: boolean;
 };
 
 export type SessionBindingV1 = {
@@ -601,6 +604,7 @@ export type SshOpenRequestV2 = {
     rows: number;
   };
   shareWithLogicalSessionId?: string | null;
+  forceNewConnection?: boolean;
 };
 
 /** Typed v2 IPC adapter. `transportGeneration` is always backend-authored. */
@@ -812,6 +816,7 @@ export async function openSshPty(
         rows,
       },
       shareWithLogicalSessionId: conn.shareWithLogicalSessionId ?? null,
+      forceNewConnection: conn.forceNewConnection ?? false,
     }, channel);
     if (!result.binding
       || result.binding.logicalSessionId !== logicalSessionId

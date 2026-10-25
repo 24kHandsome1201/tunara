@@ -9,6 +9,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { cancelSshOpen, openSessionPty, recordPendingPtyConnectionStatus, recordPtyConnectionStatus, recordPtyExit, reportSshOpenFailure, safeSshFailure, SSH_DISCONNECTED_EXIT_CODE, toRemoteOpenInfo, type PtyConnectionStatusPhase, type PtySession } from "@/modules/terminal/lib/pty-bridge";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials"; import { shareWithLogicalSessionIdFor } from "@/modules/ssh/connection-share";
 import { completeSshAutoReconnect, handleSshReconnectFailure, handleSshTransportLost, markSshOneShotCredentialConsumed } from "@/modules/ssh/auto-reconnect";
+import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { registerCwdHandler, registerTitleHandlers } from "@/modules/terminal/lib/osc-handlers";
 import { useUIStore } from "@/state/ui"; import { t } from "@/modules/i18n";
 import type { AgentCode } from "./types";
@@ -447,6 +448,7 @@ function TerminalViewImpl({
           cwd,
           remote: sessionRemote ? toRemoteOpenInfo(sessionRemote, creds) : undefined,
           shareWithLogicalSessionId: shareWithLogicalSessionIdFor(useSessionsStore.getState().sessions, sessionRemote, sessionIdRef.current),
+          forceNewConnection: (getCurrentSession()?.reconnectNonce ?? 0) > 0,
         });
       } catch (e) {
         if (disposed) return;
@@ -501,6 +503,12 @@ function TerminalViewImpl({
       }
       if (getCurrentSession()?.sshReconnectForwards !== undefined) {
         completeSshAutoReconnect(sessionIdRef.current, { logicalSessionId: sessionIdRef.current, physicalPtyId: pty.id, transportGeneration: pty.generation });
+      }
+      // Every SSH opener (including duplicate, split and restored sessions)
+      // runs the host command. Explicit pending input, such as a replay, wins.
+      const openedSession = getCurrentSession();
+      if (openedSession?.remote && openedSession.pendingInput === undefined) {
+        useSessionsStore.getState().updateSession(sessionIdRef.current, postConnectPendingInput(openedSession.remote));
       }
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkWriter(sessionIdRef.current, (data) => ptyRef.current?.write(data) ?? Promise.reject(new Error("PTY unavailable"))));
       setPtyReady(true); // triggers the pendingInput effect once, now that pty is live

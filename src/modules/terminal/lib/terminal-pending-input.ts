@@ -15,7 +15,8 @@ export function schedulePendingInput({
   if (input) {
     timer = setTimeout(() => {
       timer = null;
-      pty.write(submit ? input + "\n" : input)
+      // Match xterm's Enter key, including shells that bind Ctrl-J separately.
+      pty.write(submit ? input + "\r" : input)
         .then(() => onConsumed?.())
         .catch(() => {});
     }, 300);

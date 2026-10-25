@@ -354,6 +354,9 @@ pub struct SshOpenRequestV2 {
     pub shell: SshShellOptionsV1,
     /// Open a new shell channel on the live TCP transport of this logical session.
     pub share_with_logical_session_id: Option<String>,
+    /// Reconnect must not multiplex onto a sibling's potentially stuck transport.
+    #[serde(default)]
+    pub force_new_connection: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -674,6 +677,7 @@ async fn ssh_open_impl(
     cols: u16,
     rows: u16,
     share_with_logical_session_id: Option<String>,
+    force_new_connection: bool,
     on_event: Channel<PtyEvent>,
 ) -> Result<SshOpenResultV2, String> {
     let port = port.unwrap_or(22);
@@ -798,15 +802,19 @@ async fn ssh_open_impl(
     }
 
     let share_hint = share_with_logical_session_id.as_deref();
-    let shared = state.find_shareable_ssh(
-        &params.host,
-        params.port,
-        &params.auth.user,
-        params.auth.identity_file.as_deref(),
-        params.jump_endpoint.as_ref(),
-        logical_session_id.as_deref(),
-        share_hint,
-    );
+    let shared = if force_new_connection {
+        None
+    } else {
+        state.find_shareable_ssh(
+            &params.host,
+            params.port,
+            &params.auth.user,
+            params.auth.identity_file.as_deref(),
+            params.jump_endpoint.as_ref(),
+            logical_session_id.as_deref(),
+            share_hint,
+        )
+    };
     let (ssh, open_attempt) =
         open_with_cancellation(params, jump_params, on_event, &open_attempt_id, shared)
             .await
@@ -913,6 +921,7 @@ pub async fn ssh_open_v2(
         shell.cols,
         shell.rows,
         request.share_with_logical_session_id,
+        request.force_new_connection,
         on_event,
     )
     .await

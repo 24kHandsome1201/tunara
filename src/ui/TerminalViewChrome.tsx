@@ -8,6 +8,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { canSplitLayout } from "@/modules/session/split-layout";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { retrySshSessionInPlace } from "@/modules/ssh/manual-reconnect";
 import { errorToast } from "./lib/error-toast";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import { terminalUploadDestination } from "@/modules/ssh/remote-cwd";
@@ -42,6 +43,7 @@ export function TerminalViewChrome({
   const t = useT();
   const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean; canSplit: boolean; blockEntries: MenuEntry[]; focusToken: TerminalFocusReturnToken | null } | null>(null);
   const hostModifier = useUIStore((s) => s.terminalHostModifier);
+  const remote = useSessionsStore((s) => Boolean(s.sessions.find((session) => session.id === sessionId)?.remote));
   const inputRouter = useRef(new TerminalInputRouter());
   const contextMenuOwners = useRef(new WeakMap<Event, TerminalInputOwner>());
 
@@ -270,6 +272,10 @@ export function TerminalViewChrome({
             { id: "paste", label: t("term.safe_paste"), icon: "paste", action: () => { void safePasteActiveTerminal(sessionId); } },
             { id: "export-scrollback", label: t("term.export.scrollback"), icon: "download", action: () => { void exportTerminalBufferToFile(getTerminal()?.buffer.active, "tunara-scrollback.txt", sessionId); } },
             null,
+            ...(remote ? [{ id: "reconnect", label: t("common.reconnect"), icon: "ssh" as const, action: () => {
+              const session = useSessionsStore.getState().sessions.find((candidate) => candidate.id === sessionId);
+              if (session?.remote) void retrySshSessionInPlace(session);
+            } }] : []),
             {
               id: "split-right",
               label: t("term.new_terminal_right"),

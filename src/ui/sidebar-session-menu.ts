@@ -1,4 +1,5 @@
 import { useSessionsStore } from "@/state/sessions";
+import { retrySshSessionInPlace } from "@/modules/ssh/manual-reconnect";
 import type { ExternalEditor } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
@@ -35,6 +36,10 @@ export function buildSessionMenuItems({
   const items: MenuEntry[] = [
     { id: "session:pin", label: session.pinned ? t("sidebar.session.unpin") : t("sidebar.session.pin"), icon: "pin", action: () => { useSessionsStore.getState().togglePinnedSession(session.id); } },
     ...(session.remote ? [{ id: "session:duplicate", label: t("sidebar.session.duplicate_host"), icon: "ssh" as const, action: () => { useSessionsStore.getState().duplicateOnHost(session.id); } }] : []),
+    ...(session.remote ? [{ id: "session:reconnect", label: t("common.reconnect"), icon: "ssh" as const, action: () => {
+      const latest = useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id);
+      if (latest?.remote) void retrySshSessionInPlace(latest);
+    } }] : []),
     { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
     { id: "session:move-up", label: t("sidebar.session.move_up"), icon: "arrow-up", disabled: !canReorder || groupIndex <= 0, action: () => move(-1) },
     { id: "session:move-down", label: t("sidebar.session.move_down"), icon: "arrow-down", disabled: !canReorder || groupIndex < 0 || groupIndex >= groupSessions.length - 1, action: () => move(1) },
