@@ -8,6 +8,8 @@ import { readyBindingForSession } from "@/modules/terminal/lib/connection-state"
 import type { Session } from "./types";
 import { useSshProfilesPanel } from "./useSshProfilesPanel";
 import { CaretRight, HardDrives, Icon } from "@/ui/icons";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 
 interface SidebarHostsProps {
   sessions: Session[];
@@ -20,6 +22,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
   const mainSurface = useUIStore((state) => state.mainSurface);
   const { panel, loading } = useSshProfilesPanel();
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
+  const [menu, setMenu] = useState<{ items: MenuEntry[]; position: { x: number; y: number }; trigger: HTMLElement } | null>(null);
 
   const profiles = sshProfileEntries(panel);
   const visibleProfiles = profiles.slice(0, 8);
@@ -99,6 +102,25 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
                 data-status={online ? "online" : connecting ? "connecting" : "offline"}
                 aria-label={name}
                 title={`${latest ? t("sidebar.hosts.focus_session") : name}\n${detail}`}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setMenu({
+                    position: { x: event.clientX, y: event.clientY },
+                    trigger: event.currentTarget,
+                    items: [{
+                      id: "host:configure",
+                      label: t("ssh.dashboard.edit"),
+                      icon: "editor",
+                      action: () => useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(entry, panel)),
+                    }],
+                  });
+                }}
+                onKeyDown={(event) => {
+                  if (!isFixedTerminalMenuEvent(event)) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: rect.left, clientY: rect.bottom }));
+                }}
                 onClick={() => {
                   if (latest) {
                     onSelectSession(latest.id);
@@ -125,6 +147,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
           )}
         </div>
       )}
+      {menu && <ContextMenu items={menu.items} position={menu.position} returnFocusToken={menu.trigger} onClose={() => setMenu(null)} />}
     </section>
   );
 }

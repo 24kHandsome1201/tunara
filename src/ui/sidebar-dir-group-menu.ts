@@ -7,9 +7,9 @@ import {
   sshEndpointLabel,
 } from "@/modules/session/sidebar-groups";
 import { useSessionsStore } from "@/state/sessions";
-import type { ExternalEditor } from "@/state/ui";
+import { useUIStore, type ExternalEditor } from "@/state/ui";
 import type { MenuEntry } from "./ContextMenu";
-import type { Session } from "./types";
+import { reconnectPrefillFromSession, type Session } from "./types";
 
 interface BuildDirGroupMenuOptions {
   groupKey: string;
@@ -36,7 +36,13 @@ export function buildDirGroupMenuItems({
     const cwd = groupSessions.map((session) => knownRemoteCwd(session.dir)).find((path): path is string => Boolean(path));
     return [
       ...(representative
-        ? [{ id: "dir:duplicate-host", label: t("sidebar.session.duplicate_host"), icon: "ssh" as const, action: () => { useSessionsStore.getState().duplicateOnHost(representative.id); } }]
+        ? [
+          { id: "dir:duplicate-host", label: t("sidebar.session.duplicate_host"), icon: "ssh" as const, action: () => { useSessionsStore.getState().duplicateOnHost(representative.id); } },
+          { id: "dir:configure-host", label: t("ssh.dashboard.edit"), icon: "editor" as const, action: () => {
+            const latest = useSessionsStore.getState().sessions.find((candidate) => candidate.id === representative.id) ?? representative;
+            useUIStore.getState().openSshConnect(reconnectPrefillFromSession(latest));
+          } },
+        ]
         : []),
       { id: "dir:copy-remote", label: t("sidebar.session.copy_remote"), icon: "copy", action: () => { void copyText(sshEndpointLabel(remote)); } },
       ...(cwd

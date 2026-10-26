@@ -1,11 +1,11 @@
 import { useSessionsStore } from "@/state/sessions";
 import { retrySshSessionInPlace } from "@/modules/ssh/manual-reconnect";
-import type { ExternalEditor } from "@/state/ui";
+import { useUIStore, type ExternalEditor } from "@/state/ui";
 import { openInEditorWithToast } from "./lib/open-in-editor";
 import { copyText } from "./lib/clipboard";
 import { knownRemoteCwd, sidebarGroupKey, sshEndpointLabel } from "@/modules/session/sidebar-groups";
 import type { MenuEntry } from "./ContextMenu";
-import type { Session } from "./types";
+import { reconnectPrefillFromSession, type Session } from "./types";
 
 interface BuildSessionMenuOptions {
   session: Session;
@@ -39,6 +39,10 @@ export function buildSessionMenuItems({
     ...(session.remote ? [{ id: "session:reconnect", label: t("common.reconnect"), icon: "ssh" as const, action: () => {
       const latest = useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id);
       if (latest?.remote) void retrySshSessionInPlace(latest);
+    } }] : []),
+    ...(session.remote ? [{ id: "session:configure", label: t("ssh.dashboard.edit"), icon: "editor" as const, action: () => {
+      const latest = useSessionsStore.getState().sessions.find((candidate) => candidate.id === session.id) ?? session;
+      useUIStore.getState().openSshConnect(reconnectPrefillFromSession(latest));
     } }] : []),
     { id: "session:rename", label: t("sidebar.session.rename"), icon: "rename", action: () => { useSessionsStore.getState().startRenaming(session.id); } },
     { id: "session:move-up", label: t("sidebar.session.move_up"), icon: "arrow-up", disabled: !canReorder || groupIndex <= 0, action: () => move(-1) },

@@ -218,6 +218,60 @@ test("saved hosts open the connect sheet when the host has no live session", asy
   await waitFor(() => expect(useUIStore.getState().overlay).toBe("ssh"));
 });
 
+test("host context menu configures an online host without focusing or reconnecting it", async () => {
+  mockIPC((command) => {
+    if (command === "ssh_hosts_load") return [{ id: "saved-qa", label: "QA", host: "qa.example", port: 2222, user: "ops", identity_file: "" }];
+    if (command === "ssh_hosts_import_config") return {
+      imported: [{ id: "config-qa", label: "qa-alias", host: "qa.example", port: 2222, user: "ops", identity_file: "~/.ssh/id_qa" }],
+      skipped: 0, diagnostics: [],
+    };
+    return undefined;
+  });
+  const live = sshSession("live", "/srv", "qa.example", {
+    ptyId: 91,
+    remote: { host: "qa.example", port: 2222, user: "ops", authMethod: "agent" },
+  });
+  useSessionsStore.setState({ sessions: [live], activeSessionId: live.id });
+  useUIStore.setState({ overlay: null, sshPrefill: null });
+  const onSelect = vi.fn();
+  render(<Sidebar sessions={[live]} activeSessionId={live.id} onSelectSession={onSelect} />);
+  fireEvent.click(await screen.findByRole("button", { name: /SSH hosts · 1/ }));
+  const host = await screen.findByRole("button", { name: "QA" });
+  for (const keyboard of [false, true]) {
+    if (keyboard) fireEvent.keyDown(host, { key: "F10", shiftKey: true });
+    else fireEvent.contextMenu(host, { clientX: 100, clientY: 120 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Connection settings" }));
+    expect(useUIStore.getState().sshPrefill).toMatchObject({ host: "qa.example", port: 2222, user: "ops", identityFile: "~/.ssh/id_qa" });
+    expect(useUIStore.getState().overlay).toBe("ssh");
+    expect(useUIStore.getState().sshPrefill?.reconnectSessionId).toBeUndefined();
+    expect(useSessionsStore.getState().sessions).toEqual([live]);
+    expect(onSelect).not.toHaveBeenCalled();
+    useUIStore.setState({ overlay: null, sshPrefill: null });
+  }
+});
+
+test.each(["card", "group"])("SSH %s context menu prefills settings without reconnecting", (target) => {
+  const live = sshSession("configured", "/srv", "target.internal", {
+    ptyId: 72,
+    remote: {
+      host: "target.internal", port: 2202, user: "ops", authMethod: "key", identityFile: "~/.ssh/id_target",
+      postConnectCommand: "cd /srv/app", autoReconnect: true,
+      route: { profileId: "jump", jump: { host: "jump.example", port: 2223, user: "jumpuser", authMethod: "agent" } },
+    },
+  });
+  useSessionsStore.setState({ sessions: [live], activeSessionId: live.id });
+  useUIStore.setState({ overlay: null, sshPrefill: null });
+  render(<Sidebar sessions={[live]} activeSessionId={live.id} onSelectSession={vi.fn()} />);
+  const trigger = target === "card"
+    ? screen.getByRole("button", { name: /Remote SSH session/ })
+    : screen.getByRole("group", { name: /ops@target.internal/ });
+  fireEvent.contextMenu(trigger);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Connection settings" }));
+  expect(useUIStore.getState().overlay).toBe("ssh");
+  expect(useUIStore.getState().sshPrefill).toMatchObject({ ...live.remote, reconnectSessionId: live.id });
+  expect(useSessionsStore.getState().sessions).toEqual([live]);
+});
+
 test("a saved host that matches an ssh config entry is listed once", async () => {
   mockIPC((command) => {
     if (command === "ssh_hosts_load") {
