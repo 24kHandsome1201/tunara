@@ -21,10 +21,6 @@ import type { ConnectionPhase } from "@/modules/terminal/lib/connection-state";
 let _isMac = true;
 try { _isMac = platform() === "macos"; } catch { _isMac = navigator.platform.toLowerCase().includes("mac"); }
 
-// WebKit's `-webkit-app-region` CSS property is not in the standard
-// React.CSSProperties type. Model just the one vendor extension we use.
-type DragStyle = React.CSSProperties & { WebkitAppRegion?: string };
-
 const TITLEBAR_ICON_STYLE: React.CSSProperties = { width: 16, height: 16, flexShrink: 0 };
 const MAC_TITLEBAR_CONTROL_Y_OFFSET = -1;
 
@@ -256,6 +252,7 @@ function TitlebarImpl({
   return (
     <div
       className="tunara-titlebar"
+      data-tauri-drag-region="deep"
       style={{
         height: "var(--h-titlebar)",
         background: "var(--c-bg-1)",
@@ -264,9 +261,7 @@ function TitlebarImpl({
         alignItems: "center",
         flexShrink: 0,
         position: "relative",
-        WebkitAppRegion: "drag",
-      } as DragStyle}
-      data-tauri-drag-region
+      }}
     >
       <div
         style={{
@@ -276,8 +271,7 @@ function TitlebarImpl({
           height: "100%",
           boxSizing: "border-box",
           transform: titlebarControlTransform,
-          WebkitAppRegion: "no-drag",
-        } as DragStyle}
+        }}
       >
         {trafficLightWidth > 0 && <div style={{ width: trafficLightWidth, flexShrink: 0 }} />}
         {sessions.length > 0 && (
@@ -312,7 +306,7 @@ function TitlebarImpl({
           data-titlebar-device-kind={deviceCaption.kind}
           title={deviceTitle}
           aria-label={deviceAccessibleName}
-          style={{ ...deviceIdentityStyle, WebkitAppRegion: "drag" } as DragStyle}
+          style={deviceIdentityStyle}
         >
           <DeviceIdentityContent
             label={deviceCaption.label}
@@ -322,7 +316,7 @@ function TitlebarImpl({
         </div>
       )}
 
-      <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 4, transform: titlebarControlTransform, WebkitAppRegion: "no-drag" } as DragStyle}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 4, transform: titlebarControlTransform }}>
         <Tooltip label={`${t("titlebar.new_menu")} · ${t("common.new_terminal")}`} shortcut={newTerminalShortcut}>
         <button
           onClick={openNewTerminalMenu}
@@ -357,8 +351,7 @@ function TitlebarImpl({
           paddingRight: 12,
           flexShrink: 0,
           transform: titlebarControlTransform,
-          WebkitAppRegion: "no-drag",
-        } as DragStyle}
+        }}
       >
         <Tooltip label={t("common.more_actions")}>
         <button

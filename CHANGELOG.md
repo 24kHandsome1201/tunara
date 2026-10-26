@@ -11,7 +11,13 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-10-26
+
 ### 修复
+- macOS 顶栏使用 Tauri 深层拖动区：点击设备名称、文字与非交互布局区域可以拖动窗口，按钮和菜单不触发拖动；保留系统双击缩放行为，移除不适用于 Tauri 的 Electron 拖动样式。
+- SSH 自动认证先尝试无需口令的候选 key，再询问加密 key 的口令，避免被首个加密 IdentityFile 阻塞；显式选择 key 的行为不变。
+- SSH 会话菜单新增主动重新连接，卡住时新建底层连接，不复用同主机其他窗格的旧连接。
+- SSH 自动输入命令在连接就绪后执行，并使用终端回车提交；拆分、复制、恢复会话同样应用配置的启动命令。
 - `cargo audit`：忽略 `zip` 的 RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369（`tauri-plugin-updater` 锁定 `zip ^4`，无法经 Cargo.lock 升级；updater 仅解压签名校验过的更新包），理由记录在 `src-tauri/.cargo/audit.toml` 与 `docs/DEPENDENCY_ADVISORIES.md`，CI 恢复绿色。
 - 侧栏终端卡片的鼠标右键菜单在 macOS 上恢复可用：拖拽排序只在主键按下时启动,不再用指针捕获吞掉 WebKit 在 mousedown 阶段触发的 contextmenu;新增组件测试覆盖右键/左键指针顺序。
 - SSH 终端未连接或连接失败时,改动面板显示「远程改动暂不可用 · 请重新连接 SSH 后读取 Git 状态」,不再误报为「非 Git 仓库」。

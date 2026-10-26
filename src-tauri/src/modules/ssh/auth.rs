@@ -14,6 +14,7 @@
 // launchd, then well-known 1Password/Secretive sockets, with a short timeout
 // per candidate.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -370,7 +371,13 @@ async fn authenticate_auto(
                 attempts.push(format!("SSH agent: {error}"));
             }
         }
-        for (path, certificate) in identity_candidates(opts) {
+        // Probe every key without opening a passphrase dialog first. Locked
+        // keys go to the back of the queue, after all unattended candidates.
+        let mut candidates: VecDeque<_> = identity_candidates(opts)
+            .into_iter()
+            .map(|(path, certificate)| (path, certificate, false))
+            .collect();
+        while let Some((path, certificate, may_prompt)) = candidates.pop_front() {
             if !remaining_allows(&remaining, MethodKind::PublicKey) {
                 attempts.push("public-key authentication is no longer offered".into());
                 break;
@@ -381,7 +388,7 @@ async fn authenticate_auto(
                 &path,
                 certificate.as_deref(),
                 opts.key_passphrase.as_deref(),
-                Some((&on_event, &origin)),
+                may_prompt.then_some((&on_event, &origin)),
             )
             .await
             {
@@ -390,6 +397,13 @@ async fn authenticate_auto(
                     if spend(&mut spent, &mut attempts, format!("key {path}: rejected")) {
                         return Err(summarize_auto_attempts(&attempts));
                     }
+                }
+                Err(error)
+                    if !may_prompt
+                        && opts.key_passphrase.is_none()
+                        && looks_like_encrypted_key_error(&error) =>
+                {
+                    candidates.push_back((path, certificate, true));
                 }
                 Err(error) => {
                     attempts.push(format!("key {path}: {error}"));
@@ -762,6 +776,143 @@ fn expand_tilde(path: &str) -> std::path::PathBuf {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[tokio::test]
+    async fn auto_prefers_unlocked_keys_and_still_prompts_when_needed() {
+        use russh::{client, server};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Isolate HOME and agent discovery without changing the parallel test process.
+        if std::env::var_os("TUNARA_AUTH_TEST_CHILD").is_none() {
+            let home = std::env::temp_dir().join(format!("tunara-auth-{}", std::process::id()));
+            std::fs::create_dir_all(home.join(".ssh")).unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "modules::ssh::auth::tests::auto_prefers_unlocked_keys_and_still_prompts_when_needed", "--nocapture"])
+                .env("TUNARA_AUTH_TEST_CHILD", "1")
+                .env("HOME", &home)
+                .env("SSH_AUTH_SOCK", home.join("missing-agent"))
+                .status().unwrap();
+            std::fs::remove_dir_all(home).unwrap();
+            assert!(result.success());
+            return;
+        }
+
+        let home = dirs::home_dir().unwrap();
+        let unlocked = home.join(".ssh/id_ed25519");
+        let locked = home.join(".ssh/preferred");
+        for (path, passphrase) in [(&unlocked, ""), (&locked, "fixture-passphrase")] {
+            assert!(std::process::Command::new("ssh-keygen")
+                .args(["-q", "-t", "ed25519", "-N", passphrase, "-f"])
+                .arg(path)
+                .status()
+                .unwrap()
+                .success());
+        }
+        struct KeyServer(russh::keys::PublicKey);
+        impl server::Handler for KeyServer {
+            type Error = russh::Error;
+            async fn auth_publickey_offered(
+                &mut self,
+                user: &str,
+                key: &russh::keys::PublicKey,
+            ) -> Result<server::Auth, Self::Error> {
+                self.auth_publickey(user, key).await
+            }
+            async fn auth_publickey(
+                &mut self,
+                _user: &str,
+                key: &russh::keys::PublicKey,
+            ) -> Result<server::Auth, Self::Error> {
+                Ok(if key.key_data() == self.0.key_data() {
+                    server::Auth::Accept
+                } else {
+                    server::Auth::reject()
+                })
+            }
+        }
+        let host_key = load_secret_key(&unlocked, None).unwrap();
+        for requires_prompt in [false, true] {
+            let accepted = if requires_prompt {
+                load_secret_key(&locked, Some("fixture-passphrase")).unwrap()
+            } else {
+                host_key.clone()
+            };
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let config = server::Config {
+                keys: vec![host_key.clone()],
+                auth_rejection_time: Duration::from_millis(1),
+                auth_rejection_time_initial: Some(Duration::from_millis(1)),
+                ..Default::default()
+            };
+            let server = tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                server::run_stream(
+                    Arc::new(config),
+                    socket,
+                    KeyServer(accepted.public_key().clone()),
+                )
+                .await
+                .unwrap()
+                .await
+            });
+            let prompts = Arc::new(AtomicUsize::new(0));
+            let count = prompts.clone();
+            let events = Channel::new(move |body| {
+                if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                    let event: serde_json::Value = serde_json::from_str(&json).unwrap();
+                    if let Some(id) = event["promptId"].as_str() {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        resolve_keyboard_interactive_prompt(
+                            id,
+                            Some(vec!["fixture-passphrase".into()]),
+                        );
+                    }
+                }
+                Ok(())
+            });
+            let (_cancel, cancel) = tokio::sync::watch::channel(false);
+            let (disconnected, _) = tokio::sync::watch::channel(false);
+            let handler = ClientHandler {
+                host: "127.0.0.1".into(),
+                port: address.port(),
+                policy: super::super::connection::HostKeyPolicy::AcceptForTest,
+                on_event: events.clone(),
+                verified_host_key: Default::default(),
+                cancel,
+                disconnected,
+                reverse_hub: Default::default(),
+            };
+            let mut handle = client::connect(Arc::new(client::Config::default()), address, handler)
+                .await
+                .unwrap();
+            let opts = AuthOptions {
+                user: "alice".into(),
+                method: AuthMethod::Auto,
+                identity_file: Some(locked.to_string_lossy().into_owned()),
+                certificate_file: None,
+                key_passphrase: None,
+                password: None,
+            };
+            let origin = KeyboardInteractiveOrigin {
+                user: "alice".into(),
+                host: "127.0.0.1".into(),
+                port: address.port(),
+                logical_session_id: "auth-test".into(),
+                hop_role: "target".into(),
+                transport_generation: "1".into(),
+            };
+            tokio::time::timeout(
+                Duration::from_secs(15),
+                authenticate(&mut handle, &opts, events, origin),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(prompts.load(Ordering::SeqCst), usize::from(requires_prompt));
+            server.abort();
+        }
+    }
 
     #[test]
     fn auth_method_wire_values_are_explicit() {

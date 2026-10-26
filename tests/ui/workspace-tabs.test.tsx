@@ -62,6 +62,18 @@ function openReader(sessionId: string, filePath: string, fileName: string) {
 }
 
 describe("workspace reader pane and titlebar chrome", () => {
+  test("titlebar delegates descendant dragging to Tauri without marking controls as draggable", () => {
+    const view = renderTitlebar();
+    const titlebar = view.container.querySelector(".tunara-titlebar")!;
+    expect(titlebar.getAttribute("data-tauri-drag-region")).toBe("deep");
+    expect(titlebar.querySelector("[data-titlebar-device] span")).not.toBeNull();
+    for (const button of titlebar.querySelectorAll("button")) {
+      expect(button.hasAttribute("data-tauri-drag-region")).toBe(false);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "New…" }));
+    expect(screen.getByRole("menuitem", { name: "New terminal" }).closest("[data-tauri-drag-region]")).toBeNull();
+  });
+
   test("removes the sidebar affordance when an empty workspace has no sidebar content", () => {
     renderTitlebar({ sessions: [], activeSessionId: "", sidebarVisible: false });
 
