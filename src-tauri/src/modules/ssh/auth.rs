@@ -786,6 +786,9 @@ mod tests {
         if std::env::var_os("TUNARA_AUTH_TEST_CHILD").is_none() {
             let home = std::env::temp_dir().join(format!("tunara-auth-{}", std::process::id()));
             std::fs::create_dir_all(home.join(".ssh")).unwrap();
+            // macOS temp paths can contain symlinks; the known_hosts reader
+            // deliberately refuses those, even for this isolated fixture.
+            let home = home.canonicalize().unwrap();
             let result = std::process::Command::new(std::env::current_exe().unwrap())
                 .args(["--exact", "modules::ssh::auth::tests::auto_prefers_unlocked_keys_and_still_prompts_when_needed", "--nocapture"])
                 .env("TUNARA_AUTH_TEST_CHILD", "1")
