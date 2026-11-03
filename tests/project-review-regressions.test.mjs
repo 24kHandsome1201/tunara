@@ -147,7 +147,7 @@ test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs"
   const auditToml = read("src-tauri/.cargo/audit.toml");
   const advisories = read("docs/DEPENDENCY_ADVISORIES.md");
   const changelog = read("CHANGELOG.md");
-  const expected = ["RUSTSEC-2023-0071", "RUSTSEC-2026-0367", "RUSTSEC-2026-0368", "RUSTSEC-2026-0369"];
+  const expected = ["RUSTSEC-2023-0071"];
 
   const workflowIgnores = [...workflow.matchAll(/cargo audit((?: --ignore RUSTSEC-\d{4}-\d+)+)/g)]
     .flatMap((match) => [...match[1].matchAll(/RUSTSEC-\d{4}-\d+/g)].map((item) => item[0]));
@@ -162,6 +162,11 @@ test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs"
   }
   assert.doesNotMatch(auditToml, /RUSTSEC-2026-0235/);
   assert.doesNotMatch(workflow, /--ignore RUSTSEC-2026-0235/);
+  for (const id of ["RUSTSEC-2026-0367", "RUSTSEC-2026-0368", "RUSTSEC-2026-0369"]) {
+    assert.doesNotMatch(auditToml, new RegExp(id));
+    assert.doesNotMatch(workflow, new RegExp(`--ignore ${id}`));
+    assert.match(advisories, new RegExp(id));
+  }
 });
 
 test("release metadata keeps versions and distribution identifiers aligned", () => {
@@ -209,6 +214,11 @@ test("release stays draft until direct, legacy, and updater assets are complete"
   assert.doesNotMatch(release, /releaseDraft: false/);
   assert.match(release, /finalize-release:[\s\S]*?needs:[\s\S]*?- publish-tauri[\s\S]*?- publish-legacy/);
   assert.match(release, /required_assets=\([\s\S]*?aarch64\.dmg[\s\S]*?aarch64-legacy\.dmg[\s\S]*?latest\.json/);
+  assert.match(release, /platform: ubuntu-22\.04\s+args: --bundles deb,appimage/);
+  assert.match(release, /required_assets=\([\s\S]*?amd64\.deb[\s\S]*?amd64\.AppImage[\s\S]*?amd64\.AppImage\.sig/);
+  assert.match(release, /platforms\["darwin-aarch64"\]\.signature/);
+  assert.match(release, /platforms\["linux-x86_64"\]\.signature/);
+  assert.doesNotMatch(release, /platform: windows-/);
   assert.match(release, /gh release edit "\$TAG" --draft=false/);
   assert.match(release, /DMG_NAME="Tunara_\$\{TAG\}_aarch64\.dmg"/);
   assert.doesNotMatch(release, /select\(\.name \| test\("Tunara_\.\*\\\\\.dmg"\)\)/);

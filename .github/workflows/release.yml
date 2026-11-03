@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_mode:
-        description: "Which macOS installer lane to build"
+        description: "Installer lanes: direct = Linux + signed macOS; legacy = manual macOS only"
         required: true
         default: both
         type: choice
@@ -44,7 +44,7 @@ jobs:
             --draft
             --verify-tag
             --title "Tunara ${TAG}"
-            --notes "See CHANGELOG.md for release notes. Direct install assets are signed and notarized. The legacy DMG is the previous manual install path and is not used by Homebrew or auto-update."
+            --notes "See CHANGELOG.md for release notes. Linux x86_64: deb and AppImage. macOS Apple Silicon: signed and notarized DMG. Windows is not supported. The legacy DMG is manual-only and is not used by Homebrew or auto-update."
           )
           if [[ "$TAG" == *-* ]]; then
             release_args+=(--prerelease)
@@ -63,11 +63,19 @@ jobs:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
+          - platform: ubuntu-22.04
+            args: --bundles deb,appimage
 
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev libayatana-appindicator3-dev patchelf
 
       - uses: pnpm/action-setup@v6
         with:
@@ -92,6 +100,9 @@ jobs:
       - name: Verify Tauri npm/cargo version coupling
         run: bash scripts/check-tauri-version-coupling.sh
 
+      - name: Enable signed updater artifacts
+        run: printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' > /tmp/tauri-release-ci.json
+
       - name: Prepare macOS release config
         if: runner.os == 'macOS'
         env:
@@ -114,7 +125,6 @@ jobs:
             echo "::error::Missing required Apple secrets: ${missing[*]}"
             exit 1
           fi
-          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":true}}' > /tmp/tauri-release-ci.json
 
       - name: Build and publish Tauri release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -132,8 +142,8 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Tunara ${{ github.ref_name }}"
-          releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Use the normal dmg for direct install. The -legacy dmg is the previous manual install path and is not used by Homebrew or auto-update."
-          # Keep the release private until both installer lanes and updater
+          releaseBody: "See [CHANGELOG.md](https://github.com/24kHandsome1201/tunara/blob/main/CHANGELOG.md) for release notes. Linux x86_64: deb or AppImage. macOS Apple Silicon: use the normal signed/notarized dmg. Windows is not supported. The -legacy dmg is manual-only and is not used by Homebrew or auto-update."
+          # Keep the release private until all installer lanes and updater
           # metadata pass the final asset gate below.
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -154,6 +164,22 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: ${{ matrix.args }} --config /tmp/tauri-release-ci.json
+
+      - name: Verify Linux release artifacts
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          DEB="src-tauri/target/release/bundle/deb/Tunara_${VERSION}_amd64.deb"
+          APPIMAGE="src-tauri/target/release/bundle/appimage/Tunara_${VERSION}_amd64.AppImage"
+          test "$(dpkg-deb -f "$DEB" Version)" = "$VERSION"
+          test "$(dpkg-deb -f "$DEB" Architecture)" = "amd64"
+          test -s "$APPIMAGE"
+          test -x "$APPIMAGE"
+          test -s "${APPIMAGE}.sig"
+          "$APPIMAGE" --appimage-extract > /dev/null
+          test -x squashfs-root/AppRun
+          rm -rf squashfs-root
 
       - name: Verify macOS release artifacts
         if: runner.os == 'macOS'
@@ -318,6 +344,9 @@ jobs:
             "Tunara_${VERSION}_aarch64-legacy.dmg"
             "Tunara_${VERSION}_aarch64.app.tar.gz"
             "Tunara_${VERSION}_aarch64.app.tar.gz.sig"
+            "Tunara_${VERSION}_amd64.deb"
+            "Tunara_${VERSION}_amd64.AppImage"
+            "Tunara_${VERSION}_amd64.AppImage.sig"
             "latest.json"
           )
 
@@ -327,6 +356,18 @@ jobs:
               exit 1
             fi
           done
+
+          if printf '%s\n' "$ASSETS" | grep -Eiq '\.(exe|msi|msix)$'; then
+            echo "::error::Windows installers are not part of this release"
+            exit 1
+          fi
+          gh release download "$TAG" --pattern latest.json --dir /tmp/updater-metadata
+          jq -e --arg version "$VERSION" '
+            .version == $version and
+            (.platforms["darwin-aarch64"].signature | length > 0) and
+            (.platforms["linux-x86_64"].signature | length > 0) and
+            (.platforms | keys | all(startswith("windows-") | not))
+          ' /tmp/updater-metadata/latest.json
 
           test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
           gh release edit "$TAG" --draft=false

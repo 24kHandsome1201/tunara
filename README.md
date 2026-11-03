@@ -31,7 +31,11 @@ Tunara is a terminal. The sidebar on the left groups your sessions by project an
 
 ### From a Release (recommended)
 
-Grab the latest `.dmg` from [Releases](https://github.com/24kHandsome1201/tunara/releases/latest). Use the normal `Tunara_<version>_aarch64.dmg` for direct install. Only signed macOS Apple Silicon builds are supported for the direct installer.
+Download from [Releases](https://github.com/24kHandsome1201/tunara/releases/latest):
+
+- **macOS Apple Silicon:** use the signed and notarized `Tunara_<version>_aarch64.dmg`.
+- **Linux x86_64:** use `Tunara_<version>_amd64.deb` (Debian/Ubuntu) or `Tunara_<version>_amd64.AppImage` (make it executable before launching).
+- Windows is not supported and no Windows installers are published.
 
 Release pages may also include `Tunara_<version>_aarch64-legacy.dmg`. That is the previous manual install path for cases where Apple notarization is delayed; it is not used by Homebrew or the in-app updater and may require right-click Open in Finder.
 

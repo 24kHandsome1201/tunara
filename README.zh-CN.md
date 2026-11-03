@@ -31,7 +31,11 @@ Tunara 是一个终端。左边侧栏按项目和机器分组你的终端，agen
 
 ### 从 Release 下载（推荐）
 
-到 [Releases](https://github.com/24kHandsome1201/tunara/releases/latest) 下载最新版的 `.dmg`。普通用户请用默认的 `Tunara_<version>_aarch64.dmg` 直接安装；当前仅支持签名的 macOS Apple Silicon 构建。
+到 [Releases](https://github.com/24kHandsome1201/tunara/releases/latest) 下载：
+
+- **macOS Apple Silicon：**使用签名且公证的 `Tunara_<version>_aarch64.dmg`。
+- **Linux x86_64：**使用 `Tunara_<version>_amd64.deb`（Debian/Ubuntu）或 `Tunara_<version>_amd64.AppImage`（启动前添加可执行权限）。
+- 不支持 Windows，不发布 Windows 安装包。
 
 Release 页面也可能带 `Tunara_<version>_aarch64-legacy.dmg`。这是保留旧行为的手动安装包，用于 Apple 公证延迟时兜底；它不用于 Homebrew 或应用内自动更新，首次打开可能需要在 Finder 里右键打开。
 

@@ -29,27 +29,30 @@ Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2023-0071` from 
 
 ---
 
-## RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369 — `zip` < 9 extraction hardening
+## Resolved 2026-11-03: six release-blocking advisories
 
-| Field | Detail |
-|-------|--------|
-| Advisories | [RUSTSEC-2026-0367](https://rustsec.org/advisories/RUSTSEC-2026-0367.html) (SUID/SGID bits preserved), [RUSTSEC-2026-0368](https://rustsec.org/advisories/RUSTSEC-2026-0368.html) (symlink targets outside destination), [RUSTSEC-2026-0369](https://rustsec.org/advisories/RUSTSEC-2026-0369.html) (permissions applied through symlinks) |
-| Crate | `zip` 4.6.1 (transitive) |
-| Path | `tauri-plugin-updater` → `zip` (`cargo tree -i zip`) |
-| Fixed in | `zip` ≥ 9.0.0 |
-| Upstream status | `tauri-plugin-updater` pins `zip ^4`; the lockfile cannot be bumped past 4.x until the plugin moves to `zip >= 9` |
+These updates address the six vulnerabilities reported by the Security workflow
+for the directory-link feature. No advisory was added to the ignore list.
 
-### Why we accept the risk
+| Advisory | Crate: previous → resolved | Dependency path |
+|----------|----------------------------|-----------------|
+| [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html) — timing variability | `crypto-bigint` 0.7.5 → 0.7.10 | `russh` → `crypto-bigint` |
+| [RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html) — non-constant-time masks/comparisons | `ctutils` 0.4.2 → 0.4.8 | `crypto-bigint` → `ctutils` |
+| [RUSTSEC-2026-0418](https://rustsec.org/advisories/RUSTSEC-2026-0418.html) — build environment disclosure | `libz-sys` 1.1.29 → 1.1.31 | `git2` → `libgit2-sys` → `libz-sys` |
+| [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html) — distrusted intermediate acceptance | `rustls-webpki` 0.103.15 → 0.103.16 | updater → `reqwest` → `rustls` → `rustls-webpki` |
+| [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html) — distrusted emSign roots | `webpki-root-certs` 1.0.8 → 1.0.10 | updater → `reqwest` → `rustls-platform-verifier` → `webpki-root-certs` |
+| [RUSTSEC-2026-0429](https://rustsec.org/advisories/RUSTSEC-2026-0429.html) — zip extraction process abort | `zip` 4.6.1 → 9.2.2 | updater → `zip` (Windows-target dependency; audited in the cross-platform lockfile, not a Windows release target) |
 
-- The updater only extracts update bundles whose **minisign signature** was verified against the public key baked into `tauri.conf.json`; a crafted archive requires the signing key.
-- Extraction runs in a **fresh temp directory** as the **current user** — there is no privilege boundary to escalate across.
-- Tunara code never calls `zip` directly (`grep zip:: src-tauri/src` → none); the only consumer is the updater.
+`tauri-plugin-updater` 2.14.1 switches to `zip ^9`. This also resolves
+RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369, so their prior
+exceptions have been removed from CI and `audit.toml`. The npm updater is upgraded
+in tandem. Its Tauri ≥ 2.12 requirement upgrades the Tauri Rust runtime to 2.12.5
+and the npm API/CLI to 2.12.4. The reviewed `russh =0.61.2` pin is unchanged.
 
-### When to revisit
-
-- `tauri-plugin-updater` ships a release depending on `zip >= 9` (watch its `Cargo.toml`).
-
-Then: bump the plugin (and its npm pair, see the coupling check), `cargo update -p zip`, re-run `cargo audit`, and remove the three IDs from `audit.toml`, the security workflow, and this doc.
+Updater compatibility review: 2.12 moves `allowDowngrades` from a per-check option
+to plugin configuration; Tunara does not use this option. The existing signed
+tar.gz macOS updater and AppImage Linux updater remain supported. New updater
+versions also harden signature verification and macOS replacement/rollback.
 
 ---
 

@@ -7,9 +7,22 @@ All notable changes to Tunara are documented in this file. Format follows [Keep 
 Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/DEPENDENCY_ADVISORIES.md](docs/DEPENDENCY_ADVISORIES.md)**.
 
 - **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
-- **RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369** (`zip` < 9 extraction: SUID/SGID bits, symlink escape, permissions through symlinks) — pulled transitively only via `tauri-plugin-updater`, which pins `zip ^4`, so the lockfile cannot reach the fixed 9.x line. The updater extracts only minisign-verified bundles into a temp directory as the current user, and Tunara never calls `zip` directly. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `tauri-plugin-updater` depends on `zip >= 9`.**
 
 ## [Unreleased]
+
+## [3.1.3] - 2026-11-03
+
+### 新增
+- 终端中的目录路径支持 Ctrl+点击，在对应本地/SSH 会话的右侧文件浏览器中打开；相对路径按输出行的目录解析，不改变 shell 工作目录，也不干扰文本选择、文件行号链接和 URL。
+- 发布流程增加 Linux x86_64 的 deb、AppImage 与签名更新产物；保留 macOS Apple Silicon 签名/公证安装包，Windows 不在发布范围内。所有平台产物和更新元数据校验完整后才公开 release。
+
+### 修复
+- 临时 Toast 和 SSH 历史恢复提示自动渐隐消失，自动关闭不抢焦点；需要操作的持久错误提示保持原有语义。
+- 切换「传输」后返回文件浏览器，保留每个会话已浏览的目录，不再重置为终端当前目录。
+
+### 安全
+- 修复 cargo audit 报告的六项漏洞：crypto-bigint（RUSTSEC-2026-0387）、ctutils（0385）、libz-sys（0418）、rustls-webpki（0382）、webpki-root-certs（0383）、zip（0429）。详见 docs/DEPENDENCY_ADVISORIES.md。
+- updater 升级到 2.14.1、zip 升级到 9.2.2；移除 RUSTSEC-2026-0367 / RUSTSEC-2026-0368 / RUSTSEC-2026-0369 三条旧豁免，同步升级配套 Tauri Rust 与 npm 依赖。
 
 ## [3.1.2] - 2026-10-26
 

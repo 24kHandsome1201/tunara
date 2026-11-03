@@ -11,8 +11,8 @@ pnpm tauri dev
 
 前置条件：Rust stable、Node 24+、pnpm 9+、以及平台对应的 [Tauri 依赖](https://tauri.app/start/prerequisites/)。
 
-macOS Apple Silicon 是正式支持与发布目标。Linux/Windows 仅提供实验性
-源码构建；Linux CI 通过不等同于这些平台拥有正式安装包或完整原生 Preview 支持。
+发布目标为 macOS Apple Silicon 与 Linux x86_64（deb/AppImage），不支持 Windows。
+Linux 安装包不代表拥有与 macOS 相同的原生 Preview 能力。
 
 ## 提交 PR 前
 
