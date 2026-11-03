@@ -4,7 +4,7 @@ import { openResource } from "@/modules/resources/resource-ref";
 import { t } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
-import { findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
+import { findTerminalDirectoryLinkMatches, findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 
 interface TerminalFileLinkOptions {
   getCwd: (bufferLineNumber: number) => string | undefined;
@@ -14,13 +14,13 @@ interface TerminalFileLinkOptions {
 }
 
 /** A clicked link that cannot open (stale owner/binding, editor launch error) must say so. */
-export function reportTerminalFileLinkOpenFailure(resource: ResourceRef, error: unknown): void {
+export function reportTerminalFileLinkOpenFailure(resource: ResourceRef, error: unknown, directory = false): void {
   console.warn("[terminal-file-links] open failed", resource.path, error);
   // A stale owner has no session to focus; keep the toast app-level then.
   const ownerExists = useSessionsStore.getState().sessions.some((session) => session.id === resource.logicalSessionId);
   useUIStore.getState().addToast({
     ...(ownerExists ? { sessionId: resource.logicalSessionId } : {}),
-    title: t("terminal.file_link.open_failed"),
+    title: t(directory ? "explorer.read_dir_failed" : "terminal.file_link.open_failed"),
     subtitle: resource.path,
     variant: "error",
   });
@@ -38,7 +38,10 @@ export function registerTerminalFileLinkProvider(
         return;
       }
       const text = line.translateToString(true);
-      const matches = findTerminalFileLinkMatches(text);
+      const matches = [
+        ...findTerminalFileLinkMatches(text).map((match) => ({ ...match, directory: false })),
+        ...findTerminalDirectoryLinkMatches(text).map((match) => ({ ...match, line: undefined, column: undefined, directory: true })),
+      ];
       if (matches.length === 0) {
         callback(undefined);
         return;
@@ -52,12 +55,13 @@ export function registerTerminalFileLinkProvider(
         },
         decorations: { pointerCursor: true, underline: true },
         activate(event) {
+          if (match.directory && (!event.ctrlKey || event.button !== 0 || term.hasSelection())) return;
           if (options.shouldActivate && !options.shouldActivate(event)) return;
           event.preventDefault();
           event.stopPropagation();
           const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
           const resource = options.createResource(path, match.line, match.column);
-          if (resource) void openResource(resource).catch((error) => reportTerminalFileLinkOpenFailure(resource, error));
+          if (resource) void openResource(resource, match.directory ? "directory" : "editor").catch((error) => reportTerminalFileLinkOpenFailure(resource, error, match.directory));
         },
       }));
       callback(links);

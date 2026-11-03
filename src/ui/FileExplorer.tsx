@@ -195,7 +195,14 @@ export function FileExplorer({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- home only needs resolving once per explorer
   }, [isRemote]);
-  const [currentPath, setCurrentPath] = useState(() => useUIStore.getState().explorerPaths[sessionId] ?? (isRemote ? "" : rootDir));
+  const currentPath = useUIStore((state) => state.explorerPaths[sessionId] ?? (isRemote ? "" : rootDir));
+  const setCurrentPath = useCallback((next: string | ((current: string) => string)) => {
+    useUIStore.setState((state) => {
+      const current = state.explorerPaths[sessionId] ?? (isRemote ? "" : rootDir);
+      const path = typeof next === "function" ? next(current) : next;
+      return path === current ? state : { explorerPaths: { ...state.explorerPaths, [sessionId]: path } };
+    });
+  }, [sessionId, isRemote, rootDir]);
   const previousCwdFollow = useRef({ rootDir, followTerminalCwd });
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
@@ -496,12 +503,7 @@ export function FileExplorer({
     const knownStart = knownRemoteExplorerRoot(rootDir);
     if (!knownStart) return;
     setCurrentPath(knownStart);
-  }, [rootDir, isRemote, followTerminalCwd]);
-
-  useEffect(() => {
-    if (!currentPath.startsWith("/")) return;
-    useUIStore.setState((state) => ({ explorerPaths: { ...state.explorerPaths, [sessionId]: currentPath } }));
-  }, [sessionId, currentPath]);
+  }, [rootDir, isRemote, followTerminalCwd, setCurrentPath]);
 
   useEffect(() => {
     if (!prefsKey || !currentPath.startsWith("/")) return;
@@ -563,7 +565,7 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration, beginListingEpoch, resetExpansion]);
+  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration, beginListingEpoch, resetExpansion, setCurrentPath]);
 
   const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();

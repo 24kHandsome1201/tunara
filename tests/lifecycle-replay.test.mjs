@@ -20,6 +20,7 @@ import {
 } from "../src/modules/terminal/lib/terminal-prompt-agent-state.ts";
 import { parseOsc7 } from "../src/modules/terminal/lib/osc-handlers.ts";
 import {
+  findTerminalDirectoryLinkMatches,
   findTerminalFileLinkMatches,
   resolveTerminalFileLinkPath,
 } from "../src/modules/terminal/lib/terminal-file-link-parser.ts";
@@ -1013,6 +1014,17 @@ test("terminal file links recognize local file positions without treating URLs a
   assert.equal(resolveTerminalFileLinkPath("src/main.rs", "/Users/me/repo "), "/Users/me/repo /src/main.rs");
   assert.equal(resolveTerminalFileLinkPath("../lib.rs", "/Users/me/repo"), "/Users/me/lib.rs");
   assert.equal(resolveTerminalFileLinkPath("~/src/app.ts", "/Users/me/repo"), "~/src/app.ts");
+});
+
+test("terminal directory links recognize paths without consuming URLs or file positions", () => {
+  const text = 'dirs: /var/log ./build ../cache ~/项目 "~/My Files" src/assets/ / ~';
+  const matches = findTerminalDirectoryLinkMatches(text);
+  assert.deepEqual(matches.map((match) => match.rawPath), [
+    "/var/log", "./build", "../cache", "~/项目", "~/My Files", "src/assets/", "/", "~",
+  ]);
+  for (const match of matches) assert.equal(text.slice(match.startIndex, match.endIndex), match.text);
+  assert.deepEqual(findTerminalDirectoryLinkMatches("https://example.test/path file:///tmp/data src/app.ts:12:3 ordinary words"), []);
+  assert.equal(findTerminalDirectoryLinkMatches("directory='/srv/my app'")[0].rawPath, "/srv/my app");
 });
 
 test("terminal file links resolve relative paths from the cwd active for that line", () => {

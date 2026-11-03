@@ -33,6 +33,26 @@ export function findTerminalFileLinkMatches(text: string): TerminalFileLinkMatch
   return matches;
 }
 
+/** Bare POSIX paths are directory candidates, verified only on Ctrl+click.
+ * Quoting permits spaces; URL bodies and file:line links keep their own handlers. */
+export function findTerminalDirectoryLinkMatches(text: string): Omit<TerminalFileLinkMatch, "line" | "column">[] {
+  const files = findTerminalFileLinkMatches(text);
+  const urls = [...text.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"']+/gi)];
+  const matches: Omit<TerminalFileLinkMatch, "line" | "column">[] = [];
+  const tokens = /"([^"\r\n]+)"|'([^'\r\n]+)'|[^\s()[\]{}"'<>|;,=]+/g;
+  for (const token of text.matchAll(tokens)) {
+    const quoted = token[1] !== undefined || token[2] !== undefined;
+    const rawPath = token[1] ?? token[2] ?? token[0];
+    if (!/^(?:\/|~(?:\/|$)|\.{1,2}\/|[^\s:]+\/)/u.test(rawPath) || /[:\r\n]/.test(rawPath)) continue;
+    const startIndex = token.index + (quoted ? 1 : 0);
+    const endIndex = startIndex + rawPath.length;
+    if (files.some((file) => startIndex < file.endIndex && endIndex > file.startIndex)
+      || urls.some((url) => startIndex < url.index + url[0].length && endIndex > url.index)) continue;
+    matches.push({ text: rawPath, rawPath, startIndex, endIndex });
+  }
+  return matches;
+}
+
 export function resolveTerminalFileLinkPath(rawPath: string, cwd: string | undefined): string {
   if (rawPath.startsWith("/") || rawPath.startsWith("~")) return rawPath;
   const base = cwd && cwd.trim() ? cwd : "~";
