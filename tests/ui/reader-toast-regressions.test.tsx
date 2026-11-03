@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { ReaderPane } from "@/ui/ReaderPane";
 import { ToastContainer } from "@/ui/Toast";
@@ -11,6 +11,24 @@ import { openRemoteInExternalEditor } from "@/modules/ssh/remote-external-edit";
 vi.mock("@/ui/FilePreview", () => ({ FilePreview: () => <div>preview</div> }));
 vi.mock("@/ui/lib/clipboard", () => ({ copyText: vi.fn() }));
 vi.mock("@/modules/ssh/remote-external-edit", () => ({ openRemoteInExternalEditor: vi.fn() }));
+
+test.each([ ["success", 4000], ["warning", 4000], ["error", 12000] ] as const)("%s toast expires without a click after %sms", (variant, duration) => {
+  vi.useFakeTimers();
+  try {
+    useUIStore.setState({ toasts: [] });
+    useUIStore.getState().addToast({ title: "Temporary", subtitle: "", variant });
+    render(<ToastContainer />);
+    act(() => vi.advanceTimersByTime(duration - 1));
+    expect(screen.getByText("Temporary")).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText("Temporary").closest(".toast-item")?.getAttribute("data-exiting")).toBe("true");
+    act(() => vi.advanceTimersByTime(160));
+    expect(screen.queryByText("Temporary")).toBeNull();
+    expect(useUIStore.getState().toasts).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 function remoteSession(phase: "ready" | "disconnected" = "ready", generation = "generation-1"): Session {
   return {

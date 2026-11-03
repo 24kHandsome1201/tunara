@@ -17,6 +17,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   const removeToast = useUIStore((s) => s.removeToast);
   const setActive = useSessionsStore((s) => s.setActive);
   const [paused, setPaused] = useState<boolean>(false);
+  const [exiting, setExiting] = useState(false);
   const [copied, setCopied] = useState<boolean>(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const copyRequestRef = useRef(0);
@@ -40,7 +41,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   useEffect(() => {
     mountedRef.current = true;
     startRef.current = Date.now();
-    timerRef.current = setTimeout(() => dismissRef.current(), duration);
+    timerRef.current = setTimeout(() => setExiting(true), duration);
     return () => {
       mountedRef.current = false;
       copyRequestRef.current += 1;
@@ -48,6 +49,12 @@ function ToastItem({ toast }: { toast: Toast }) {
       clearTimeout(copiedTimerRef.current);
     };
   }, [duration]);
+
+  useEffect(() => {
+    if (!exiting) return;
+    const timer = setTimeout(() => dismissRef.current(), motionDurationMs("--dur-base", 160));
+    return () => clearTimeout(timer);
+  }, [exiting]);
 
   const handleCopy = async () => {
     const text = [toast.title, toast.subtitle, toast.errorDetail].filter(Boolean).join("\n");
@@ -74,7 +81,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   const hoveredRef = useRef(false);
   const focusWithinRef = useRef(false);
   const pauseCountdown = () => {
-    if (pausedRef.current) return;
+    if (pausedRef.current || exiting) return;
     pausedRef.current = true;
     setPaused(true);
     clearTimeout(timerRef.current);
@@ -85,7 +92,7 @@ function ToastItem({ toast }: { toast: Toast }) {
     pausedRef.current = false;
     setPaused(false);
     startRef.current = Date.now();
-    timerRef.current = setTimeout(dismiss, Math.max(remainRef.current, 500));
+    timerRef.current = setTimeout(() => setExiting(true), Math.max(remainRef.current, 500));
   };
 
   const resumeWhenUnengaged = () => {
@@ -118,6 +125,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       className="toast-item"
       data-variant={toast.variant}
       data-paused={paused ? "true" : "false"}
+      data-exiting={exiting ? "true" : undefined}
       role={toast.variant === "error" ? "alert" : "status"}
       aria-live={toast.variant === "error" ? "assertive" : "polite"}
       onMouseEnter={() => { hoveredRef.current = true; pauseCountdown(); }}

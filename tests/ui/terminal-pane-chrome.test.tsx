@@ -1,5 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { setLanguage } from "@/modules/i18n";
 import { SSH_DISCONNECTED_EXIT_CODE } from "@/modules/terminal/lib/pty-bridge";
@@ -92,6 +92,23 @@ test("the restored-history notice takes layout space instead of covering termina
   expect(notice.style.flexShrink).toBe("0");
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(dismiss).toHaveBeenCalledOnce();
+});
+
+test.each([false, true])("restored-history notice fades and dismisses automatically (remote=%s)", (remote) => {
+  vi.useFakeTimers();
+  try {
+    const dismiss = vi.fn();
+    const view = render(<RestoredHistoryNotice remote={remote} onDismiss={dismiss} />);
+    act(() => vi.advanceTimersByTime(3999));
+    expect(dismiss).not.toHaveBeenCalled();
+    view.rerender(<RestoredHistoryNotice remote={remote} onDismiss={dismiss} />);
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByRole("status").getAttribute("data-exiting")).toBe("true");
+    act(() => vi.advanceTimersByTime(160));
+    expect(dismiss).toHaveBeenCalledExactlyOnceWith(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("the exit notice is written after output still queued in the frame buffer", async () => {

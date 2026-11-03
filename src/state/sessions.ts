@@ -422,6 +422,10 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     closeRemoteExternalEdits(id);
     forgetBackgroundAttention(agentConfirmationAttentionKey(id));
     useUIStore.getState().closeReaderForSession(id);
+    useUIStore.setState((state) => {
+      const { [id]: _removedPath, ...explorerPaths } = state.explorerPaths;
+      return { explorerPaths };
+    });
     const wasActive = get().activeSessionId === id;
     const splitFocusSessionId = releaseSplitPane(id, get().sessions.filter((s) => s.id !== id));
     set((state) => {

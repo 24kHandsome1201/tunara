@@ -12,6 +12,7 @@ import { diagnosticReportText } from "@/modules/ssh/diagnostics-bridge";
 import { enableSavedHostAutoReconnect } from "@/modules/ssh/save-successful-host";
 import { retrySshSessionInPlace } from "@/modules/ssh/manual-reconnect";
 import { SessionRemediationNotice, useSessionRemediationAction } from "./SessionRemediationNotice";
+import { motionDurationMs } from "./lib/motion";
 
 /**
  * banner 挂载时：把焦点从死终端的 xterm textarea 挪到 banner 主操作按钮
@@ -191,13 +192,25 @@ interface TerminalExitBannerProps {
  * process. Rendered in the pane's flex column (not over the canvas) so the
  * terminal shrinks and refits instead of hiding a full-screen TUI's bottom rows.
  */
-export function RestoredHistoryNotice({ remote, onDismiss }: { remote: boolean; onDismiss: () => void }) {
+export function RestoredHistoryNotice({ remote, onDismiss }: { remote: boolean; onDismiss: (automatic?: boolean) => void }) {
   const t = useT();
+  const [exiting, setExiting] = useState(false);
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+  useEffect(() => {
+    const timer = setTimeout(() => setExiting(true), motionDurationMs("--dur-toast", 4_000));
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!exiting) return;
+    const timer = setTimeout(() => dismissRef.current(true), motionDurationMs("--dur-base", 160));
+    return () => clearTimeout(timer);
+  }, [exiting]);
   const label = t(remote ? "terminal.history.remote_ready" : "terminal.history.local_ready");
   return (
-    <div role="status" data-restored-history-notice style={{ flexShrink: 0, margin: "0 8px 8px", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
+    <div role="status" data-restored-history-notice data-exiting={exiting ? "true" : undefined} style={{ flexShrink: 0, margin: "0 8px 8px", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--c-border-1)", borderRadius: "var(--r-btn)", background: "var(--c-bg-1)", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
       <span title={label} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-      <button type="button" className="ui-button" onClick={onDismiss} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{t("common.done")}</button>
+      <button type="button" className="ui-button" onClick={() => onDismiss()} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{t("common.done")}</button>
     </div>
   );
 }

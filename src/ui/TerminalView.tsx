@@ -633,7 +633,7 @@ function TerminalViewImpl({
       }} />}
       {exitCode !== null && session && <TerminalExitBanner session={session} exitCode={exitCode} />}
       {openError !== null && session && <PtyErrorBanner session={session} error={openError} failure={openFailure} />}
-      {showRestoredHistory && ptyReady && exitCode === null && openError === null && session?.connection?.phase === "ready" && <RestoredHistoryNotice remote={Boolean(session.remote)} onDismiss={() => { setShowRestoredHistory(false); const token = issueFocusReturnToken(sessionId); if (token) returnTerminalFocus(token); }} />}
+      {showRestoredHistory && ptyReady && exitCode === null && openError === null && session?.connection?.phase === "ready" && <RestoredHistoryNotice remote={Boolean(session.remote)} onDismiss={(automatic) => { setShowRestoredHistory(false); if (automatic) return; const token = issueFocusReturnToken(sessionId); if (token) returnTerminalFocus(token); }} />}
     </>
   );
 }

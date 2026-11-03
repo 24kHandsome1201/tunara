@@ -24,6 +24,7 @@ beforeEach(() => {
     split: { root: null },
     inspectorTab: "files",
     inspectorPreviewOpenedSessionIds: {},
+    explorerPaths: {},
   });
 });
 

@@ -7,8 +7,43 @@ import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
 import { buildExplorerTreeRows, type ExplorerTreeNode } from "@/ui/file-explorer/use-tree-listing";
+import { InspectorPanel } from "@/ui/InspectorPanel";
+import type { Session } from "@/ui/types";
 
 describe("FileExplorer directory navigation", () => {
+  test.each([false, true])("preserves the browsed directory across Inspector tabs (remote=%s)", async (remote) => {
+    const session: Session = {
+      id: "transfer-navigation", title: "Navigation", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
+      ...(remote ? { remote: { host: "example.test", port: 22, user: "dev" }, ptyId: 40, transportGeneration: "g1" } : {}),
+    };
+    const paths: string[] = [];
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir" || command === "ssh_fs_home") return "/home/dev";
+      if (command === "fs_read_dir" || command === "ssh_fs_read_dir") {
+        paths.push((payload as { path: string }).path);
+        return [];
+      }
+      return [];
+    });
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    render(<InspectorPanel session={session} />);
+    await waitFor(() => expect(paths[paths.length - 1]).toBe("/srv/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Go to parent" }));
+    await waitFor(() => expect(paths[paths.length - 1]).toBe("/srv"));
+    if (remote) {
+      fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Transfers" }));
+      await screen.findByRole("tab", { name: "Transfers" });
+    } else {
+      fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
+    }
+    paths.length = 0;
+    fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+    await waitFor(() => expect(paths[paths.length - 1]).toBe("/srv"));
+    expect(paths).not.toContain("/srv/app");
+    expect(screen.getByRole("button", { name: "srv" }).getAttribute("aria-current")).toBe("page");
+  });
+
   test.each([
     ["root", "/root", ["/root", "/"]],
     ["ordinary user", "/home/alice", ["/home/alice", "/home", "/"]],

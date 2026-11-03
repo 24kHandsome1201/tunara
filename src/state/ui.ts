@@ -323,6 +323,8 @@ interface UIState extends AppearanceSettings {
   /** Bumped when saved SSH profiles or ~/.ssh/config import results change. Not persisted. */
   sshProfilesEpoch: number;
   explorerFollowCwd: boolean;
+  /** Last browsed directory per session; survives Inspector tab unmounts, not app restarts. */
+  explorerPaths: Record<string, string>;
   downloadMaxFiles: number;
   downloadMaxFileBytes: number;
   downloadMaxTotalBytes: number;
@@ -427,6 +429,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     // Hydrated from the workspace snapshot in useInit; starts empty.
     commandUsage: {},
     explorerFollowCwd: true,
+    explorerPaths: {},
     downloadMaxFiles: 100,
     downloadMaxFileBytes: 100 * 1024 * 1024,
     downloadMaxTotalBytes: 1024 ** 3,

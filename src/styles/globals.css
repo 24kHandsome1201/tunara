@@ -2021,6 +2021,11 @@ select:focus-visible {
 .toast-item {
   animation: toastIn var(--dur-base) var(--ease-out) both;
 }
+.toast-item[data-exiting="true"],
+[data-restored-history-notice][data-exiting="true"] {
+  animation: fadeIn var(--dur-base) var(--ease-out) reverse both;
+  pointer-events: none;
+}
 
 /* Reduced motion: useTheme writes html[data-reduce-motion] from the
    prefers-reduced-motion media query; tokens.css zeroes the motion scale

@@ -195,7 +195,8 @@ export function FileExplorer({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- home only needs resolving once per explorer
   }, [isRemote]);
-  const [currentPath, setCurrentPath] = useState(isRemote ? "" : rootDir);
+  const [currentPath, setCurrentPath] = useState(() => useUIStore.getState().explorerPaths[sessionId] ?? (isRemote ? "" : rootDir));
+  const previousCwdFollow = useRef({ rootDir, followTerminalCwd });
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -451,7 +452,7 @@ export function FileExplorer({
     if (isRemote) {
       const listingRoot = remoteExplorerListingRoot();
       setBaseDir(listingRoot);
-      const knownStart = knownRemoteExplorerRoot(rootDir);
+      const knownStart = useUIStore.getState().explorerPaths[sessionId] ?? knownRemoteExplorerRoot(rootDir);
       if (knownStart) setCurrentPath((current) => current || knownStart);
       if (remoteDisconnected) {
         setCurrentPath((current) => current || knownStart || listingRoot);
@@ -479,18 +480,28 @@ export function FileExplorer({
     }
     setHomeDir(null);
     setBaseDir(rootDir);
-    setCurrentPath(rootDir);
+    setCurrentPath(useUIStore.getState().explorerPaths[sessionId] ?? rootDir);
     // Follow-cwd applies later OSC 7 updates. Including rootDir here would
     // clear search and reset local/remote explorers on every shell cd.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, [isRemote, remotePtyId, remoteDisconnected, sessionId]);
 
   useEffect(() => {
+    // Initialization already chose the remembered directory. Only subsequent
+    // cwd/follow changes should move an explorer that the user has navigated.
+    const previous = previousCwdFollow.current;
+    previousCwdFollow.current = { rootDir, followTerminalCwd };
+    if (previous.rootDir === rootDir && previous.followTerminalCwd === followTerminalCwd) return;
     if (!isRemote || !followTerminalCwd) return;
     const knownStart = knownRemoteExplorerRoot(rootDir);
     if (!knownStart) return;
     setCurrentPath(knownStart);
   }, [rootDir, isRemote, followTerminalCwd]);
+
+  useEffect(() => {
+    if (!currentPath.startsWith("/")) return;
+    useUIStore.setState((state) => ({ explorerPaths: { ...state.explorerPaths, [sessionId]: currentPath } }));
+  }, [sessionId, currentPath]);
 
   useEffect(() => {
     if (!prefsKey || !currentPath.startsWith("/")) return;
