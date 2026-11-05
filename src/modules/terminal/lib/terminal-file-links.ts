@@ -4,6 +4,7 @@ import { openResource } from "@/modules/resources/resource-ref";
 import { t } from "@/modules/i18n";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
+import { isMac } from "@/ui/lib/platform";
 import { findTerminalDirectoryLinkMatches, findTerminalFileLinkMatches, resolveTerminalFileLinkPath } from "./terminal-file-link-parser";
 
 interface TerminalFileLinkOptions {
@@ -11,6 +12,11 @@ interface TerminalFileLinkOptions {
   shouldActivate?: (event: MouseEvent) => boolean;
   /** Returns null when the owning session is gone; the link is then ignored. */
   createResource: (path: string, line?: number, column?: number) => ResourceRef | null;
+}
+
+/** macOS turns Ctrl+click into a context-menu click, so directory links use ⌘ there. */
+export function isDirectoryLinkClick(event: Pick<MouseEvent, "button" | "metaKey" | "ctrlKey">, macOS = isMac): boolean {
+  return event.button === 0 && (macOS ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
 }
 
 /** A clicked link that cannot open (stale owner/binding, editor launch error) must say so. */
@@ -55,7 +61,7 @@ export function registerTerminalFileLinkProvider(
         },
         decorations: { pointerCursor: true, underline: true },
         activate(event) {
-          if (match.directory && (!event.ctrlKey || event.button !== 0 || term.hasSelection())) return;
+          if (match.directory && (!isDirectoryLinkClick(event) || term.hasSelection())) return;
           if (options.shouldActivate && !options.shouldActivate(event)) return;
           event.preventDefault();
           event.stopPropagation();

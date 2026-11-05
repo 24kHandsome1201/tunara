@@ -10,6 +10,10 @@ Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/
 
 ## [Unreleased]
 
+### 修复
+- macOS 上终端目录链接改为 ⌘+点击打开（Ctrl+点击在 macOS 上是右键菜单），Linux 仍为 Ctrl+点击。
+- 目录链接不再把 `and/or`、`HTTP/1.1`、`2026/11/04`、`origin/main` 等含斜杠的普通文字识别为目录；相对路径需以 `./`、`../` 开头或以 `/` 结尾。
+
 ## [3.1.3] - 2026-11-03
 
 ### 新增

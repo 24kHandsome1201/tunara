@@ -1025,6 +1025,8 @@ test("terminal directory links recognize paths without consuming URLs or file po
   for (const match of matches) assert.equal(text.slice(match.startIndex, match.endIndex), match.text);
   assert.deepEqual(findTerminalDirectoryLinkMatches("https://example.test/path file:///tmp/data src/app.ts:12:3 ordinary words"), []);
   assert.equal(findTerminalDirectoryLinkMatches("directory='/srv/my app'")[0].rawPath, "/srv/my app");
+  // Slashes in prose, protocols, dates and git refs are not directories.
+  assert.deepEqual(findTerminalDirectoryLinkMatches("read and/or write HTTP/1.1 1/2 2026/11/04 origin/main TCP/IP"), []);
 });
 
 test("terminal file links resolve relative paths from the cwd active for that line", () => {

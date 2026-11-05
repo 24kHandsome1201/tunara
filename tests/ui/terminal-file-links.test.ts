@@ -2,7 +2,7 @@ import { act, waitFor } from "@testing-library/react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 import { expect, test, vi } from "vitest";
-import { registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
+import { isDirectoryLinkClick, registerTerminalFileLinkProvider } from "@/modules/terminal/lib/terminal-file-links";
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
@@ -49,6 +49,16 @@ test("Ctrl+click uses the output line's cwd and opens its directory without chan
   expect(useUIStore.getState()).toMatchObject({ panelVisible: true, inspectorTab: "files" });
   expect(useSessionsStore.getState().activeSessionId).toBe(owner.id);
   expect(useSessionsStore.getState().sessions[0].dir).toBe("/current");
+});
+
+test("directory links use ⌘+click on macOS, where Ctrl+click is a context-menu click", () => {
+  const click = (init: MouseEventInit) => new MouseEvent("click", { button: 0, ...init });
+  expect(isDirectoryLinkClick(click({ metaKey: true }), true)).toBe(true);
+  expect(isDirectoryLinkClick(click({ ctrlKey: true }), true)).toBe(false);
+  expect(isDirectoryLinkClick(click({ ctrlKey: true }), false)).toBe(true);
+  expect(isDirectoryLinkClick(click({ metaKey: true }), false)).toBe(false);
+  expect(isDirectoryLinkClick(click({ ctrlKey: true, metaKey: true }), false)).toBe(false);
+  expect(isDirectoryLinkClick(click({ ctrlKey: true, button: 1 }), false)).toBe(false);
 });
 
 test.each(["selection", "tui"])("directory links leave %s ownership untouched", (reason) => {
