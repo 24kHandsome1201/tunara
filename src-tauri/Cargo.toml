@@ -66,7 +66,7 @@ unicode-normalization = "0.1"
 # subsystem on a russh channel. Pinned to an exact patch — russh is pre-1.0
 # and breaks across 0.x minors; even patch releases have shipped breaking
 # changes, so we lock to the reviewed 0.61.2 and bump deliberately.
-russh = "=0.61.2"
+russh = "=0.64.1"
 russh-sftp = "2.3"
 # ~/.ssh & known_hosts path resolution (XDG/home dirs).
 dirs = "6"
