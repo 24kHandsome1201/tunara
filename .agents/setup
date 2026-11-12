@@ -29,5 +29,8 @@ if ! command -v cargo >/dev/null; then
 fi
 rustup component add rustfmt clippy
 
-corepack enable --install-directory "$HOME/.local/bin"
+# Node 25+ no longer bundles corepack; orbs with a newer Node already have pnpm.
+if command -v corepack >/dev/null; then
+  corepack enable --install-directory "$HOME/.local/bin"
+fi
 pnpm install --frozen-lockfile
