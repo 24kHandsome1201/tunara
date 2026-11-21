@@ -707,6 +707,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               const typedPort = parseSshTarget(event.target.value)?.port;
               setTarget(event.target.value);
               if (typedPort !== undefined) setPort(String(typedPort));
+              else if (parsedTarget?.port !== undefined) setPort("22");
               setHighlight(-1);
               setSelectedProfile(null);
               setPassword("");

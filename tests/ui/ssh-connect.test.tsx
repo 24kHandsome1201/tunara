@@ -181,6 +181,21 @@ describe("SSH connection sheet", () => {
     expect((document.getElementById("ssh-connect-port") as HTMLInputElement).value).toBe("2222");
   });
 
+  test("connects to the default port after the typed target port is deleted", async () => {
+    mockEmptySources();
+    render(<SshConnect onClose={vi.fn()} />);
+
+    for (const value of ["deploy@lab.example:22", "deploy@lab.example:2", "deploy@lab.example:", "deploy@lab.example"]) {
+      fireEvent.change(hostInput(), { target: { value } });
+    }
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.remote).toMatchObject({ host: "lab.example", port: 22, user: "deploy" });
+  });
+
   test("locks a submitted connection so repeated activation creates only one session", async () => {
     mockEmptySources();
     const onClose = vi.fn();
