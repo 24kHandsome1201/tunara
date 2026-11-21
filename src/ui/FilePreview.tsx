@@ -285,8 +285,9 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
       );
     }
     case "ordered-list": {
+      const markerDigits = String(block.start + block.items.length - 1).length;
       return (
-        <ol style={{ paddingLeft: 16, margin: "4px 0" }}>
+        <ol start={block.start === 1 ? undefined : block.start} style={{ paddingLeft: markerDigits === 1 ? 16 : `max(16px, ${markerDigits + 1}ch)`, margin: "4px 0" }}>
           {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} findQuery={findQuery} matchCursor={matchCursor} /></li>)}
         </ol>
       );
