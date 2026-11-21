@@ -1336,16 +1336,16 @@ mod tests {
         ] {
             assert!(git(&args).status.success());
         }
-        for (branch, content) in [("main", "base\n"), ("side", "side\n"), ("main", "main\n")] {
-            if branch == "side" {
-                assert!(git(&["checkout", "-b", branch]).status.success());
-            } else if content != "base\n" {
-                assert!(git(&["checkout", branch]).status.success());
-            }
+        let write_and_commit = |content: &str| {
             std::fs::write(path.join("conflicted file.txt"), content).unwrap();
             assert!(git(&["add", "."]).status.success());
             assert!(git(&["commit", "-m", content.trim()]).status.success());
-        }
+        };
+        write_and_commit("base\n");
+        assert!(git(&["checkout", "-b", "side"]).status.success());
+        write_and_commit("side\n");
+        assert!(git(&["checkout", "main"]).status.success());
+        write_and_commit("main\n");
         assert_eq!(git(&["merge", "side"]).status.code(), Some(1));
         let output = git(&["status", "--porcelain=v2", "-z"]);
         assert!(output.status.success());
