@@ -439,6 +439,30 @@ fn observed_now() -> u64 {
         .as_millis() as u64
 }
 
+const V1_UNMERGED_XY: [&str; 7] = ["UU", "AA", "DU", "UD", "DD", "AU", "UA"];
+
+fn porcelain_v2_unmerged_path(record: &str) -> Option<&str> {
+    record
+        .strip_prefix("u ")?
+        .splitn(10, ' ')
+        .nth(9)
+        .filter(|path| !path.is_empty())
+}
+
+fn unmerged_paths(raw: &str) -> HashSet<&str> {
+    if let Some(v1) = raw.strip_prefix("TUNARA_V1\0") {
+        v1.split('\0')
+            .filter_map(|record| record.split_once(' '))
+            .filter(|(xy, path)| V1_UNMERGED_XY.contains(xy) && !path.is_empty())
+            .map(|(_, path)| path)
+            .collect()
+    } else {
+        raw.split('\0')
+            .filter_map(porcelain_v2_unmerged_path)
+            .collect()
+    }
+}
+
 fn parse_porcelain_v2(raw: &str) -> Result<(StatusResult, RemoteState), ()> {
     let mut branch = "HEAD".to_string();
     let mut oid = None;
@@ -479,11 +503,9 @@ fn parse_porcelain_v2(raw: &str) -> Result<(StatusResult, RemoteState), ()> {
             if bytes[1] != b'.' {
                 files.push(file_change(path, bytes[1] as char, "unstaged"));
             }
-        } else if let Some(fields) = record.strip_prefix("u ") {
-            if let Some(path) = fields.splitn(10, ' ').nth(9).filter(|p| !p.is_empty()) {
-                files.push(file_change(path, 'M', "staged"));
-                files.push(file_change(path, 'M', "unstaged"));
-            }
+        } else if let Some(path) = porcelain_v2_unmerged_path(record) {
+            files.push(file_change(path, 'M', "staged"));
+            files.push(file_change(path, 'M', "unstaged"));
         } else if let Some(path) = record.strip_prefix("? ") {
             files.push(file_change(path, '?', "untracked"));
         }
@@ -614,23 +636,7 @@ fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), Strin
         .filter(|(staged, unstaged)| staged.len() + unstaged.len() <= MAX_NUMSTAT_BYTES)
     {
         if let (Some(staged), Some(unstaged)) = (parse_numstat(staged), parse_numstat(unstaged)) {
-            let conflicts: HashSet<&str> = raw
-                .split('\0')
-                .filter_map(|record| {
-                    if let Some(fields) = record.strip_prefix("u ") {
-                        fields.splitn(10, ' ').nth(9)
-                    } else if raw.starts_with("TUNARA_V1\0")
-                        && matches!(
-                            record.get(..3),
-                            Some("UU " | "AA " | "DU " | "UD " | "DD " | "AU " | "UA ")
-                        )
-                    {
-                        record.get(3..)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let conflicts = unmerged_paths(raw);
             for file in &mut status.files {
                 if conflicts.contains(file.path.as_str()) {
                     continue;
@@ -1516,6 +1522,21 @@ mod tests {
             assert_eq!(status.files.len(), 3);
             assert!(status.files.iter().all(|file| (file.added, file.removed) == (0, 0)));
         }
+    }
+
+    #[test]
+    fn unmerged_paths_handles_both_porcelain_formats() {
+        let v2 = "u UU N... 100644 100644 100644 100644 a b c with spaces\tand tabs\0? untracked\0u UU\0";
+        assert_eq!(unmerged_paths(v2), HashSet::from(["with spaces\tand tabs"]));
+        for xy in ["UU", "AA", "DU", "UD", "DD", "AU", "UA"] {
+            let v1 = format!("TUNARA_V1\0## main\0{xy} with spaces\tand tabs\0 M modified\0UU \0TUNARA_META\0TUNARA_RC 0\nmain\n");
+            assert_eq!(
+                unmerged_paths(&v1),
+                HashSet::from(["with spaces\tand tabs"])
+            );
+        }
+        assert!(unmerged_paths("").is_empty());
+        assert!(unmerged_paths("u UU N... 0 0 0 0 a b c \0").is_empty());
     }
 
     #[test]
