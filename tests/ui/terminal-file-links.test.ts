@@ -231,9 +231,21 @@ test("hovering a line that wraps across the scrollback reads a bounded window of
   link.activate(new MouseEvent("click"), link.text);
   expect(createResource).toHaveBeenCalledWith("/tmp/a/b.ts", 7, 9);
   expect(new Set(getLine.mock.calls.map(([y]) => y)).size).toBeLessThan(500);
+});
 
-  // A token longer than the window is never a link, rather than a link to a cut-off path.
-  expect(linksForRow(provider(), 1500)).toEqual([]);
+const repeatRows = (count: number, text: string) => Array.from({ length: count }, () => text);
+
+test.each<[string, number, string[]]>([
+  ["file link cut by the window start", 1001, [...repeatRows(1000, "a/".repeat(10)), "b.ts:3:4 done".padEnd(20)]],
+  ["directory link cut by the window start", 1001, [...repeatRows(1000, "/a".repeat(10)), "/ done".padEnd(20)]],
+  // The window ends after "b.ts:12345", but the line goes on with "abc…", so that is not a line number.
+  ["file link cut by the window end", 1, [`see ${"a/".repeat(8)}`, ...repeatRows(205, "a/".repeat(10)), "a/a/a/a/a/b.ts:12345", ...repeatRows(10, "abcdefghij".repeat(2))]],
+  ["directory link cut by the window end", 1, [`see ${"/a".repeat(8)}`, ...repeatRows(220, "/a".repeat(10))]],
+])("a %s is not a link, since its token goes on past the window", (_name, hover, rows) => {
+  const { term, provider } = fakeWrappedTerminal(rows.map((text, row) => ({ text, isWrapped: row > 0 })));
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource: () => null });
+
+  expect(linksForRow(provider(), hover)).toEqual([]);
 });
 
 test("a cut window with quotes yields no directory link, since its quote pairing is unknown", () => {
