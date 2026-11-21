@@ -371,6 +371,8 @@
   "titlebar.window.minimize": "最小化",
   "titlebar.window.maximize": "最大化",
   "diff.title": "改动",
+  "explorer.search_unreadable_one": "已跳过 {{count}} 个无法读取的文件夹 — 结果可能不完整",
+  "explorer.search_unreadable_other": "已跳过 {{count}} 个无法读取的文件夹 — 结果可能不完整",
   "diff.summary.files_one": "1 文件",
   "diff.summary.files_other": "{{count}} 文件",
   "diff.summary.lines": "+{{added}} −{{removed}}",

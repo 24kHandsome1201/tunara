@@ -6,6 +6,7 @@ import {
   fsSearch,
   type GrepResponse,
   type SearchHit,
+  type SearchResponse,
 } from "@/modules/fs/fs-bridge";
 import {
   cancelRemoteSearch,
@@ -49,6 +50,7 @@ export interface ExplorerSearch {
   grepHits: GrepFileGroup[];
   searchLoading: boolean;
   searchError: boolean;
+  searchUnreadable: number;
   searchTruncated: boolean;
   grepTruncated: boolean;
   searchLimit: number;
@@ -78,6 +80,7 @@ export function useExplorerSearch({
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [searchUnreadable, setSearchUnreadable] = useState(0);
   const [searchRetryNonce, setSearchRetryNonce] = useState(0);
   const [searchTruncated, setSearchTruncated] = useState(false);
   const [searchMode, setSearchMode] = useState<FileSearchMode>(lastFileSearchMode);
@@ -88,6 +91,7 @@ export function useExplorerSearch({
 
   useEffect(() => {
     const q = searchQuery.trim();
+    setSearchUnreadable(0);
     if (!q || baseDir === null) {
       setSearchHits([]);
       setGrepHits([]);
@@ -124,18 +128,19 @@ export function useExplorerSearch({
     // caches per (ptyId, root, query) so backspacing doesn't re-run find/grep.
     const timer = window.setTimeout(() => {
       requestStarted = true;
-      const runSearch: Promise<SearchHit[] | GrepResponse> =
+      const runSearch: Promise<SearchResponse | GrepResponse> =
         mode === "content"
           ? isRemote && remotePtyId !== undefined
             ? sshGrep(remotePtyId, baseDir, q, searchLimit)
             : fsGrep(q, baseDir, { requestId: localGrepRequestId!, caseInsensitive: false, maxResults: searchLimit })
           : isRemote && remotePtyId !== undefined
-            ? sshSearch(remotePtyId, baseDir, q, searchLimit)
+            ? sshSearch(remotePtyId, baseDir, q, searchLimit).then((hits) => ({ hits, unreadable: 0 }))
             : fsSearch(baseDir, q, searchLimit, includeHidden);
       runSearch
         .then((result) => {
           requestSettled = true;
           if (!searchGen.isCurrent(token)) return;
+          setSearchUnreadable(isRemote ? 0 : result.unreadable ?? 0);
           if (mode === "content") {
             const resp = result as GrepResponse;
             setGrepHits(groupGrepHitsByFile(resp.hits));
@@ -143,7 +148,7 @@ export function useExplorerSearch({
             setSearchHits([]);
             setSearchTruncated(false);
           } else {
-            const hits = result as SearchHit[];
+            const { hits } = result as SearchResponse;
             setSearchHits(hits);
             // fs_search/ssh_fs_search cap results at searchLimit without a
             // truncated flag, so infer truncation from hitting the cap exactly.
@@ -217,6 +222,7 @@ export function useExplorerSearch({
     grepHits,
     searchLoading,
     searchError,
+    searchUnreadable,
     searchTruncated,
     grepTruncated,
     searchLimit,

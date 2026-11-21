@@ -14,6 +14,11 @@ export interface SearchHit {
   isDir: boolean;
 }
 
+export interface SearchResponse {
+  hits: SearchHit[];
+  unreadable: number;
+}
+
 let nextLocalNameSearchRequest = 0;
 let activeLocalNameSearchRequestId: string | null = null;
 
@@ -75,13 +80,13 @@ export function fsSearch(
   query: string,
   limit = 80,
   includeHidden = false,
-): Promise<SearchHit[]> {
+): Promise<SearchResponse> {
   if (activeLocalNameSearchRequestId) {
     void cancelSearchRequest(activeLocalNameSearchRequestId).catch(() => {});
   }
   const requestId = createLocalNameSearchRequestId();
   activeLocalNameSearchRequestId = requestId;
-  return invoke<SearchHit[]>("fs_search", { root, query, limit, includeHidden, requestId })
+  return invoke<SearchResponse>("fs_search", { root, query, limit, includeHidden, requestId })
     .finally(() => {
       if (activeLocalNameSearchRequestId === requestId) {
         activeLocalNameSearchRequestId = null;
@@ -115,6 +120,8 @@ export interface GrepResponse {
   hits: GrepHit[];
   truncated: boolean;
   filesScanned: number;
+  /** Remote search omits this count. */
+  unreadable?: number;
 }
 
 export function fsGrep(
