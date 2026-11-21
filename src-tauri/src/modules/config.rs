@@ -20,6 +20,9 @@ static CONFIG_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AppearanceConfig {
+    pub download_max_files: u32,
+    pub download_max_file_bytes: u64,
+    pub download_max_total_bytes: u64,
     pub theme: String,
     pub accent: String,
     pub cursor_style: String,
@@ -49,6 +52,9 @@ pub struct AppearanceConfig {
 impl Default for AppearanceConfig {
     fn default() -> Self {
         Self {
+            download_max_files: 100,
+            download_max_file_bytes: 100 * 1024 * 1024,
+            download_max_total_bytes: 1024_u64.pow(3),
             theme: "light".into(),
             accent: "#c2683c".into(),
             cursor_style: "bar".into(),
@@ -84,6 +90,13 @@ impl Default for AppearanceConfig {
 
 impl AppearanceConfig {
     fn clamp(&mut self) {
+        self.download_max_files = self.download_max_files.clamp(1, 10_000);
+        self.download_max_file_bytes = self
+            .download_max_file_bytes
+            .clamp(1024_u64.pow(2), 1024_u64.pow(3));
+        self.download_max_total_bytes = self
+            .download_max_total_bytes
+            .clamp(1024_u64.pow(3), 10 * 1024_u64.pow(3));
         if !matches!(
             self.terminal_host_modifier.as_str(),
             "shift" | "meta" | "alt"
@@ -313,8 +326,20 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 24] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 27] {
     [
+        (
+            "download_max_files",
+            value(i64::from(config.download_max_files)),
+        ),
+        (
+            "download_max_file_bytes",
+            value(config.download_max_file_bytes as i64),
+        ),
+        (
+            "download_max_total_bytes",
+            value(config.download_max_total_bytes as i64),
+        ),
         ("theme", value(config.theme.clone())),
         ("accent", value(config.accent.clone())),
         ("cursor_style", value(config.cursor_style.clone())),
@@ -751,6 +776,41 @@ font_size = 15
         assert!(saved.contains("[terminal_interactions]"));
         assert!(saved.contains("secondary_click = \"smart\""));
 
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
+    }
+
+    #[test]
+    fn download_limits_round_trip_and_clamp() {
+        let path = temp_config_path("download-limits");
+        let mut config = TunaraConfig::default();
+        config.appearance.download_max_files = 250;
+        config.appearance.download_max_file_bytes = 200 * 1024 * 1024;
+        config.appearance.download_max_total_bytes = 2 * 1024_u64.pow(3);
+        write_config(&path, &config).expect("save limits");
+        let loaded = load_config_from_path(&path).expect("load limits");
+        assert_eq!(loaded.config.appearance.download_max_files, 250);
+        assert_eq!(
+            loaded.config.appearance.download_max_file_bytes,
+            200 * 1024 * 1024
+        );
+        assert_eq!(
+            loaded.config.appearance.download_max_total_bytes,
+            2 * 1024_u64.pow(3)
+        );
+        config.appearance.download_max_files = 0;
+        config.appearance.download_max_file_bytes = 0;
+        config.appearance.download_max_total_bytes = u64::MAX;
+        write_config(&path, &config).expect("save clamped limits");
+        let loaded = load_config_from_path(&path).expect("load clamped limits");
+        assert_eq!(loaded.config.appearance.download_max_files, 1);
+        assert_eq!(
+            loaded.config.appearance.download_max_file_bytes,
+            1024_u64.pow(2)
+        );
+        assert_eq!(
+            loaded.config.appearance.download_max_total_bytes,
+            10 * 1024_u64.pow(3)
+        );
         let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap_or(&path));
     }
 

@@ -52,6 +52,9 @@ export type MainSurface = "terminal" | "ssh-hosts";
 export type { SplitState } from "@/modules/session/split-layout";
 
 export interface AppearanceSettings {
+  downloadMaxFiles: number;
+  downloadMaxFileBytes: number;
+  downloadMaxTotalBytes: number;
   theme: ThemeType;
   accent: string;
   cursorStyle: CursorStyle;
@@ -92,6 +95,9 @@ export function sanitizeBackgroundOpacity(raw: unknown): number {
 }
 
 export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
+  downloadMaxFiles: 100,
+  downloadMaxFileBytes: 100 * 1024 ** 2,
+  downloadMaxTotalBytes: 1024 ** 3,
   theme: "light",
   accent: DEFAULT_ACCENT,
   cursorStyle: "bar",
@@ -161,6 +167,9 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
   const raw = config?.appearance;
   return {
     ...DEFAULT_SETTINGS,
+    downloadMaxFiles: Math.floor(clampNumber(raw?.download_max_files, 1, 10_000, DEFAULT_SETTINGS.downloadMaxFiles)),
+    downloadMaxFileBytes: Math.floor(clampNumber(raw?.download_max_file_bytes, 1024 ** 2, 1024 ** 3, DEFAULT_SETTINGS.downloadMaxFileBytes)),
+    downloadMaxTotalBytes: Math.floor(clampNumber(raw?.download_max_total_bytes, 1024 ** 3, 10 * 1024 ** 3, DEFAULT_SETTINGS.downloadMaxTotalBytes)),
     theme: sanitizeTheme(raw?.theme, raw?.terminal_theme),
     cursorStyle: isCursorStyle(raw?.cursor_style) ? raw.cursor_style : DEFAULT_SETTINGS.cursorStyle,
     cursorBlink: typeof raw?.cursor_blink === "boolean" ? raw.cursor_blink : DEFAULT_SETTINGS.cursorBlink,
@@ -188,6 +197,9 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
 function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
   return {
     appearance: {
+      download_max_files: s.downloadMaxFiles,
+      download_max_file_bytes: s.downloadMaxFileBytes,
+      download_max_total_bytes: s.downloadMaxTotalBytes,
       theme: s.theme,
       accent: s.accent,
       cursor_style: s.cursorStyle,
@@ -325,9 +337,6 @@ interface UIState extends AppearanceSettings {
   explorerFollowCwd: boolean;
   /** Last browsed directory per session; survives Inspector tab unmounts, not app restarts. */
   explorerPaths: Record<string, string>;
-  downloadMaxFiles: number;
-  downloadMaxFileBytes: number;
-  downloadMaxTotalBytes: number;
 
   showTerminal: () => void;
   openSshHosts: () => void;
@@ -430,9 +439,6 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: {},
     explorerFollowCwd: true,
     explorerPaths: {},
-    downloadMaxFiles: 100,
-    downloadMaxFileBytes: 100 * 1024 * 1024,
-    downloadMaxTotalBytes: 1024 ** 3,
     ...DEFAULT_SETTINGS,
 
     showTerminal: () => set({ mainSurface: "terminal" }),
@@ -706,7 +712,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "terminalOptionAsMeta", "terminalRenderer", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["downloadMaxFiles", "downloadMaxFileBytes", "downloadMaxTotalBytes", "theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "terminalOptionAsMeta", "terminalRenderer", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

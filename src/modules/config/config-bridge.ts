@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface RawAppearanceConfig {
+  download_max_files: number;
+  download_max_file_bytes: number;
+  download_max_total_bytes: number;
   theme: string;
   accent: string;
   cursor_style: string;

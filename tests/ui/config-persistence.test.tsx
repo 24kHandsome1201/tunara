@@ -5,11 +5,53 @@ import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { expect, test, vi } from "vitest";
 import { t } from "@/modules/i18n";
-import { DEFAULT_SETTINGS, loadUserConfig, useUIStore } from "@/state/ui";
+import { DEFAULT_SETTINGS, flushUserConfig, loadUserConfig, useUIStore } from "@/state/ui";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { useTerminalRuntimeSync } from "@/ui/useTerminalRuntimeSync";
 import type { ThemeType } from "@/ui/types";
+import type { RawTunaraConfig } from "@/modules/config/config-bridge";
+
+test("download limits survive a config restart", async () => {
+  let stored: RawTunaraConfig | undefined;
+  mockIPC((command, payload) => {
+    if (command === "load_config") return { path: "/tmp/tunara-config.toml", config: stored, error: null };
+    if (command === "save_config") {
+      stored = structuredClone((payload as { config: RawTunaraConfig }).config);
+      return undefined;
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
+  useUIStore.setState({ configLoaded: false });
+  await loadUserConfig();
+  try {
+    useUIStore.getState().setDownloadLimits({ maxFiles: 250, maxFileBytes: 200 * 1024 ** 2, maxTotalBytes: 2 * 1024 ** 3 });
+    await waitFor(() => expect(stored).toMatchObject({ appearance: { download_max_files: 250, download_max_file_bytes: 200 * 1024 ** 2, download_max_total_bytes: 2 * 1024 ** 3 } }));
+    await expect(flushUserConfig()).resolves.toBe(true);
+    useUIStore.setState({ configLoaded: false, downloadMaxFiles: 100, downloadMaxFileBytes: 100 * 1024 ** 2, downloadMaxTotalBytes: 1024 ** 3 });
+    await loadUserConfig();
+    expect(useUIStore.getState()).toMatchObject({
+      downloadMaxFiles: 250,
+      downloadMaxFileBytes: 200 * 1024 ** 2,
+      downloadMaxTotalBytes: 2 * 1024 ** 3,
+    });
+  } finally {
+    useUIStore.setState({ configLoaded: false });
+  }
+});
+
+test.each([
+  [undefined, 100, 100 * 1024 ** 2, 1024 ** 3],
+  [{ download_max_files: -1, download_max_file_bytes: 0, download_max_total_bytes: 0 }, 1, 1024 ** 2, 1024 ** 3],
+  [{ download_max_files: 20_000, download_max_file_bytes: 2 * 1024 ** 3, download_max_total_bytes: 20 * 1024 ** 3 }, 10_000, 1024 ** 3, 10 * 1024 ** 3],
+  [{ download_max_files: "bad", download_max_file_bytes: NaN, download_max_total_bytes: Infinity }, 100, 100 * 1024 ** 2, 1024 ** 3],
+])("download limits load with defaults and bounds (%j)", async (appearance, files, fileBytes, totalBytes) => {
+  mockIPC(() => ({ path: "/tmp/tunara-config.toml", config: { appearance }, error: null }));
+  useUIStore.setState({ configLoaded: false });
+  await loadUserConfig();
+  expect(useUIStore.getState()).toMatchObject({ downloadMaxFiles: files, downloadMaxFileBytes: fileBytes, downloadMaxTotalBytes: totalBytes });
+  useUIStore.setState({ configLoaded: false });
+});
 
 function ScreenReaderRuntimeHarness({ enabled, terminal, theme = "light" }: { enabled: boolean; terminal: Terminal; theme?: ThemeType }) {
   const termRef = useRef<Terminal | null>(terminal);
