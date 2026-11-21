@@ -575,10 +575,11 @@ describe("FileExplorer workspace files", () => {
   });
 
   test.each([
-    { folder: "/srv/app", generation: "current", refreshes: true },
-    { folder: "/srv/app/other", generation: "current", refreshes: false },
-    { folder: "/srv/app", generation: "previous", refreshes: false },
-  ])("refreshes Files only for a completed upload in its folder and transport ($folder, $generation)", async ({ folder, generation, refreshes }) => {
+    { folder: "/srv/app", generation: "current", openFolder: false, refreshes: true },
+    { folder: "/srv/app", generation: "current", openFolder: true, refreshes: true },
+    { folder: "/srv/app/other", generation: "current", openFolder: false, refreshes: false },
+    { folder: "/srv/app", generation: "previous", openFolder: false, refreshes: false },
+  ])("refreshes Files only for a completed upload in its folder and transport ($folder, $generation, expanded=$openFolder)", async ({ folder, generation, openFolder, refreshes }) => {
     useTransferStore.getState().replaceItemsForTest([]);
     let reads = 0;
     let uploaded = false;
@@ -589,20 +590,30 @@ describe("FileExplorer workspace files", () => {
         resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
       };
     });
-    mockIPC((command) => {
+    mockIPC((command, payload) => {
       if (command === "ssh_fs_home") return "/home/alice";
       if (command === "ssh_fs_read_dir") {
         reads += 1;
-        return uploaded && folder === "/srv/app"
-          ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }]
-          : [];
+        if ((payload as { path: string }).path === "/srv/app/docs") {
+          return [{ name: "guide.txt", kind: "file", size: 2, mtime: 0 }];
+        }
+        return [
+          ...(openFolder ? [{ name: "docs", kind: "dir", size: 0, mtime: 0 }] : []),
+          ...(uploaded && folder === "/srv/app" ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
+        ];
       }
       if (command === "ssh_transfer_upload") return upload;
       throw new Error(`unexpected command: ${command}`);
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
-    await screen.findByText("Directory is empty");
+    if (openFolder) {
+      const docs = await screen.findByRole("treeitem", { name: /^docs/ });
+      fireEvent.keyDown(docs, { key: "ArrowRight" });
+      await screen.findByRole("treeitem", { name: /^guide\.txt/ });
+    } else {
+      await screen.findByText("Directory is empty");
+    }
     const initialReads = reads;
     const transferId = useTransferStore.getState().enqueue({
       binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: generation },
@@ -619,6 +630,7 @@ describe("FileExplorer workspace files", () => {
     expect(status()).toBe("completed");
     if (refreshes) expect(await screen.findByRole("treeitem", { name: /report\.txt/ })).toBeTruthy();
     else expect(screen.getByText("Directory is empty")).toBeTruthy();
+    if (openFolder) expect(screen.getByRole("treeitem", { name: /^guide\.txt/ })).toBeTruthy();
     expect(reads).toBe(initialReads + Number(refreshes));
   });
 
