@@ -202,6 +202,59 @@ describe("SSH connection sheet", () => {
     expect(sessions[sessions.length - 1].remote).toMatchObject({ host: "2001:db8::1", port: 2200 });
   });
 
+  test.each([
+    ["deploy@lab.example", true, 2200],
+    ["deploy@lab.example", false, 2222],
+    ["Lab", true, 2200],
+    ["Lab", false, 2222],
+  ] as const)("connects %s with edited Port=%s on %s", async (target, edited, expectedPort) => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [{ id: "lab", label: "Lab", host: "lab.example", port: 2222, user: "deploy", auth_method: "agent", identity_file: "" }];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+    fireEvent.change(hostInput(), { target: { value: target } });
+    openAdvanced();
+    if (edited) fireEvent.change(document.getElementById("ssh-connect-port")!, { target: { value: "2200" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "lab.example", user: "deploy", port: expectedPort });
+  });
+
+  test("uses an edited Port for a portless target without a saved profile", async () => {
+    mockEmptySources();
+    render(<SshConnect onClose={vi.fn()} />);
+    fireEvent.change(hostInput(), { target: { value: "deploy@lab.example" } });
+    openAdvanced();
+    fireEvent.change(document.getElementById("ssh-connect-port")!, { target: { value: "2200" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+    expect(useSessionsStore.getState().sessions[0].remote?.port).toBe(2200);
+  });
+
+  test("picking a suggestion replaces an edited Port without counting as an edit", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "lab", label: "Lab", host: "lab.example", port: 2222, user: "deploy", auth_method: "agent", identity_file: "" },
+        { id: "other", label: "Other", host: "other.example", port: 3333, user: "deploy", auth_method: "agent", identity_file: "" },
+      ];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
+    fireEvent.change(document.getElementById("ssh-connect-port")!, { target: { value: "2200" } });
+    const lab = await within(screen.getByRole("listbox")).findByRole("option", { name: /Lab/ });
+    fireEvent.click(within(lab).getByRole("button", { name: /Lab/ }));
+    expect((document.getElementById("ssh-connect-port") as HTMLInputElement).value).toBe("2222");
+    fireEvent.change(hostInput(), { target: { value: "Other" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "other.example", port: 3333 });
+  });
+
   test("shows a port typed in the target in the Port field", () => {
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);
