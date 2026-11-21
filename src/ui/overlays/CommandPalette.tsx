@@ -720,9 +720,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const filtered = filterCommandPaletteItems(commands, parsedQuery);
   const allRanked = rankCommandPaletteItems(filtered, parsedQuery, usage);
   const sectionOrder = PALETTE_SECTION_KEYS.map((key) => t(`palette.section.${key}`));
-  const ranked = query.trim()
-    ? allRanked
-    : orderPaletteCommands(allRanked, sectionOrder);
+  const ranked = orderPaletteCommands(allRanked, query.trim() ? [] : sectionOrder);
 
   useEffect(() => {
     setSelectedIndex(0);
