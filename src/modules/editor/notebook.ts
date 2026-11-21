@@ -1,3 +1,5 @@
+import { stripTerminalControlSequences } from "../terminal/lib/terminal-utils.ts";
+
 export type NotebookOutput =
   | { kind: "text"; text: string }
   | { kind: "error"; name: string; value: string; traceback: string[] }
@@ -36,21 +38,21 @@ function parseOutput(value: unknown): NotebookOutput | null {
   const output = record(value);
   if (!output || typeof output.output_type !== "string") return null;
   if (output.output_type === "stream") {
-    return { kind: "text", text: sourceText(output.text) };
+    return { kind: "text", text: stripTerminalControlSequences(sourceText(output.text)) };
   }
   if (output.output_type === "error") {
     return {
       kind: "error",
-      name: typeof output.ename === "string" ? output.ename : "Error",
-      value: typeof output.evalue === "string" ? output.evalue : "",
+      name: typeof output.ename === "string" ? stripTerminalControlSequences(output.ename) : "Error",
+      value: typeof output.evalue === "string" ? stripTerminalControlSequences(output.evalue) : "",
       traceback: Array.isArray(output.traceback)
-        ? output.traceback.filter((line): line is string => typeof line === "string")
+        ? output.traceback.filter((line): line is string => typeof line === "string").map(stripTerminalControlSequences)
         : [],
     };
   }
   if (output.output_type === "execute_result" || output.output_type === "display_data") {
     const data = record(output.data);
-    const plain = sourceText(data?.["text/plain"]);
+    const plain = stripTerminalControlSequences(sourceText(data?.["text/plain"]));
     return plain ? { kind: "text", text: plain } : { kind: "omitted" };
   }
   return null;
