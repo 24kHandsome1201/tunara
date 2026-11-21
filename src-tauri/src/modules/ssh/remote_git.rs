@@ -604,7 +604,7 @@ fn cached_snapshot_response(
 fn remote_status_command(cwd: &str) -> Result<String, String> {
     let cwd = remote_git_cwd(cwd)?;
     let status = format!("git -C {cwd} status --porcelain=v2 --branch --no-renames -z || {{ printf 'TUNARA_V1\\0'; git -C {cwd} status --porcelain=v1 --branch --no-renames -z; rc=$?; printf 'TUNARA_META\\0TUNARA_RC %s\\n' \"$rc\"; git -C {cwd} symbolic-ref --short HEAD 2>/dev/null || git -C {cwd} rev-parse HEAD 2>/dev/null || true; git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null || true; }}");
-    Ok(format!("{status}; printf '\\0TUNARA_NUMSTAT\\0'; git -C {cwd} diff --cached --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_UNSTAGED\\0'; git -C {cwd} diff --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_NUMSTAT_END\\0'"))
+    Ok(format!("{status}; printf '\\0TUNARA_NUMSTAT\\0'; git -c diff.relative=false -C {cwd} diff --cached --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_UNSTAGED\\0'; git -c diff.relative=false -C {cwd} diff --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_NUMSTAT_END\\0'"))
 }
 
 fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), String> {
@@ -1459,6 +1459,62 @@ mod tests {
     impl Drop for SnapshotTestRepo {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn snapshot_subdirectory_counts_ignore_diff_relative() {
+        let repo = SnapshotTestRepo::new();
+        std::fs::create_dir(repo.0.join("sub dir")).unwrap();
+        for path in ["same.txt", "sub dir/same.txt"] {
+            std::fs::write(repo.0.join(path), "old\n").unwrap();
+        }
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "base"]);
+        repo.git(&["config", "diff.relative", "true"]);
+        std::fs::write(repo.0.join("same.txt"), "root one\nroot two\n").unwrap();
+        std::fs::write(
+            repo.0.join("sub dir/same.txt"),
+            "sub one\nsub two\nsub three\n",
+        )
+        .unwrap();
+        repo.git(&["add", "."]);
+        std::fs::write(repo.0.join("same.txt"), "root final\n").unwrap();
+        std::fs::write(repo.0.join("sub dir/same.txt"), "sub final\nsub extra\n").unwrap();
+
+        let command = remote_status_command(repo.0.join("sub dir").to_str().unwrap()).unwrap();
+        let output = std::process::Command::new("sh")
+            .args(["-c", &command])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let (status, _) =
+            parse_status_snapshot(&String::from_utf8(output.stdout).unwrap()).unwrap();
+        assert_eq!(status.files.len(), 4);
+        for (args, stage) in [
+            (
+                vec!["diff", "--cached", "--numstat", "--no-renames", "-z"],
+                "staged",
+            ),
+            (vec!["diff", "--numstat", "--no-renames", "-z"], "unstaged"),
+        ] {
+            let expected = repo.git(&args);
+            let records = expected.split_terminator('\0').collect::<Vec<_>>();
+            assert_eq!(records.len(), 2);
+            for record in records {
+                let fields = record.splitn(3, '\t').collect::<Vec<_>>();
+                let file = status
+                    .files
+                    .iter()
+                    .find(|file| file.path == fields[2] && file.stage == stage)
+                    .unwrap();
+                let counts = (
+                    fields[0].parse::<usize>().unwrap(),
+                    fields[1].parse::<usize>().unwrap(),
+                );
+                assert_eq!((file.added, file.removed), counts, "{stage}: {}", file.path);
+                println!("{stage}: {} +{} -{}", file.path, file.added, file.removed);
+            }
         }
     }
 
