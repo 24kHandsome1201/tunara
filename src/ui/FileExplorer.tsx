@@ -116,7 +116,16 @@ export function FileExplorer({
   const storedPrefs = useSessionsStore((state) => (prefsKey ? state.hostFilePrefs[prefsKey] : undefined));
   const hostPrefs = storedPrefs ?? emptyHostFilePrefs();
   const followTerminalCwd = isRemote && hostPrefs.followTerminalCwd;
-  const directUpload = useDirectUpload({ sessionId, remotePtyId, t, onUploaded: () => refresh() });
+  const [reloadKey, setReloadKey] = useState(0);
+  const refresh = useCallback(() => {
+    if (remoteDisconnected) return;
+    // Remote search has its own cache, so reloading the listing is not enough.
+    if (isRemote && remotePtyId !== undefined) {
+      invalidateRemoteSearchCache(remotePtyId);
+    }
+    setReloadKey((n) => n + 1);
+  }, [isRemote, remoteDisconnected, remotePtyId]);
+  const directUpload = useDirectUpload({ sessionId, remotePtyId, t, onUploaded: refresh });
   const { upload, transferAnnouncement } = directUpload;
   const downloadChooserPendingRef = useRef<object | null>(null);
   const [selectedDownloads, setSelectedDownloads] = useState<Map<string, BatchDownloadSource>>(() => new Map());
@@ -220,7 +229,6 @@ export function FileExplorer({
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
   const searchRoot = remoteExplorerSearchRoot(currentPath, isRemote ? homeDir : baseDir);
   const search = useExplorerSearch({ baseDir: searchRoot, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected });
@@ -336,6 +344,20 @@ export function FileExplorer({
     ? { logicalSessionId: sessionId, physicalPtyId: remotePtyId, transportGeneration }
     : null, [isRemote, remotePtyId, sessionId, transportGeneration]);
   useEffect(() => () => { downloadChooserPendingRef.current = null; }, [binding]);
+  useLayoutEffect(() => {
+    if (!binding || !currentPath.startsWith("/")) return;
+    const directory = currentPath.replace(/\/+$/, "") || "/";
+    return useTransferStore.subscribe((state, previous) => {
+      const upload = state.lastCompletedUpload;
+      if (upload && upload !== previous.lastCompletedUpload
+        && upload.binding.logicalSessionId === binding.logicalSessionId
+        && upload.binding.physicalPtyId === binding.physicalPtyId
+        && upload.binding.transportGeneration === binding.transportGeneration
+        && parentPath(upload.destination) === directory) {
+        refresh();
+      }
+    });
+  }, [binding, currentPath, refresh]);
   const activeTransferNotice = useTransferStore((s) =>
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
@@ -670,17 +692,6 @@ export function FileExplorer({
     target.focus({ preventScroll: true });
     setPendingListingFocus(null);
   }, [listingSlice.first, listingSlice.last, pendingListingFocus, rovingFocusPath]);
-
-  function refresh() {
-    if (remoteDisconnected) return;
-    // Drop the remote search cache so Refresh actually re-runs ssh_fs_search
-    // instead of returning the cached (now-stale) hits while the directory
-    // listing reloads — otherwise Refresh is a no-op for remote search.
-    if (isRemote && remotePtyId !== undefined) {
-      invalidateRemoteSearchCache(remotePtyId);
-    }
-    setReloadKey((n) => n + 1);
-  }
 
   function goUp() {
     setNavDir("out");

@@ -40,6 +40,7 @@ export interface TransferState {
   readonly idsByBatch: ReadonlyMap<string, ReadonlySet<string>>; readonly idsBySession: ReadonlyMap<string, ReadonlySet<string>>;
   readonly aggregateByBatch: ReadonlyMap<string, TransferAggregate>; readonly aggregateBySession: ReadonlyMap<string, TransferAggregate>;
   revision: number; orderRevision: number;
+  lastCompletedUpload: Pick<TransferItem, "binding" | "destination"> | null;
   materializeItems(): TransferItem[];
   /** Explicit fixture/import boundary; product code must use enqueue. */
   replaceItemsForTest(items: readonly TransferItem[]): void;
@@ -106,9 +107,13 @@ export function createTransferStore(run: Runner = defaultRunner) {
   const metrics = { publications: 0, pumpRuns: 0, pumpCandidates: 0 };
   const useStore = create<TransferState>((set, get) => {
     const bindingKey = (binding: SessionBindingV1) => `${binding.logicalSessionId}\0${binding.physicalPtyId}\0${binding.transportGeneration}`;
-    const publish = (order?: string[]) => {
+    const publish = (order?: string[], completedUpload?: TransferState["lastCompletedUpload"]) => {
       metrics.publications++; recordFrontendPerf("transferStoreWrites");
-      set((state) => ({ ...(order ? { order, orderRevision: state.orderRevision + 1 } : {}), revision: state.revision + 1 }));
+      set((state) => ({
+        ...(order ? { order, orderRevision: state.orderRevision + 1 } : {}),
+        ...(completedUpload ? { lastCompletedUpload: completedUpload } : {}),
+        revision: state.revision + 1,
+      }));
     };
     const adjustAggregate = (map: Map<string, TransferAggregate>, key: string, previous?: TransferItem, next?: TransferItem) => {
       const value = { ...(map.get(key) ?? emptyAggregate()) };
@@ -162,7 +167,10 @@ export function createTransferStore(run: Runner = defaultRunner) {
         if (historyIndex >= 0) previousHistory.splice(historyIndex, 1);
         const order = [...get().order];
         boundTerminal(next, order);
-        publish(order.length !== get().order.length ? order : undefined);
+        const completedUpload = next.direction === "upload" && next.status === "completed"
+          ? { binding: next.binding, destination: next.destination }
+          : undefined;
+        publish(order.length !== get().order.length ? order : undefined, completedUpload);
       } else publish();
       return true;
     };
@@ -209,7 +217,7 @@ export function createTransferStore(run: Runner = defaultRunner) {
     };
     return {
       itemsById, order: [], queuedIds, idsByBatch, idsBySession, aggregateByBatch, aggregateBySession, testMetrics: metrics,
-      revision: 0, orderRevision: 0, recoveries: [], journalLoaded: false, enqueue,
+      revision: 0, orderRevision: 0, lastCompletedUpload: null, recoveries: [], journalLoaded: false, enqueue,
       materializeItems: () => get().order.flatMap((transferId) => { const item = itemsById.get(transferId); return item ? [item] : []; }),
       replaceItemsForTest: (items) => {
         itemsById.clear(); queuedIds.clear(); runningIds.clear(); idsByBatch.clear(); idsBySession.clear(); aggregateByBatch.clear(); aggregateBySession.clear(); runningByBinding.clear(); resolvedHistory.length = 0; unresolvedHistory.length = 0; runningGlobal = 0;
