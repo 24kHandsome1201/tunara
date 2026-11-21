@@ -760,6 +760,7 @@
   "preview.siblings.next": "此文件夹中的下一个文件",
   "preview.table.caption": "只读 {{kind}} 表",
   "preview.table.truncated": "显示 {{shown}} / {{total}} 行",
+  "preview.table.truncated_columns": "显示 {{shown}} / {{total}} 列",
   "preview.markdown.toc": "文档目录",
   "preview.markdown.toc_count": "文档目录（{{count}}）",
   "preview.markdown.table": "可横向滚动的数据表格",

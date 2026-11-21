@@ -10,6 +10,7 @@ export interface TabularPreview {
   rows: string[][];
   truncated: boolean;
   rowCount: number;
+  columnCount: number;
 }
 
 export function tabularKindFromName(fileName: string): TabularKind | null {
@@ -41,19 +42,20 @@ function finishTable(kind: TabularKind, columns: string[], rows: string[][], tot
     rows: rows.map((row) => row.slice(0, MAX_COLUMNS)),
     truncated: totalRows > rows.length || columns.length > MAX_COLUMNS,
     rowCount: totalRows,
+    columnCount: columns.length,
   };
 }
 
 function tableFromObjects(kind: TabularKind, records: Record<string, unknown>[]): TabularPreview {
-  const columns: string[] = [];
+  const keys = new Set<string>();
   for (const record of records) {
     for (const key of Object.keys(record)) {
-      if (!columns.includes(key)) columns.push(key);
-      if (columns.length >= MAX_COLUMNS) break;
+      keys.add(key);
     }
-    if (columns.length >= MAX_COLUMNS) break;
   }
-  const rows = records.slice(0, MAX_ROWS).map((record) => columns.map((column) => asCell(record[column])));
+  const columns = [...keys];
+  const visibleColumns = columns.slice(0, MAX_COLUMNS);
+  const rows = records.slice(0, MAX_ROWS).map((record) => visibleColumns.map((column) => asCell(record[column])));
   return finishTable(kind, columns.length ? columns : ["value"], rows, records.length);
 }
 
@@ -135,7 +137,6 @@ export function parseJsonTable(content: string): TabularPreview | null {
       } catch {
         return null;
       }
-      if (records.length > MAX_ROWS) break;
     }
     return records.length > 0 ? tableFromObjects("json", records) : null;
   }

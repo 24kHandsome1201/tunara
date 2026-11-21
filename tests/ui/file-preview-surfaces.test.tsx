@@ -17,6 +17,7 @@ describe("file preview surface tints", () => {
       ],
       truncated: false,
       rowCount: 3,
+      columnCount: 2,
     };
 
     const { container } = render(<TabularTable table={table} />);
@@ -32,6 +33,25 @@ describe("file preview surface tints", () => {
     expect(firstRow[0].className).toBe("");
     expect(firstRow[1].className).toContain("tabular-cell--numeric");
     expect(firstRow[1].textContent).toBe("1");
+  });
+
+  test.each([
+    [300, 2, "Read-only JSON table · Showing 200 of 300 rows"],
+    [200, 55, "Read-only JSON table · Showing 40 of 55 columns"],
+    [300, 55, "Read-only JSON table · Showing 200 of 300 rows · Showing 40 of 55 columns"],
+    [200, 2, "Read-only JSON table"],
+    [0, 2, "Read-only JSON table"],
+  ])("caption reports hidden dimensions (%i rows, %i columns)", (rowCount, columnCount, caption) => {
+    const table: TabularPreview = {
+      kind: "json",
+      columns: Array.from({ length: Math.min(columnCount, 40) }, (_, i) => `key${i}`),
+      rows: Array.from({ length: Math.min(rowCount, 200) }, () => []),
+      rowCount,
+      columnCount,
+      truncated: rowCount > 200 || columnCount > 40,
+    };
+    const { container } = render(<TabularTable table={table} />);
+    expect(container.querySelector("caption")?.textContent).toBe(caption);
   });
 
   test("NotebookPreview distinguishes markdown, code, and error cells", () => {
