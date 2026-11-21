@@ -1451,11 +1451,11 @@ pub async fn ssh_remote_forward_stop(
         let (generation, host, port, cancel, completed) =
             with_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Remote, |rule| {
                 let RuleView::Remote(view) = &rule.view else {
-                    return Err("forward rule does not belong to this SSH binding");
+                    return Err("forward rule does not belong to this SSH binding".to_string());
                 };
                 Ok((
                     rule.generation.clone(),
-                    view.remote_bind_host.clone(),
+                    parse_bind(&view.remote_bind_host)?.to_string(),
                     view.remote_port,
                     rule.cancel.clone(),
                     rule.completed.clone(),
