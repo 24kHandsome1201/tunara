@@ -760,6 +760,7 @@
   "preview.siblings.next": "Next file in this folder",
   "preview.table.caption": "Read-only {{kind}} table",
   "preview.table.truncated": "Showing {{shown}} of {{total}} rows",
+  "preview.table.truncated_columns": "Showing {{shown}} of {{total}} columns",
   "preview.markdown.toc": "On this page",
   "preview.markdown.toc_count": "On this page ({{count}})",
   "preview.markdown.table": "Scrollable data table",

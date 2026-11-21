@@ -80,3 +80,30 @@ test("tabular preview stays text-only for json and csv", () => {
   assert.deepEqual(csv?.rows[0], ["1", "quoted,value"]);
   assert.equal(parseTabularPreview("notes.md", "a,b"), null);
 });
+
+test("tabular preview counts columns beyond the display limit across all objects", () => {
+  const record = Object.fromEntries(Array.from({ length: 55 }, (_, i) => [`key${i}`, i]));
+  const table = parseTabularPreview("wide.json", JSON.stringify([record, { later: true }]));
+  assert.equal(table.columnCount, 56);
+  assert.equal(table.columns.length, 40);
+  assert.equal(table.rows[0].length, 40);
+  assert.equal(table.rowCount, 2);
+  assert.equal(table.truncated, true);
+});
+
+test("JSONL counts every nonblank record and validates records beyond the display limit", () => {
+  const content = Array.from({ length: 300 }, (_, i) => JSON.stringify({ id: i })).join("\n\n");
+  const table = parseTabularPreview("records.jsonl", content);
+  assert.equal(table.rowCount, 300);
+  assert.equal(table.rows.length, 200);
+  assert.equal(table.truncated, true);
+  assert.equal(parseTabularPreview("records.jsonl", `${content}\ninvalid`), null);
+});
+
+test("tabular totals describe empty and untruncated tables", () => {
+  const table = parseTabularPreview("empty.json", "[]");
+  assert.equal(table.rowCount, 0);
+  assert.equal(table.columnCount, 1);
+  assert.equal(table.truncated, false);
+  assert.equal(parseTabularPreview("blank.jsonl", "\n\n"), null);
+});
