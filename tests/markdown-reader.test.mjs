@@ -60,6 +60,23 @@ test("backtick and tilde fences retain the language label and exact body", () =>
   ]);
 });
 
+test("blank quote markers keep paragraphs in the same blockquote", () => {
+  const { blocks } = parseMarkdownDocument("> **Note** Keep both paragraphs.\n>\n>   \n> Second paragraph.\n\n> Separate quote.");
+  assert.deepEqual(blocks.map(({ type, text }) => [type, text]), [
+    ["quote", "**Note** Keep both paragraphs.\n\n  \nSecond paragraph."],
+    ["quote", "Separate quote."],
+  ]);
+});
+
+test("quote markers without a space start a quote after ordinary prose", () => {
+  const { blocks } = parseMarkdownDocument("Intro > comparison\n>no space\n>\twith a tab\nBack to prose");
+  assert.deepEqual(blocks.map(({ type, text }) => [type, text]), [
+    ["paragraph", "Intro > comparison"],
+    ["quote", "no space\nwith a tab"],
+    ["paragraph", "Back to prose"],
+  ]);
+});
+
 test("reader block keys stay unique for repeated content", () => {
   const parsed = parseMarkdownDocument("same\n\nsame\n\n---\n---");
   const keys = parsed.blocks.map((block) => block.key);

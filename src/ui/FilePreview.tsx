@@ -275,8 +275,16 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
         </figure>
       );
     }
-    case "quote":
-      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}><InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} /></div>;
+    case "quote": {
+      const paragraphs = block.text.trim().split(/\n(?:[ \t]*\n)+/).filter(Boolean);
+      return (
+        <blockquote style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}>
+          {paragraphs.map((text, index) => (
+            <p key={index} style={{ margin: index === 0 ? 0 : "7px 0 0" }}><InlineText text={text} findQuery={findQuery} matchCursor={matchCursor} /></p>
+          ))}
+        </blockquote>
+      );
+    }
     case "unordered-list": {
       return (
         <ul style={{ paddingLeft: 16, margin: "4px 0", listStyle: "disc" }}>

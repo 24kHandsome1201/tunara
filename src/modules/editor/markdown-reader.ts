@@ -120,6 +120,8 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
   });
 }
 
+const QUOTE_MARKER = /^>[ \t]?/;
+
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
   // MDX constructs are only recognized when the caller marks the source .mdx.
@@ -198,10 +200,9 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       index++;
       continue;
     }
-    if (line.startsWith("> ")) {
-      const quote = [line.slice(2)];
-      index++;
-      while (index < lines.length && lines[index].startsWith("> ")) quote.push(lines[index++].slice(2));
+    if (QUOTE_MARKER.test(line)) {
+      const quote: string[] = [];
+      while (index < lines.length && QUOTE_MARKER.test(lines[index])) quote.push(lines[index++].replace(QUOTE_MARKER, ""));
       blocks.push({ type: "quote", text: quote.join("\n"), key: keys.make(`quote-${compact(quote.join(" "))}`) });
       continue;
     }
@@ -226,7 +227,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
 
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
+    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !QUOTE_MARKER.test(lines[index]) && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
       if (index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
       paragraph.push(lines[index++]);
     }
