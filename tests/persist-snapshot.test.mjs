@@ -631,6 +631,89 @@ test("terminal snapshot dirty flag can be restored after a failed persist attemp
   }
 });
 
+test("terminal snapshot scroll captures preserve content and upgrade pending output", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 100_000 });
+  const sessionId = "viewport-scheduler";
+  let serializations = 0;
+  let historyReads = 0;
+  let exists = true;
+  const term = {
+    buffer: {
+      active: { viewportY: 3, baseY: 4 },
+      get normal() {
+        historyReads += 1;
+        return undefined;
+      },
+    },
+    cols: 120,
+    rows: 40,
+  };
+  const scheduler = createTerminalSnapshotScheduler({
+    term,
+    serializeAddon: { serialize: () => `content-${++serializations}` },
+    sessionId: () => sessionId,
+    isActive: () => true,
+    shouldCapture: () => exists,
+  });
+  const settle = () => t.mock.timers.tick(10_000);
+  try {
+    scheduler.scheduleViewport();
+    settle();
+    assert.equal(serializations, 1);
+    const original = getTerminalSnapshot(sessionId);
+    consumeTerminalSnapshotDirty();
+
+    term.buffer.active.viewportY = 1;
+    term.buffer.active.baseY = 5;
+    scheduler.scheduleViewport();
+    settle();
+    assert.equal(serializations, 1);
+    assert.equal(historyReads, 1);
+    assert.deepEqual(getTerminalSnapshot(sessionId), { ...original, viewportY: 1, baseY: 5 });
+    assert.equal(consumeTerminalSnapshotDirty(), true);
+
+    scheduler.scheduleViewport();
+    settle();
+    assert.equal(consumeTerminalSnapshotDirty(), false);
+
+    scheduler.scheduleViewport();
+    scheduler.schedule();
+    settle();
+    assert.equal(serializations, 2);
+    scheduler.schedule();
+    scheduler.scheduleViewport();
+    settle();
+    assert.equal(serializations, 3);
+
+    for (const dimension of ["cols", "rows"]) {
+      term[dimension] += 1;
+      scheduler.scheduleViewport();
+      settle();
+    }
+    assert.equal(serializations, 5);
+    assert.equal(historyReads, 5);
+
+    scheduler.flush();
+    scheduler.flush();
+    assert.equal(serializations, 7);
+
+    consumeTerminalSnapshotDirty();
+    exists = false;
+    term.buffer.active.viewportY = 0;
+    scheduler.scheduleViewport();
+    settle();
+    scheduler.schedule();
+    settle();
+    scheduler.flush();
+    assert.equal(serializations, 7);
+    assert.equal(consumeTerminalSnapshotDirty(), false);
+  } finally {
+    scheduler.dispose();
+    removeTerminalSnapshot(sessionId);
+    consumeTerminalSnapshotDirty();
+  }
+});
+
 test("legacy fileTabs migrate into per-session readers", () => {
   const snapshot = sanitizeSnapshot({
     version: 1,

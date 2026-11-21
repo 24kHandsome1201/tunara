@@ -385,7 +385,7 @@ function TerminalViewImpl({
         isActive: () => activeRef.current,
         shouldCapture: () => useSessionsStore.getState().sessions.some((s) => s.id === sessionIdRef.current),
       });
-      const scrollSnapshotDisposable = term.onScroll(() => snapshotScheduler.schedule());
+      const scrollSnapshotDisposable = term.onScroll(() => snapshotScheduler.scheduleViewport());
       cleanups.push(() => scrollSnapshotDisposable.dispose());
       cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
