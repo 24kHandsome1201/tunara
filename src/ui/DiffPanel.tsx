@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatSize, type Session } from "./types";
 import {
   gitAheadBehind,
+  gitWorkspaceContext,
   gitDiff,
   sshGitDiff,
   cancelGitDiff,
@@ -16,6 +17,7 @@ import { openInEditorWithToast } from "./lib/open-in-editor";
 import { errorToast } from "./lib/error-toast";
 import { useT, t as staticT } from "@/modules/i18n";
 import { normalizeLocalRepoPath } from "@/modules/git/lib/path-normalize";
+import { currentWorkspaceWorktree } from "@/modules/git/workspace-context";
 import { summarizeChangedFiles } from "@/modules/session/session-insights";
 import { CloseIcon, RefreshIcon, PanelEmptyState, PanelIconButton, PanelLoadingState } from "./shared";
 import { ArrowSquareOut, CaretRight, Check, CopySimple, Icon } from "@/ui/icons";
@@ -488,7 +490,11 @@ function DiffFileRow({
             onClick={(e) => {
               e.stopPropagation();
               const editor = useUIStore.getState().externalEditor;
-              void openInEditorWithToast(editor, `${repoPath}/${file.path}`, { sessionId });
+              void gitWorkspaceContext(repoPath).then((workspace) => {
+                const root = currentWorkspaceWorktree(workspace)?.path;
+                if (!root) throw new Error("Repository working directory unavailable");
+                return openInEditorWithToast(editor, `${root.replace(/\/$/, "")}/${file.path}`, { sessionId });
+              }).catch((error: unknown) => useUIStore.getState().addToast(errorToast({ sessionId, title: t("diff.mini.load_failed"), next: t("common.retry"), error })));
             }}
             style={{
               width: 18,
