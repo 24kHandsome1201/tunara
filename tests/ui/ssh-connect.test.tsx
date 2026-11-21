@@ -155,6 +155,32 @@ describe("SSH connection sheet", () => {
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });
 
+  test("connects to an edited Port when the target already carries a port", async () => {
+    mockEmptySources();
+    useUIStore.setState({ sshPrefill: { host: "lab.example", user: "deploy", port: 2222 } });
+    render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
+    expect(hostInput().value).toBe("deploy@lab.example:2222");
+
+    fireEvent.change(document.getElementById("ssh-connect-port")!, { target: { value: "2200" } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.remote).toMatchObject({ host: "lab.example", port: 2200, user: "deploy" });
+    expect(hostInput().value).toBe("deploy@lab.example:2200");
+  });
+
+  test("shows a port typed in the target in the Port field", () => {
+    mockEmptySources();
+    render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
+
+    fireEvent.change(hostInput(), { target: { value: "deploy@lab.example:2222" } });
+    expect((document.getElementById("ssh-connect-port") as HTMLInputElement).value).toBe("2222");
+  });
+
   test("locks a submitted connection so repeated activation creates only one session", async () => {
     mockEmptySources();
     const onClose = vi.fn();

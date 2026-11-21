@@ -27,7 +27,7 @@ import {
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
 import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { normalizePostConnectCommand } from "@/modules/ssh/hosts-model";
-import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort } from "@/modules/ssh/connect-target";
+import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort, withSshTargetPort } from "@/modules/ssh/connect-target";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
 import { applySshInPlaceReconnect } from "@/modules/ssh/manual-reconnect";
@@ -244,7 +244,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const parsedTarget = useMemo(() => parseSshTarget(target), [target]);
   const host = parsedTarget?.host ?? "";
   const user = parsedTarget?.user ?? "";
-  const parsedPort = parsedTarget?.port;
 
   const resetConnectionForm = () => {
     setSelectedProfile(null);
@@ -380,8 +379,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const { savedProfiles: hosts, configProfiles: configHosts, configSkipped, configDiagnostics } = panelModel;
   const allProfiles = useMemo(() => [...hosts, ...configHosts], [hosts, configHosts]);
   const jumpOptions = useMemo(() => allProfiles.filter((profile) => !profile.proxyJumpProfileId), [allProfiles]);
-  const effectivePortText = parsedPort != null ? String(parsedPort) : port;
-  const portText = effectivePortText.trim();
+  const portText = port.trim();
   const targetPortInvalid = sshTargetHasInvalidPort(target);
   const portFieldInvalid = portText.length > 0 && parseSshPort(portText) === null;
   const showPortErrorNearTarget = targetPortInvalid || (portFieldInvalid && !advancedOpen);
@@ -706,7 +704,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
             aria-invalid={showPortErrorNearTarget}
             aria-describedby={showPortErrorNearTarget ? "ssh-connect-port-error" : undefined}
             onChange={(event) => {
+              const typedPort = parseSshTarget(event.target.value)?.port;
               setTarget(event.target.value);
+              if (typedPort !== undefined) setPort(String(typedPort));
               setHighlight(-1);
               setSelectedProfile(null);
               setPassword("");
@@ -752,7 +752,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <div className="ssh-connect-form" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
               <div>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { setPort(event.target.value); setPassword(""); setKeyPassphrase(""); }} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
                 {portFieldInvalid && (
                   <span id="ssh-connect-port-field-error" role="alert" className="ssh-connect-message" data-tone="warning">
                     {t("ssh.port_invalid")}
