@@ -926,6 +926,12 @@ pub async fn ssh_git_workspace_context(
 
 // Search/grep keep the generic RemoteGit mapper: those are not repo-status probes.
 
+fn remote_diff_command(cwd: &str, file: &str, arg: &str) -> Result<String, String> {
+    let quoted = shell_quote(&format!(":(top,literal){file}"));
+    let cwd = remote_git_cwd(cwd)?;
+    Ok(format!("git -C {cwd} diff {arg} -- {quoted}"))
+}
+
 /// Run a remote `git diff` for one file/stage and wrap it as a `FileDiff::text`
 /// (or `tooLarge` when the exec hit its byte cap).
 #[tauri::command]
@@ -962,15 +968,10 @@ pub async fn ssh_git_diff(
             return Err(error);
         }
         let requested_cwd = cwd.clone();
-        // Shell-quote the path minimally: wrap in single quotes and escape any
-        // embedded single quotes. The file path comes from our own parsed status,
-        // not user input, but quoting defends against paths with spaces/quotes.
-        let quoted = shell_quote(&file);
-        let cwd = remote_git_cwd(&cwd)?;
         // No `2>&1` — let the exec function's stderr-capture return git errors
         // (e.g. "fatal: not a git repository") as Err instead of merging them
         // into the patch text.
-        let cmd = format!("git -C {cwd} diff {arg} -- {quoted}");
+        let cmd = remote_diff_command(&cwd, &file, arg)?;
         // Ask exec for one byte over the cap: exec truncates to its limit, so a
         // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
         // overflow signal (a diff of exactly the cap is complete, not too large).
@@ -1306,6 +1307,78 @@ pub async fn ssh_fs_grep(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_diff_from_subdirectory_uses_repository_relative_paths() {
+        use std::{fs, process::Command};
+
+        struct TestRepo(std::path::PathBuf);
+        impl Drop for TestRepo {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let repo = TestRepo(std::env::temp_dir().join(format!(
+            "tunara-remote-diff-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )));
+        fs::create_dir_all(repo.0.join("sub dir")).unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&repo.0)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+        };
+        git(&["init"]);
+        let files = ["root 'file.txt", "sub dir/nested.txt"];
+        for file in files {
+            fs::write(repo.0.join(file), "original\n").unwrap();
+        }
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "initial",
+        ]);
+        for file in files {
+            fs::write(repo.0.join(file), "staged change\n").unwrap();
+        }
+        git(&["add", "."]);
+        for file in files {
+            fs::write(repo.0.join(file), "unstaged change\n").unwrap();
+        }
+        for cwd in [&repo.0, &repo.0.join("sub dir")] {
+            for (arg, expected) in [("--cached", "+staged change"), ("", "+unstaged change")] {
+                for file in files {
+                    let command = remote_diff_command(cwd.to_str().unwrap(), file, arg).unwrap();
+                    let output = Command::new("sh").args(["-c", &command]).output().unwrap();
+                    assert!(output.status.success(), "{output:?}");
+                    let patch = String::from_utf8(output.stdout).unwrap();
+                    assert!(
+                        patch.contains(expected),
+                        "missing {expected} for {file} from {cwd:?}: {patch}"
+                    );
+                    assert_eq!(patch.matches("diff --git ").count(), 1, "{patch}");
+                }
+            }
+        }
+        let command = remote_diff_command(repo.0.to_str().unwrap(), "missing", "").unwrap();
+        let output = Command::new("sh").args(["-c", &command]).output().unwrap();
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(remote_diff_command("relative", "file", "").is_err());
+    }
 
     static REMOTE_REPO_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
