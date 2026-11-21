@@ -3,6 +3,36 @@ import test from "node:test";
 
 import { parseNotebook } from "../src/modules/editor/notebook.ts";
 
+test("notebook parser strips ANSI from outputs without changing source or whitespace", () => {
+  const source = "print('\\x1b[31mred\\x1b[0m')";
+  const parsed = parseNotebook(JSON.stringify({
+    nbformat: 4,
+    cells: [{
+      cell_type: "code", source,
+      outputs: [
+        { output_type: "stream", text: ["\u001b[31mred", "\u001b[0m\n\ttext\n"] },
+        { output_type: "stream", text: "\u001b]8;;https://example.test\u0007link\u001b]8;;\u0007" },
+        { output_type: "stream", text: "" },
+        { output_type: "stream" },
+        { output_type: "error", ename: "\u001b[31mZeroDivisionError\u001b[0m", evalue: "\u001b[1mdivision by zero\u001b[0m", traceback: ["\u001b[36mCell In[1], line 1\u001b[0m", "\u001b[31mZeroDivisionError\u001b[0m: division by zero", null] },
+        { output_type: "error" },
+        { output_type: "execute_result", data: { "text/plain": "\u001b[32m42\u001b[0m" } },
+      ],
+    }],
+  }));
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.notebook.cells[0].source, source);
+  assert.deepEqual(parsed.notebook.cells[0].outputs, [
+    { kind: "text", text: "red\n\ttext\n" },
+    { kind: "text", text: "link" },
+    { kind: "text", text: "" },
+    { kind: "text", text: "" },
+    { kind: "error", name: "ZeroDivisionError", value: "division by zero", traceback: ["Cell In[1], line 1", "ZeroDivisionError: division by zero"] },
+    { kind: "error", name: "Error", value: "", traceback: [] },
+    { kind: "text", text: "42" },
+  ]);
+});
+
 test("notebook parser keeps source cells and safe text outputs", () => {
   const parsed = parseNotebook(JSON.stringify({
     nbformat: 4,
