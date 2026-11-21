@@ -924,15 +924,14 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
   reorderInGroup: (groupKey, fromIndex, toIndex) =>
     set((state) => {
       if (fromIndex === toIndex) return {};
-      const group = state.sessions.filter((s) => sidebarGroupKey(s) === groupKey);
-      if (fromIndex < 0 || toIndex < 0 || fromIndex >= group.length || toIndex >= group.length) return {};
-      const movedId = group[fromIndex].id;
-      const targetId = group[toIndex].id;
+      const slots = state.sessions.flatMap((s, index) => (sidebarGroupKey(s) === groupKey ? [index] : []));
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= slots.length || toIndex >= slots.length) return {};
+      // Reorder within the group's own slots so other groups, and the group order derived from them, stay put.
+      const group = slots.map((index) => state.sessions[index]);
+      const [item] = group.splice(fromIndex, 1);
+      group.splice(toIndex, 0, item);
       const sessions = [...state.sessions];
-      const globalFrom = sessions.findIndex((s) => s.id === movedId);
-      const globalTo = sessions.findIndex((s) => s.id === targetId);
-      const [item] = sessions.splice(globalFrom, 1);
-      sessions.splice(globalTo, 0, item);
+      slots.forEach((slot, i) => { sessions[slot] = group[i]; });
       return {
         sessions,
         workspacePersistenceRevision: state.workspacePersistenceRevision + 1,
