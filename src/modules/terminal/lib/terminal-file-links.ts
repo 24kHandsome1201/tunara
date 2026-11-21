@@ -38,16 +38,16 @@ export function registerTerminalFileLinkProvider(
 ): IDisposable {
   return term.registerLinkProvider({
     provideLinks(bufferLineNumber, callback) {
-      const line = term.buffer.active.getLine(bufferLineNumber - 1);
-      if (!line) {
+      const logical = readLogicalLine(term, bufferLineNumber);
+      if (!logical) {
         callback(undefined);
         return;
       }
-      const text = line.translateToString(true);
+      const { text, rows } = logical;
       const matches = [
         ...findTerminalFileLinkMatches(text).map((match) => ({ ...match, directory: false })),
         ...findTerminalDirectoryLinkMatches(text).map((match) => ({ ...match, line: undefined, column: undefined, directory: true })),
-      ];
+      ].filter((match) => rangeIncludesRow(rows, match.startIndex, match.endIndex, bufferLineNumber));
       if (matches.length === 0) {
         callback(undefined);
         return;
@@ -56,8 +56,8 @@ export function registerTerminalFileLinkProvider(
       const links: ILink[] = matches.map((match) => ({
         text: match.text,
         range: {
-          start: { x: stringOffsetToBufferX(line, match.startIndex, false), y: bufferLineNumber },
-          end: { x: stringOffsetToBufferX(line, match.endIndex, true), y: bufferLineNumber },
+          start: stringOffsetToBufferPosition(rows, match.startIndex, false),
+          end: stringOffsetToBufferPosition(rows, match.endIndex, true),
         },
         decorations: { pointerCursor: true, underline: true },
         activate(event) {
@@ -65,7 +65,7 @@ export function registerTerminalFileLinkProvider(
           if (options.shouldActivate && !options.shouldActivate(event)) return;
           event.preventDefault();
           event.stopPropagation();
-          const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(bufferLineNumber));
+          const path = resolveTerminalFileLinkPath(match.rawPath, options.getCwd(rows[0].y));
           const resource = options.createResource(path, match.line, match.column);
           if (resource) void openResource(resource, match.directory ? "directory" : "editor").catch((error) => reportTerminalFileLinkOpenFailure(resource, error, match.directory));
         },
@@ -73,6 +73,50 @@ export function registerTerminalFileLinkProvider(
       callback(links);
     },
   });
+}
+
+interface LogicalLineRow {
+  line: IBufferLine;
+  /** 1-based buffer row, as xterm's link ranges use. */
+  y: number;
+  /** Offset of this row's first character in the logical line text. */
+  offset: number;
+}
+
+/** Joins the soft-wrapped rows around a buffer row so a path that wraps is matched whole. */
+function readLogicalLine(term: Terminal, bufferLineNumber: number): { text: string; rows: LogicalLineRow[] } | undefined {
+  const buffer = term.buffer.active;
+  let first = bufferLineNumber - 1;
+  if (!buffer.getLine(first)) return undefined;
+  while (first > 0 && buffer.getLine(first)?.isWrapped) first -= 1;
+  const rows: LogicalLineRow[] = [];
+  let text = "";
+  for (let y = first; ; y += 1) {
+    const line = buffer.getLine(y);
+    if (!line) break;
+    const next = buffer.getLine(y + 1);
+    const continues = next?.isWrapped === true;
+    rows.push({ line, y: y + 1, offset: text.length });
+    text += line.translateToString(!continues);
+    if (!continues) break;
+  }
+  return { text, rows };
+}
+
+function rowIndexForOffset(rows: LogicalLineRow[], offset: number, endInclusive: boolean): number {
+  let index = 0;
+  while (index + 1 < rows.length && (endInclusive ? offset > rows[index + 1].offset : offset >= rows[index + 1].offset)) index += 1;
+  return index;
+}
+
+function rangeIncludesRow(rows: LogicalLineRow[], startIndex: number, endIndex: number, bufferLineNumber: number): boolean {
+  return rows[rowIndexForOffset(rows, startIndex, false)].y <= bufferLineNumber
+    && rows[rowIndexForOffset(rows, endIndex, true)].y >= bufferLineNumber;
+}
+
+function stringOffsetToBufferPosition(rows: LogicalLineRow[], offset: number, endInclusive: boolean): { x: number; y: number } {
+  const row = rows[rowIndexForOffset(rows, offset, endInclusive)];
+  return { x: stringOffsetToBufferX(row.line, offset - row.offset, endInclusive), y: row.y };
 }
 
 function stringOffsetToBufferX(line: IBufferLine, offset: number, endInclusive: boolean): number {

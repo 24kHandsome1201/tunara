@@ -132,3 +132,63 @@ test("a terminal file link that fails to open is logged and surfaced as an error
   expect(warn).toHaveBeenCalledWith("[terminal-file-links] open failed", "/work/src/app.ts", expect.any(Error));
   warn.mockRestore();
 });
+
+function fakeWrappedTerminal(rows: { text: string; isWrapped?: boolean }[]): { term: Terminal; provider: () => ILinkProvider } {
+  let registered: ILinkProvider | null = null;
+  const lines = rows.map(({ text, isWrapped = false }) => {
+    const cells = [...text].map((char) => ({ getChars: () => char, getWidth: () => 1 }));
+    return { isWrapped, length: cells.length, getCell: (x: number) => cells[x], translateToString: () => text };
+  });
+  const term = {
+    buffer: { active: { getLine: (y: number) => lines[y] } },
+    hasSelection: () => false,
+    registerLinkProvider: (provider: ILinkProvider) => {
+      registered = provider;
+      return { dispose() {} };
+    },
+  } as unknown as Terminal;
+  return { term, provider: () => registered! };
+}
+
+function linksForRow(provider: ILinkProvider, bufferLineNumber: number): ILink[] {
+  let links: ILink[] | undefined;
+  provider.provideLinks(bufferLineNumber, (value) => { links = value; });
+  return links ?? [];
+}
+
+test("a file path soft-wrapped across rows is one link that opens the full path with its line and column", () => {
+  const createResource = vi.fn(() => null);
+  const getCwd = vi.fn(() => "~");
+  const { term, provider } = fakeWrappedTerminal([
+    { text: "error /home/dev/projec" },
+    { text: "t/src/file.ts:12:3 bad", isWrapped: true },
+  ]);
+  registerTerminalFileLinkProvider(term, { getCwd, createResource });
+
+  for (const row of [1, 2]) {
+    const links = linksForRow(provider(), row);
+    expect(links).toHaveLength(1);
+    expect(links[0].text).toBe("/home/dev/project/src/file.ts:12:3");
+    expect(links[0].range).toEqual({ start: { x: 7, y: 1 }, end: { x: 18, y: 2 } });
+    links[0].activate(new MouseEvent("click"), links[0].text);
+  }
+  expect(createResource).toHaveBeenNthCalledWith(1, "/home/dev/project/src/file.ts", 12, 3);
+  expect(createResource).toHaveBeenNthCalledWith(2, "/home/dev/project/src/file.ts", 12, 3);
+  expect(getCwd).toHaveBeenCalledWith(1);
+});
+
+test("rows split by a real line break keep their own links and cwd", () => {
+  const createResource = vi.fn(() => null);
+  const { term, provider } = fakeWrappedTerminal([
+    { text: "/tmp/plain.ts:4 /home/dev/projec" },
+    { text: "src/file.ts:12:3" },
+  ]);
+  registerTerminalFileLinkProvider(term, { getCwd: (row) => `/cwd-${row}`, createResource });
+
+  const first = linksForRow(provider(), 1);
+  expect(first.map((link) => link.text)).toEqual(["/tmp/plain.ts:4", "/home/dev/projec"]);
+  const [second] = linksForRow(provider(), 2);
+  expect(second).toMatchObject({ text: "src/file.ts:12:3", range: { start: { x: 1, y: 2 }, end: { x: 16, y: 2 } } });
+  second.activate(new MouseEvent("click"), second.text);
+  expect(createResource).toHaveBeenCalledWith("/cwd-2/src/file.ts", 12, 3);
+});

@@ -1175,7 +1175,7 @@ test("review fixes remove stale artifacts and guard high-risk regressions", () =
   assert.match(terminal, /createTerminalLineCwdTracker\(\)/);
   assert.match(terminal, /lineCwdTracker\.record\(cwd, term\.registerMarker\(0\)\)/);
   assert.match(terminalFileLinks, /term\.registerLinkProvider/);
-  assert.match(terminalFileLinks, /options\.getCwd\(bufferLineNumber\)/);
+  assert.match(terminalFileLinks, /options\.getCwd\(rows\[0\]\.y\)/);
   assert.match(terminalLineCwd, /if \(!cwd\.trim\(\)\)/);
   assert.match(terminalLineCwd, /last\?\.cwd === cwd/);
   assert.match(terminalFileLinkParser, /findTerminalFileLinkMatches/);
