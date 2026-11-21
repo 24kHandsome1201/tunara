@@ -39,6 +39,7 @@ import {
   sshAliasProfileMatch,
   parseSshTarget,
   sshTargetHasInvalidPort,
+  withSshTargetPort,
 } from "../src/modules/ssh/connect-target.ts";
 
 // ── failure-reason ───────────────────────────────────────────────────────
@@ -113,6 +114,15 @@ test("parseSshTarget accepts user@host[:port], aliases, and IPv6", () => {
   assert.equal(sshTargetHasInvalidPort("alice@prod:99999"), true);
   assert.equal(formatSshTarget("alice", "prod", 22), "alice@prod");
   assert.equal(formatSshTarget("alice", "prod", 2222), "alice@prod:2222");
+});
+
+test("withSshTargetPort only rewrites an explicit target port with a numeric Port", () => {
+  assert.equal(withSshTargetPort("alice@prod:2222", "2200"), "alice@prod:2200");
+  assert.equal(withSshTargetPort("[2001:db8::1]:2222", "2200"), "[2001:db8::1]:2200");
+  assert.equal(withSshTargetPort("alice@prod:99999", "2200"), "alice@prod:2200");
+  assert.equal(withSshTargetPort("alice@prod", "2200"), "alice@prod");
+  assert.equal(withSshTargetPort("alice@prod:2222", ""), "alice@prod:2222");
+  assert.equal(withSshTargetPort("alice@prod:2222", "22a"), "alice@prod:2222");
 });
 
 test("exactSshProfileMatch matches aliases and user@host", () => {

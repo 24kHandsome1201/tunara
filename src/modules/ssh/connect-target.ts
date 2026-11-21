@@ -56,6 +56,14 @@ export function parseSshTarget(raw: string): ParsedSshTarget | null {
   return { user, host: rest };
 }
 
+/** Point a target's explicit `:port` at a numeric Port field value; other targets are unchanged. */
+export function withSshTargetPort(raw: string, portText: string): string {
+  const port = portText.trim();
+  if (!/^\d+$/.test(port)) return raw;
+  if (parseSshTarget(raw)?.port === undefined && !sshTargetHasInvalidPort(raw)) return raw;
+  return raw.trim().replace(/:\d+$/, `:${port}`);
+}
+
 export function sshTargetHaystack(profile: SshHostProfile): string {
   return `${profile.label} ${profile.user}@${profile.host}:${profile.port}`.toLowerCase();
 }
