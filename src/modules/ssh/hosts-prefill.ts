@@ -22,7 +22,7 @@ export function sshConnectPrefillFromProfile(
     ...(jump
       ? {
           route: {
-            profileId: profile.id,
+            profileId: jump.id,
             jump: {
               host: jump.host,
               port: jump.port,
