@@ -278,7 +278,7 @@ fn scoped_file_diff<'repo>(
     scope: DiffScope,
 ) -> Result<Diff<'repo>, String> {
     let mut opts = DiffOptions::new();
-    opts.pathspec(file);
+    opts.pathspec(file).disable_pathspec_match(true);
     match scope {
         DiffScope::Staged => repo.diff_tree_to_index(head_tree, None, Some(&mut opts)),
         DiffScope::Unstaged => repo.diff_index_to_workdir(None, Some(&mut opts)),
@@ -609,5 +609,44 @@ mod tests {
         assert!(unstaged.contains("-staged"));
         assert!(unstaged.contains("+unstaged"));
         assert!(!unstaged.contains("-base"));
+    }
+
+    #[test]
+    fn git_diff_treats_file_name_as_literal_path_not_glob() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).expect("init repo");
+        let mut index = repo.index().expect("open repo index");
+        for name in ["a1.txt", "s1.txt", "s[1].txt"] {
+            std::fs::write(dir.path.join(name), format!("{name} base\n")).expect("write file");
+            index.add_path(Path::new(name)).expect("add file");
+        }
+        index.write().expect("write repo index");
+        commit_file(&repo, &dir.path, "a[1].txt", "a[1].txt base\n");
+
+        for name in ["a1.txt", "a[1].txt", "s1.txt", "s[1].txt"] {
+            std::fs::write(dir.path.join(name), format!("{name} change\n")).expect("edit file");
+        }
+        let mut index = repo.index().expect("open repo index");
+        for name in ["s1.txt", "s[1].txt"] {
+            index.add_path(Path::new(name)).expect("stage file");
+        }
+        index.write().expect("write staged index");
+
+        let repo_path = dir.path.to_string_lossy().into_owned();
+        for (file, other, stage) in [
+            ("a[1].txt", "a1.txt", None),
+            ("a[1].txt", "a1.txt", Some("unstaged")),
+            ("s[1].txt", "s1.txt", Some("staged")),
+        ] {
+            let patch = text_patch(
+                git_diff(repo_path.clone(), file.into(), stage.map(Into::into))
+                    .unwrap_or_else(|e| panic!("diff {file} {stage:?}: {e}")),
+            );
+            assert!(
+                patch.contains(&format!("+{file} change")),
+                "{file} {stage:?}:\n{patch}"
+            );
+            assert!(!patch.contains(other), "{file} {stage:?}:\n{patch}");
+        }
     }
 }
