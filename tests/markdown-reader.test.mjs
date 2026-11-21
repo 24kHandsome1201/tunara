@@ -21,6 +21,26 @@ test("headings produce semantic toc entries and stable unique unicode anchors", 
   assert.deepEqual(parsed.blocks.filter((block) => block.type === "heading").map((block) => block.id), parsed.toc.map((entry) => entry.id));
 });
 
+test("heading closing hashes require separating whitespace", () => {
+  const cases = [
+    ["## C#", "C#", "c"],
+    ["# F#", "F#", "f"],
+    ["## Title ##", "Title", "title"],
+    ["## Issue #", "Issue", "issue"],
+    ["## C###  ", "C###", "c"],
+    ["## Title\t##\t", "Title", "title"],
+    ["## ###", "", "section"],
+    ["## Title # text", "Title # text", "title-text"],
+    ["## Title \\###", "Title \\###", "title"],
+  ];
+  for (const [source, text, id] of cases) {
+    const parsed = parseMarkdownDocument(source);
+    const level = source.startsWith("##") ? 2 : 1;
+    assert.deepEqual(parsed.blocks, [{ type: "heading", level, text, id, key: `heading-${id}` }], source);
+    assert.deepEqual(parsed.toc, [{ level, text, id }], source);
+  }
+});
+
 test("empty or punctuation-only headings receive deterministic section anchors", () => {
   assert.equal(markdownHeadingSlug("!!!"), "section");
   const parsed = parseMarkdownDocument("# !!!\n# ???");

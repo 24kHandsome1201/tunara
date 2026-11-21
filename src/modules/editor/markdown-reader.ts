@@ -161,10 +161,10 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       continue;
     }
 
-    const heading = line.match(/^(#{1,3})\s+(.+?)\s*#*\s*$/);
+    const heading = line.match(/^(#{1,3})\s+(.+?)\s*$/);
     if (heading) {
       const level = heading[1].length as 1 | 2 | 3;
-      const text = heading[2];
+      const text = heading[2].replace(/(?:^|[ \t]+)#+[ \t]*$/, "").trimEnd();
       const id = slugs.make(markdownHeadingSlug(text));
       blocks.push({ type: "heading", level, text, id, key: keys.make(`heading-${id}`) });
       toc.push({ level, text: headingPlainText(text), id });
