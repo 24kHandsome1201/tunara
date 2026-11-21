@@ -132,3 +132,129 @@ test("a terminal file link that fails to open is logged and surfaced as an error
   expect(warn).toHaveBeenCalledWith("[terminal-file-links] open failed", "/work/src/app.ts", expect.any(Error));
   warn.mockRestore();
 });
+
+function fakeWrappedTerminal(rows: { text: string; isWrapped?: boolean }[]): { term: Terminal; provider: () => ILinkProvider } {
+  let registered: ILinkProvider | null = null;
+  const lines = rows.map(({ text, isWrapped = false }) => {
+    // "\0" is an empty cell; Han characters take two cells, as in xterm.
+    const cells = [...text].flatMap((char) => {
+      if (char === "\0") return [{ getChars: () => "", getWidth: () => 1 }];
+      if (/\p{Script=Han}/u.test(char)) return [{ getChars: () => char, getWidth: () => 2 }, { getChars: () => "", getWidth: () => 0 }];
+      return [{ getChars: () => char, getWidth: () => 1 }];
+    });
+    const translateToString = (trimRight = false, start = 0, end = cells.length) => {
+      const value = cells.slice(start, end).map((cell) => cell.getChars() || (cell.getWidth() ? " " : "")).join("");
+      return trimRight ? value.trimEnd() : value;
+    };
+    return { isWrapped, length: cells.length, getCell: (x: number) => cells[x], translateToString };
+  });
+  const term = {
+    buffer: { active: { getLine: (y: number) => lines[y] } },
+    hasSelection: () => false,
+    registerLinkProvider: (provider: ILinkProvider) => {
+      registered = provider;
+      return { dispose() {} };
+    },
+  } as unknown as Terminal;
+  return { term, provider: () => registered! };
+}
+
+function linksForRow(provider: ILinkProvider, bufferLineNumber: number): ILink[] {
+  let links: ILink[] | undefined;
+  provider.provideLinks(bufferLineNumber, (value) => { links = value; });
+  return links ?? [];
+}
+
+test("a file path soft-wrapped across rows is one link that opens the full path with its line and column", () => {
+  const createResource = vi.fn(() => null);
+  const getCwd = vi.fn(() => "~");
+  const { term, provider } = fakeWrappedTerminal([
+    { text: "error /home/dev/projec" },
+    { text: "t/src/file.ts:12:3 bad", isWrapped: true },
+  ]);
+  registerTerminalFileLinkProvider(term, { getCwd, createResource });
+
+  for (const row of [1, 2]) {
+    const links = linksForRow(provider(), row);
+    expect(links).toHaveLength(1);
+    expect(links[0].text).toBe("/home/dev/project/src/file.ts:12:3");
+    expect(links[0].range).toEqual({ start: { x: 7, y: 1 }, end: { x: 18, y: 2 } });
+    links[0].activate(new MouseEvent("click"), links[0].text);
+  }
+  expect(createResource).toHaveBeenNthCalledWith(1, "/home/dev/project/src/file.ts", 12, 3);
+  expect(createResource).toHaveBeenNthCalledWith(2, "/home/dev/project/src/file.ts", 12, 3);
+  expect(getCwd).toHaveBeenCalledWith(1);
+});
+
+test("rows split by a real line break keep their own links and cwd", () => {
+  const createResource = vi.fn(() => null);
+  const { term, provider } = fakeWrappedTerminal([
+    { text: "/tmp/plain.ts:4 /home/dev/projec" },
+    { text: "src/file.ts:12:3" },
+  ]);
+  registerTerminalFileLinkProvider(term, { getCwd: (row) => `/cwd-${row}`, createResource });
+
+  const first = linksForRow(provider(), 1);
+  expect(first.map((link) => link.text)).toEqual(["/tmp/plain.ts:4", "/home/dev/projec"]);
+  const [second] = linksForRow(provider(), 2);
+  expect(second).toMatchObject({ text: "src/file.ts:12:3", range: { start: { x: 1, y: 2 }, end: { x: 16, y: 2 } } });
+  second.activate(new MouseEvent("click"), second.text);
+  expect(createResource).toHaveBeenCalledWith("/cwd-2/src/file.ts", 12, 3);
+});
+
+test("the empty cell xterm leaves before a wrapped wide character is not part of the path", () => {
+  const createResource = vi.fn(() => null);
+  const { term, provider } = fakeWrappedTerminal([
+    { text: "cd '/home/dev/\0" },
+    { text: "项目/src' done", isWrapped: true },
+  ]);
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource });
+
+  const [link] = linksForRow(provider(), 2);
+  expect(link).toMatchObject({ text: "/home/dev/项目/src", range: { start: { x: 5, y: 1 }, end: { x: 8, y: 2 } } });
+  link.activate(new MouseEvent("click", { ctrlKey: true }), link.text);
+  expect(createResource).toHaveBeenCalledWith("/home/dev/项目/src", undefined, undefined);
+});
+
+test("hovering a line that wraps across the scrollback reads a bounded window of rows", () => {
+  const createResource = vi.fn(() => null);
+  const filler = "x".repeat(20);
+  const { term, provider } = fakeWrappedTerminal(Array.from({ length: 2000 }, (_, row) => ({
+    text: row === 1000 ? " /tmp/a/b.ts:7:9    " : filler,
+    isWrapped: row > 0,
+  })));
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource });
+  const getLine = vi.spyOn(term.buffer.active, "getLine");
+
+  const [link] = linksForRow(provider(), 1001);
+  expect(link).toMatchObject({ text: "/tmp/a/b.ts:7:9", range: { start: { x: 2, y: 1001 }, end: { x: 16, y: 1001 } } });
+  link.activate(new MouseEvent("click"), link.text);
+  expect(createResource).toHaveBeenCalledWith("/tmp/a/b.ts", 7, 9);
+  expect(new Set(getLine.mock.calls.map(([y]) => y)).size).toBeLessThan(500);
+});
+
+const repeatRows = (count: number, text: string) => Array.from({ length: count }, () => text);
+
+test.each<[string, number, string[]]>([
+  ["file link cut by the window start", 1001, [...repeatRows(1000, "a/".repeat(10)), "b.ts:3:4 done".padEnd(20)]],
+  ["directory link cut by the window start", 1001, [...repeatRows(1000, "/a".repeat(10)), "/ done".padEnd(20)]],
+  // The window ends after "b.ts:12345", but the line goes on with "abc…", so that is not a line number.
+  ["file link cut by the window end", 1, [`see ${"a/".repeat(8)}`, ...repeatRows(205, "a/".repeat(10)), "a/a/a/a/a/b.ts:12345", ...repeatRows(10, "abcdefghij".repeat(2))]],
+  ["directory link cut by the window end", 1, [`see ${"/a".repeat(8)}`, ...repeatRows(220, "/a".repeat(10))]],
+])("a %s is not a link, since its token goes on past the window", (_name, hover, rows) => {
+  const { term, provider } = fakeWrappedTerminal(rows.map((text, row) => ({ text, isWrapped: row > 0 })));
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource: () => null });
+
+  expect(linksForRow(provider(), hover)).toEqual([]);
+});
+
+test("a cut window with quotes yields no directory link, since its quote pairing is unknown", () => {
+  const filler = "x".repeat(20);
+  const { term, provider } = fakeWrappedTerminal(Array.from({ length: 2000 }, (_, row) => ({
+    text: row === 0 ? `"${filler.slice(1)}` : row === 900 ? `${filler.slice(10)}"${filler.slice(11)}` : row === 1000 ? ` "/tmp/My Files" xxx` : filler,
+    isWrapped: row > 0,
+  })));
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource: () => null });
+
+  expect(linksForRow(provider(), 1001)).toEqual([]);
+});
