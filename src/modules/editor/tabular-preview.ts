@@ -98,12 +98,12 @@ export function parseDelimitedTable(content: string, kind: "csv" | "tsv"): Tabul
       pushCell();
       continue;
     }
-    if (ch === "\n") {
+    if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && content[index + 1] === "\n") index += 1;
       pushCell();
       pushRow();
       continue;
     }
-    if (ch === "\r") continue;
     cell += ch;
   }
   if (quoted) return null;

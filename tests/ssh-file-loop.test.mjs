@@ -80,3 +80,17 @@ test("tabular preview stays text-only for json and csv", () => {
   assert.deepEqual(csv?.rows[0], ["1", "quoted,value"]);
   assert.equal(parseTabularPreview("notes.md", "a,b"), null);
 });
+
+test("tabular preview handles CR line breaks", () => {
+  for (const content of ["a,b\r1,2\r3,4", "a,b\r\n1,2\r3,4\n"]) {
+    const csv = parseTabularPreview("dump.csv", content);
+    assert.deepEqual(csv?.columns, ["a", "b"]);
+    assert.deepEqual(csv?.rows, [["1", "2"], ["3", "4"]]);
+  }
+});
+
+test("tabular preview preserves quoted line breaks", () => {
+  const csv = parseTabularPreview("dump.csv", 'a,b\r\n1,"x\ry\r\nz\nw"\r2,end');
+  assert.deepEqual(csv?.columns, ["a", "b"]);
+  assert.deepEqual(csv?.rows, [["1", "x\ry\r\nz\nw"], ["2", "end"]]);
+});
