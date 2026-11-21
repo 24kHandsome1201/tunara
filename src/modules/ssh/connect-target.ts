@@ -90,7 +90,7 @@ export function exactSshProfileMatch(profiles: SshHostProfile[], raw: string): S
     if (!parsed) return false;
     return parsed.host.toLowerCase() === host
       && (parsed.user ? parsed.user === profile.user : true)
-      && (parsed.port ?? 22) === profile.port;
+      && ((parsed.port === undefined && parsed.host.includes(":")) || (parsed.port ?? 22) === profile.port);
   });
 }
 

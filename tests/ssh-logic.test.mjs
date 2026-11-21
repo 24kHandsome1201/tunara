@@ -179,6 +179,17 @@ test("sshAliasProfileMatch resolves a typed Host alias, user@alias and alias:por
   assert.equal(sshAliasProfileMatch(profiles, "qa"), undefined);
 });
 
+test("bare IPv6 identities keep a matching profile's nondefault port", () => {
+  const profile = { id: "v6", label: "IPv6 server", host: "2001:db8::1", port: 2222, user: "deploy", identityFile: "" };
+  assert.equal(exactSshProfileMatch([profile], "deploy@2001:db8::1"), profile);
+  assert.equal(exactSshProfileMatch([profile], "deploy@[2001:db8::1]"), profile);
+  assert.equal(exactSshProfileMatch([profile], "deploy@[2001:db8::1]:22"), undefined);
+  assert.equal(exactSshProfileMatch([profile], "other@2001:db8::1"), undefined);
+  const hostname = { ...profile, host: "lab.example" };
+  assert.equal(exactSshProfileMatch([hostname], "deploy@lab.example"), hostname);
+  assert.equal(exactSshProfileMatch([hostname], "deploy@lab.example:22"), undefined);
+});
+
 test("IPv6 profile suggestions match bracketed targets and bare addresses", () => {
   const profile = { id: "v6", label: "IPv6 server", host: "2001:db8::1", port: 2222, user: "deploy", identityFile: "" };
   const entries = sshProfileEntries(toProfilesPanelModel([profile], { imported: [], skipped: 0, diagnostics: [] }));
