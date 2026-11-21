@@ -478,6 +478,38 @@ fn write_config(path: &Path, config: &TunaraConfig) -> Result<(), String> {
     Ok(())
 }
 
+fn recover_config_values(raw: &str) -> Result<(TunaraConfig, Vec<String>), String> {
+    let user: toml::Table = toml::from_str(raw).map_err(|e| format!("parse config failed: {e}"))?;
+    let mut recovered = toml::Value::try_from(TunaraConfig::default())
+        .map_err(|e| format!("serialize default config failed: {e}"))?;
+    let mut ignored = Vec::new();
+    for section in ["appearance", "keybindings", "terminal_interactions"] {
+        let Some(value) = user.get(section) else {
+            continue;
+        };
+        let Some(table) = value.as_table() else {
+            ignored.push(section.to_string());
+            continue;
+        };
+        for (key, value) in table {
+            let mut candidate = recovered.clone();
+            candidate[section]
+                .as_table_mut()
+                .unwrap()
+                .insert(key.clone(), value.clone());
+            if candidate.clone().try_into::<TunaraConfig>().is_ok() {
+                recovered = candidate;
+            } else {
+                ignored.push(format!("{section}.{key}"));
+            }
+        }
+    }
+    let config = recovered
+        .try_into()
+        .map_err(|e| format!("recover config failed: {e}"))?;
+    Ok((config, ignored))
+}
+
 fn load_config_from_path(path: &Path) -> Result<LoadedTunaraConfig, String> {
     let path_string = path.to_string_lossy().to_string();
     if !path.exists() {
@@ -492,30 +524,30 @@ fn load_config_from_path(path: &Path) -> Result<LoadedTunaraConfig, String> {
     }
 
     let raw = fs::read_to_string(path).map_err(|e| format!("read config failed: {e}"))?;
-    match toml::from_str::<TunaraConfig>(&raw) {
-        Ok(mut config) => {
-            // Pre-version configs are migrated only when the raw table proves it is the
-            // complete old built-in set. One changed/extra/missing value means user-owned.
-            if raw_has_complete_old_keybindings(&raw) {
-                config.keybindings = default_keybindings();
-            }
-            config.clamp();
-            Ok(LoadedTunaraConfig {
-                path: path_string,
+    let (mut config, error) = match toml::from_str::<TunaraConfig>(&raw) {
+        Ok(config) => (config, None),
+        Err(_) => match recover_config_values(&raw) {
+            Ok((config, ignored)) => (
                 config,
-                error: None,
-            })
-        }
-        Err(e) => {
-            let mut config = TunaraConfig::default();
-            config.clamp();
-            Ok(LoadedTunaraConfig {
-                path: path_string,
-                config,
-                error: Some(format!("parse config failed: {e}")),
-            })
-        }
+                Some(format!(
+                    "ignored invalid config values: {}",
+                    ignored.join(", ")
+                )),
+            ),
+            Err(error) => (TunaraConfig::default(), Some(error)),
+        },
+    };
+    // Pre-version configs are migrated only when the raw table proves it is the
+    // complete old built-in set. One changed/extra/missing value means user-owned.
+    if raw_has_complete_old_keybindings(&raw) {
+        config.keybindings = default_keybindings();
     }
+    config.clamp();
+    Ok(LoadedTunaraConfig {
+        path: path_string,
+        config,
+        error,
+    })
 }
 
 fn migrate_legacy_config_if_needed(path: &Path, legacy_path: &Path) -> Result<(), String> {
@@ -566,6 +598,72 @@ mod tests {
             .join(format!("tunara-config-test-{name}-{unique}"))
             .join(dir_name)
             .join("config.toml")
+    }
+
+    #[test]
+    fn invalid_config_values_preserve_valid_preferences_on_save() {
+        let path = temp_config_path("invalid-values");
+        ensure_parent(&path).unwrap();
+        fs::write(
+            &path,
+            r##"
+[appearance]
+theme = "dark"
+font_family = "Monospace"
+accent = "#123456"
+font_size = -1
+[keybindings]
+open_settings = "Alt+S"
+new_terminal = false
+[terminal_interactions]
+version = "bad"
+secondary_click = "smart"
+"##,
+        )
+        .unwrap();
+        let loaded = load_config_from_path(&path).unwrap();
+        assert_eq!(loaded.config.appearance.theme, "dark");
+        assert_eq!(loaded.config.appearance.font_family, "Monospace");
+        assert_eq!(loaded.config.appearance.accent, "#c2683c");
+        assert_eq!(
+            loaded.config.appearance.font_size,
+            AppearanceConfig::default().font_size
+        );
+        assert_eq!(loaded.config.keybindings["open_settings"], "Alt+S");
+        assert_eq!(
+            loaded.config.keybindings["new_terminal"],
+            default_keybindings()["new_terminal"]
+        );
+        let error = loaded.error.unwrap();
+        for key in [
+            "appearance.font_size",
+            "keybindings.new_terminal",
+            "terminal_interactions.version",
+        ] {
+            assert!(error.contains(key), "{error}");
+        }
+        write_config(&path, &loaded.config).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("theme = \"dark\""));
+        assert!(saved.contains("font_family = \"Monospace\""));
+        assert!(saved.contains("font_size = 14"));
+        assert!(saved.contains("open_settings = \"Alt+S\""));
+        assert!(load_config_from_path(&path).unwrap().error.is_none());
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap());
+    }
+
+    #[test]
+    fn invalid_toml_syntax_still_loads_defaults() {
+        let path = temp_config_path("invalid-syntax");
+        ensure_parent(&path).unwrap();
+        fs::write(&path, "[appearance\ntheme = \"dark\"").unwrap();
+        let loaded = load_config_from_path(&path).unwrap();
+        assert_eq!(
+            loaded.config.appearance.theme,
+            AppearanceConfig::default().theme
+        );
+        assert!(loaded.error.unwrap().contains("parse config failed"));
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap());
     }
 
     #[test]
