@@ -131,6 +131,9 @@ async fn cancellation_scenario(allow_cancel: bool) -> (Result<(), String>, bool)
 
 #[tokio::test]
 async fn accepted_cancel_releases_remote_port() {
+    if run_isolated("accepted_cancel_releases_remote_port") {
+        return;
+    }
     let (result, still_bound) = cancellation_scenario(true).await;
     assert!(result.is_ok());
     assert!(!still_bound);
@@ -138,10 +141,37 @@ async fn accepted_cancel_releases_remote_port() {
 
 #[tokio::test]
 async fn rejected_cancel_must_not_report_success() {
+    if run_isolated("rejected_cancel_must_not_report_success") {
+        return;
+    }
     let (result, still_bound) = cancellation_scenario(false).await;
     assert!(still_bound);
     assert!(
         result.is_err(),
         "server denied cancellation and kept the remote listener; Stop must not report success"
     );
+}
+
+fn run_isolated(test_name: &str) -> bool {
+    if std::env::var_os("TUNARA_CANCEL_TEST_CHILD").is_some() {
+        return false;
+    }
+    let home =
+        std::env::temp_dir().join(format!("tunara-cancel-{}-{test_name}", std::process::id()));
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    let home = home.canonicalize().unwrap();
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            &format!("modules::ssh::connection::session::cancel_tests::{test_name}"),
+            "--nocapture",
+        ])
+        .env("TUNARA_CANCEL_TEST_CHILD", "1")
+        .env("HOME", &home)
+        .env("SSH_AUTH_SOCK", home.join("missing-agent"))
+        .status()
+        .unwrap();
+    std::fs::remove_dir_all(home).unwrap();
+    assert!(status.success());
+    true
 }
