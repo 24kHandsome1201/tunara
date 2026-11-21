@@ -1074,12 +1074,13 @@ impl SshSession {
         if self.is_closed() {
             return Ok(());
         }
-        let _ = tokio::time::timeout(
+        tokio::time::timeout(
             Duration::from_secs(5),
             self.handle.cancel_tcpip_forward(address.to_string(), port),
         )
-        .await;
-        Ok(())
+        .await
+        .map_err(|_| "SSH remote forward cancellation timed out".to_string())?
+        .map_err(|error| format!("SSH remote forward cancellation rejected: {error}"))
     }
 
     /// Open the exact RFC 4254 direct-tcpip target through this already
@@ -1357,6 +1358,9 @@ impl Drop for SshSession {
         let _ = self.close();
     }
 }
+
+#[cfg(test)]
+mod cancel_tests;
 
 #[cfg(test)]
 mod tests {

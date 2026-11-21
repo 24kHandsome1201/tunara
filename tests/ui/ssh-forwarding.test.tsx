@@ -307,6 +307,38 @@ test("starts and stops loopback-only remote forwarding onto a local target port"
   });
 });
 
+test("a rejected remote Stop shows an alert and keeps the listener row without refreshing", async () => {
+  let listCalls = 0;
+  mockIPC((command) => {
+    if (command === "ssh_remote_forward_list") {
+      listCalls++;
+      return [{
+        ruleId: "rf-denied",
+        binding,
+        remoteBindHost: "127.0.0.1",
+        remotePort: 18080,
+        requestedRemotePort: 0,
+        recreateOnReconnect: false,
+        localTargetHost: "127.0.0.1",
+        localTargetPort: 5173,
+      }];
+    }
+    if (command.endsWith("_forward_list")) return [];
+    if (command === "ssh_remote_forward_stop") throw new Error("SSH_FORWARDING_FAILED");
+    throw new Error(`unexpected command: ${command}`);
+  });
+
+  render(<ForwardingPanel binding={binding} session={session} />);
+  const endpoint = "127.0.0.1:18080 → 127.0.0.1:5173";
+  await screen.findByText(endpoint);
+  const initialListCalls = listCalls;
+  fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("The forwarding operation could not be completed.");
+  expect(screen.getByText(endpoint)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+  expect(listCalls).toBe(initialListCalls);
+});
+
 test("forward type choices are one labelled radio per row with the selected card marked", async () => {
   mockIPC((command) => {
     if (command.endsWith("_forward_list")) return [];

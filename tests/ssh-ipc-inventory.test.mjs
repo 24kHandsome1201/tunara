@@ -190,7 +190,8 @@ test("forward stop carries and atomically validates the complete SSH binding", a
     assert.match(bridge, new RegExp(`"${command}", \\{ binding, ruleId \\}`));
     const commandSource = functionSource(backend, command);
     assert.match(commandSource, /binding: SessionBindingV1/);
-    assert.match(commandSource, /cancel_bound_rule\(&pty, &state, &binding, &rule_id/);
+    const validationHelper = kind === "Remote" ? "with_bound_rule" : "cancel_bound_rule";
+    assert.match(commandSource, new RegExp(`${validationHelper}\\(&pty, &state, &binding, &rule_id`));
   }
   const helperStart = backend.indexOf("fn cancel_bound_rule");
   const helperEnd = backend.indexOf("async fn wait_for_rule_stop", helperStart);
@@ -200,6 +201,9 @@ test("forward stop carries and atomically validates the complete SSH binding", a
   assert.match(helper, /rule\.view\.binding\(\) != binding/);
   assert.match(helper, /Arc::ptr_eq\(&rule\.generation, &current\)/);
   assert.match(helper, /rule\.cancel\.send\(true\)/);
+  const remoteStop = functionSource(backend, "ssh_remote_forward_stop");
+  assert.match(remoteStop, /parse_bind\(&view\.remote_bind_host\)\?\.to_string\(\)/);
+  assert.match(remoteStop, /cancel_tcpip_forward[\s\S]*await\?;[\s\S]*reverse_forward_hub\(\)\.remove[\s\S]*stop_rule\(cancel, completed\)/);
 });
 
 test("transfer resume IPC accepts only a durable recovery ownership token", async () => {

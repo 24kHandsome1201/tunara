@@ -174,6 +174,21 @@ fn cancel_bound_rule(
     rule_id: &str,
     kind: RuleKind,
 ) -> Result<(watch::Receiver<bool>, Instant), String> {
+    with_bound_rule(pty, state, binding, rule_id, kind, |rule| {
+        let started = Instant::now();
+        let _ = rule.cancel.send(true);
+        (rule.completed.clone(), started)
+    })
+}
+
+fn with_bound_rule<T>(
+    pty: &PtyState,
+    state: &ForwardingState,
+    binding: &SessionBindingV1,
+    rule_id: &str,
+    kind: RuleKind,
+    action: impl FnOnce(&Rule) -> T,
+) -> Result<T, String> {
     valid_token(&binding.logical_session_id, "binding.logicalSessionId")?;
     valid_token(&binding.transport_generation, "binding.transportGeneration")?;
     valid_token(rule_id, "ruleId")?;
@@ -205,9 +220,7 @@ fn cancel_bound_rule(
         {
             return Err("forward rule does not belong to this SSH binding".into());
         }
-        let started = Instant::now();
-        let _ = rule.cancel.send(true);
-        (rule.completed.clone(), started)
+        action(rule)
     };
     drop(binding_lease);
     Ok(completed)
@@ -1362,8 +1375,8 @@ pub async fn ssh_remote_forward_start(
             };
             let transport_lost = ssh.transport_lost();
             let _ = cancel.send(true);
-            hub.remove(&bind_host, u32::from(actual_port));
-            if let Session::Ssh(ssh) = generation.as_ref() {
+            // An explicit Stop may have already released the forward.
+            if hub.remove(&bind_host, u32::from(actual_port)) {
                 let _ = ssh
                     .cancel_tcpip_forward(&bind_host, u32::from(actual_port))
                     .await;
@@ -1435,9 +1448,25 @@ pub async fn ssh_remote_forward_stop(
     rule_id: String,
 ) -> Result<(), String> {
     (async {
-        let (completed, started) =
-            cancel_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Remote)?;
-        wait_for_rule_stop(completed, started).await;
+        let (generation, host, port, cancel, completed) =
+            with_bound_rule(&pty, &state, &binding, &rule_id, RuleKind::Remote, |rule| {
+                let RuleView::Remote(view) = &rule.view else {
+                    return Err("forward rule does not belong to this SSH binding".to_string());
+                };
+                Ok((
+                    rule.generation.clone(),
+                    parse_bind(&view.remote_bind_host)?.to_string(),
+                    view.remote_port,
+                    rule.cancel.clone(),
+                    rule.completed.clone(),
+                ))
+            })??;
+        let Session::Ssh(ssh) = generation.as_ref() else {
+            return Err("binding does not identify an SSH session".into());
+        };
+        ssh.cancel_tcpip_forward(&host, u32::from(port)).await?;
+        ssh.reverse_forward_hub().remove(&host, u32::from(port));
+        stop_rule(cancel, completed).await;
         Ok(())
     })
     .await
