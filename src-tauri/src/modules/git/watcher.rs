@@ -67,6 +67,19 @@ fn is_noisy_path(path: &Path) -> bool {
         || s.contains("/.DS_Store")
 }
 
+fn watch_target(expanded: &str) -> Result<PathBuf, String> {
+    let path = Path::new(expanded)
+        .canonicalize()
+        .map_err(|e| format!("canonicalize {}: {}", expanded, e))?;
+    let repo = Repository::discover(&path).ok();
+    match repo.as_ref().and_then(Repository::workdir) {
+        Some(workdir) => workdir
+            .canonicalize()
+            .map_err(|e| format!("canonicalize {}: {}", workdir.display(), e)),
+        None => Ok(path),
+    }
+}
+
 #[tauri::command]
 pub fn git_watch(
     repo_path: String,
@@ -78,9 +91,7 @@ pub fn git_watch(
     // target needs an absolute path, which we resolve separately.
     let key = PathBuf::from(&repo_path);
     let expanded = expand_tilde(&repo_path);
-    let watch_target = Path::new(&expanded)
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {}", expanded, e))?;
+    let watch_target = watch_target(&expanded)?;
 
     let mut map = state.inner.lock().map_err(|e| e.to_string())?;
     if let Some(entry) = map.get_mut(&key) {
@@ -181,8 +192,61 @@ pub fn shutdown_all(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::is_noisy_path;
+    use super::{is_noisy_path, watch_target};
+    use git2::Repository;
     use std::path::Path;
+
+    struct TestDir(std::path::PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "tunara-git-watch-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path.canonicalize().unwrap())
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn watch_target_covers_repo_edits_outside_terminal_subdirectory() {
+        let root = TestDir::new();
+        Repository::init(&root.0).unwrap();
+        let subdir = root.0.join("terminal/subdir");
+        std::fs::create_dir_all(&subdir).unwrap();
+        assert_eq!(watch_target(subdir.to_str().unwrap()).unwrap(), root.0);
+    }
+
+    #[test]
+    fn watch_target_keeps_repo_root() {
+        let root = TestDir::new();
+        Repository::init(&root.0).unwrap();
+        assert_eq!(watch_target(root.0.to_str().unwrap()).unwrap(), root.0);
+    }
+
+    #[test]
+    fn watch_target_keeps_non_repo_directory() {
+        let root = TestDir::new();
+        assert_eq!(watch_target(root.0.to_str().unwrap()).unwrap(), root.0);
+    }
+
+    #[test]
+    fn watch_target_rejects_missing_path() {
+        let root = TestDir::new();
+        Repository::init(&root.0).unwrap();
+        assert!(watch_target(root.0.join("missing").to_str().unwrap()).is_err());
+    }
 
     #[test]
     fn is_noisy_path_flags_git_internal_and_build_dirs() {
