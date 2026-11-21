@@ -29,6 +29,27 @@ test("compileTerminalSearch supports plain, case-sensitive and regex modes", () 
   assert.equal(regex.find("process exit"), null);
 });
 
+test("plain case-insensitive search maps lowercase expansions to source offsets", async (t) => {
+  for (const [query, line, expected] of [
+    ["x", "İX", { start: 1, end: 2 }],
+    ["İ", "aİz", { start: 1, end: 2 }],
+    ["İx", "İİXz", { start: 1, end: 3 }],
+    ["i", "İX", { start: 0, end: 1 }],
+    ["\u0307", "İX", { start: 0, end: 1 }],
+    ["x", "😀İX", { start: 3, end: 4 }],
+    ["😀x", "İ😀Xz", { start: 1, end: 4 }],
+    ["ος", "İΟΣ", { start: 1, end: 3 }],
+    ["missing", "İX", null],
+    ["x", "", null],
+  ]) {
+    await t.test(`${JSON.stringify(query)} in ${JSON.stringify(line)}`, () => {
+      const compiled = compileTerminalSearch(query, { regex: false, caseSensitive: false });
+      assert.ok(compiled.ok);
+      assert.deepEqual(compiled.find(line), expected);
+    });
+  }
+});
+
 test("compileTerminalSearch rejects empty queries and invalid regex, skips zero-width matches", () => {
   assert.deepEqual(compileTerminalSearch("", { regex: false, caseSensitive: false }), { ok: false, reason: "empty" });
   assert.deepEqual(compileTerminalSearch("(", { regex: true, caseSensitive: false }), { ok: false, reason: "invalid-regex" });
