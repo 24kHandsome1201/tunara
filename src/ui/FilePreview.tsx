@@ -683,7 +683,8 @@ export function TabularTable({ table }: { table: TabularPreview }) {
       <table className="tabular-table">
         <caption>
           {t("preview.table.caption", { kind: table.kind.toUpperCase() })}
-          {table.truncated ? ` · ${t("preview.table.truncated", { shown: table.rows.length, total: table.rowCount })}` : ""}
+          {table.rowCount > table.rows.length ? ` · ${t("preview.table.truncated", { shown: table.rows.length, total: table.rowCount })}` : ""}
+          {table.columnCount > table.columns.length ? ` · ${t("preview.table.truncated_columns", { shown: table.columns.length, total: table.columnCount })}` : ""}
         </caption>
         <thead>
           <tr>

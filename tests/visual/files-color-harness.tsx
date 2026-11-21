@@ -31,6 +31,7 @@ const table = {
   ],
   truncated: false,
   rowCount: 3,
+  columnCount: 3,
 };
 
 const notebook = JSON.stringify({
