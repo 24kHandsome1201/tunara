@@ -12,19 +12,26 @@ export function sanitizeTerminalHistoryText(text: string): string {
 }
 
 export function tailTerminalHistoryWithinUtf8Limit(text: string, limit: number): string {
-  const encoder = new TextEncoder();
-  if (encoder.encode(text).byteLength <= limit) return text;
+  if (text.length * 3 <= limit) return text;
 
-  const codePoints = Array.from(text);
   let bytes = 0;
-  let start = codePoints.length;
+  let start = text.length;
   while (start > 0) {
-    const next = encoder.encode(codePoints[start - 1]).byteLength;
-    if (bytes + next > limit) break;
-    bytes += next;
-    start -= 1;
+    const last = text.charCodeAt(start - 1);
+    let units = 1;
+    let size = last < 0x80 ? 1 : last < 0x800 ? 2 : 3;
+    if (last >= 0xdc00 && last <= 0xdfff) {
+      const first = text.charCodeAt(start - 2);
+      if (first >= 0xd800 && first <= 0xdbff) {
+        units = 2;
+        size = 4;
+      }
+    }
+    bytes += size;
+    if (bytes > limit) break;
+    start -= units;
   }
-  return codePoints.slice(start).join("");
+  return text.slice(start);
 }
 
 /**
@@ -37,20 +44,28 @@ export function captureSafeTerminalHistory(
   maxBytes = MAX_SAFE_TERMINAL_HISTORY_BYTES,
 ): string {
   const normal = terminal.buffer.normal;
-  if (!normal) return "";
-  const lines: string[] = [];
-  for (let index = 0; index < normal.length; index += 1) {
+  if (!normal || maxBytes < 1) return "";
+  const chunks: string[] = [];
+  let codeUnits = 0;
+  let nextRowWrapped = true;
+  for (let index = normal.length - 1; index >= 0; index -= 1) {
     const line = normal.getLine(index);
     if (!line) continue;
     const text = sanitizeTerminalHistoryText(line.translateToString(true));
-    if (line.isWrapped && lines.length > 0) {
-      lines[lines.length - 1] += text;
-    } else {
-      lines.push(text);
+    if (!text && chunks.length === 0) continue;
+    // The newer row decides whether this boundary is a newline.
+    if (!nextRowWrapped) {
+      chunks.push("\n");
+      codeUnits += 1;
     }
+    if (text) chunks.push(text);
+    codeUnits += text.length;
+    // UTF-8 needs at least one byte per UTF-16 unit. The extra unit
+    // keeps the cutoff safe even if a surrogate pair spans wrapped rows.
+    if (codeUnits > maxBytes) break;
+    nextRowWrapped = line.isWrapped;
   }
-  while (lines[lines.length - 1] === "") lines.pop();
-  return tailTerminalHistoryWithinUtf8Limit(lines.join("\n"), Math.max(0, maxBytes));
+  return tailTerminalHistoryWithinUtf8Limit(chunks.reverse().join(""), maxBytes);
 }
 
 /** Convert inert history into trusted xterm input without reintroducing data controls. */
