@@ -35,10 +35,14 @@ export function useKeybindings() {
       const ui = useUIStore.getState();
       const st = useSessionsStore.getState();
       switch (action) {
-        case "newTerminal":
+        case "newTerminal": {
+          const focused = document.activeElement;
+          // Like clicking New terminal, this shortcut explicitly leaves the reader.
+          if (focused instanceof HTMLElement && focused.closest("[data-reader-session-id]")) focused.blur();
           ui.showTerminal();
           st.newTerminal();
           break;
+        }
         case "closeSession": {
           const focused = ui.focusedPaneId;
           if (focused && isReaderPaneId(focused)) {

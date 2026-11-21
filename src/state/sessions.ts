@@ -406,6 +406,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
       recentDirs: session.remote ? state.recentDirs : pushRecentDir(state.recentDirs, session.dir),
     }));
     ensureSessionVisibleInSplit(session.id, previousActiveSessionId);
+    useUIStore.getState().setFocusedPaneId(session.id);
   },
 
   removeSession: (id) => {
