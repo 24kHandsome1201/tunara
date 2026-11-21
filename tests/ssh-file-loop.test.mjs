@@ -70,6 +70,35 @@ test("sibling preview walks only regular files in listing order", () => {
   assert.equal(files.next, "/repo/c.txt");
 });
 
+test("delimited preview normalizes uneven rows", () => {
+  for (const [fileName, delimiter] of [["dump.csv", ","], ["dump.tsv", "\t"]]) {
+    const table = parseTabularPreview(fileName, ["a,b", "1,2,3", "4"].join("\n").replaceAll(",", delimiter));
+    assert.deepEqual(table?.columns, ["a", "b", "col3"]);
+    assert.deepEqual(table?.rows, [["1", "2", "3"], ["4", "", ""]]);
+    assert.equal(table?.columnCount, 3);
+    assert.equal(table?.truncated, false);
+  }
+});
+
+test("delimited generated headers avoid existing names", () => {
+  const table = parseTabularPreview("dump.csv", ",col1,col4,col4_2\nx,y,z,w,5\n6");
+  assert.deepEqual(table?.columns, ["col1_2", "col1", "col4", "col4_2", "col5"]);
+  assert.deepEqual(table?.rows[1], ["6", "", "", "", ""]);
+});
+
+test("delimited width includes rows beyond the display limit", () => {
+  const wide = Array.from({ length: 42 }, (_, index) => String(index)).join(",");
+  const table = parseTabularPreview("dump.csv", ["a", ...Array(200).fill("1"), wide].join("\n"));
+  assert.equal(table?.columnCount, 42);
+  assert.equal(table?.columns.length, 40);
+  assert.equal(table?.rows.length, 200);
+  assert.ok(table?.rows.every((row) => row.length === 40 && row[1] === ""));
+  assert.equal(table?.truncated, true);
+  assert.equal(parseTabularPreview("dump.csv", ""), null);
+  assert.equal(parseTabularPreview("dump.csv", 'a,b\n"unfinished'), null);
+  assert.deepEqual(parseTabularPreview("dump.csv", "a,b")?.rows, []);
+});
+
 test("tabular preview stays text-only for json and csv", () => {
   const json = parseTabularPreview("users.json", JSON.stringify([{ id: 1, name: "<script>" }, { id: 2, name: "ok" }]));
   assert.equal(json?.kind, "json");

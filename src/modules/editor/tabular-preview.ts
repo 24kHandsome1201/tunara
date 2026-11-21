@@ -114,9 +114,22 @@ export function parseDelimitedTable(content: string, kind: "csv" | "tsv"): Tabul
     pushRow();
   }
   if (rows.length === 0) return null;
-  const columns = rows[0].map((name, index) => name || `col${index + 1}`);
+  const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const usedNames = new Set(rows[0].filter(Boolean));
+  const columns = Array.from({ length: width }, (_, index) => {
+    if (rows[0][index]) return rows[0][index];
+    const base = `col${index + 1}`;
+    let name = base;
+    let suffix = 2;
+    while (usedNames.has(name)) name = `${base}_${suffix++}`;
+    usedNames.add(name);
+    return name;
+  });
   const body = rows.slice(1);
-  return finishTable(kind, columns, body.slice(0, MAX_ROWS), body.length);
+  const visibleWidth = Math.min(width, MAX_COLUMNS);
+  const visibleRows = body.slice(0, MAX_ROWS).map((row) =>
+    Array.from({ length: visibleWidth }, (_, index) => row[index] ?? ""));
+  return finishTable(kind, columns, visibleRows, body.length);
 }
 
 export function parseJsonTable(content: string): TabularPreview | null {
