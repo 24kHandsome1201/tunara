@@ -38,6 +38,7 @@ import {
   formatSshTarget,
   sshAliasProfileMatch,
   parseSshTarget,
+  profileMatchesTarget,
   sshTargetHasInvalidPort,
   withSshTargetPort,
 } from "../src/modules/ssh/connect-target.ts";
@@ -116,6 +117,30 @@ test("parseSshTarget accepts user@host[:port], aliases, and IPv6", () => {
   assert.equal(formatSshTarget("alice", "prod", 2222), "alice@prod:2222");
 });
 
+test("IPv6 targets survive formatting and parsing without inventing a port", () => {
+  for (const host of ["2001:db8::1", "2001:db8::0", "::1"]) {
+    assert.deepEqual(parseSshTarget(host), { user: "", host });
+    assert.equal(sshTargetHasInvalidPort(host), false);
+    assert.equal(withSshTargetPort(host, "2200"), host);
+    for (const port of [22, 2222]) {
+      const target = formatSshTarget("deploy", host, port);
+      assert.equal(target, `deploy@[${host}]${port === 22 ? "" : `:${port}`}`);
+      assert.deepEqual(parseSshTarget(target), { user: "deploy", host, ...(port === 22 ? {} : { port }) });
+    }
+  }
+  assert.equal(parseSshTarget("[2001:db8::1]:99999"), null);
+  assert.equal(sshTargetHasInvalidPort("[2001:db8::1]:99999"), true);
+  assert.equal(parseSshTarget(""), null);
+});
+
+test("already bracketed IPv6 profile hosts are formatted exactly once", () => {
+  for (const port of [22, 2222]) {
+    const target = formatSshTarget("deploy", "[2001:db8::1]", port);
+    assert.equal(target, `deploy@[2001:db8::1]${port === 22 ? "" : `:${port}`}`);
+    assert.deepEqual(parseSshTarget(target), { user: "deploy", host: "2001:db8::1", ...(port === 22 ? {} : { port }) });
+  }
+});
+
 test("withSshTargetPort only rewrites an explicit target port with a numeric Port", () => {
   assert.equal(withSshTargetPort("alice@prod:2222", "2200"), "alice@prod:2200");
   assert.equal(withSshTargetPort("[2001:db8::1]:2222", "2200"), "[2001:db8::1]:2200");
@@ -152,6 +177,29 @@ test("sshAliasProfileMatch resolves a typed Host alias, user@alias and alias:por
   assert.equal(sshAliasProfileMatch(profiles, "qa-local:2200"), qa);
   assert.equal(sshAliasProfileMatch(profiles, "qauser@127.0.0.1:2222"), undefined);
   assert.equal(sshAliasProfileMatch(profiles, "qa"), undefined);
+});
+
+test("bare IPv6 identities keep a matching profile's nondefault port", () => {
+  const profile = { id: "v6", label: "IPv6 server", host: "2001:db8::1", port: 2222, user: "deploy", identityFile: "" };
+  assert.equal(exactSshProfileMatch([profile], "deploy@2001:db8::1"), profile);
+  assert.equal(exactSshProfileMatch([profile], "deploy@[2001:db8::1]"), profile);
+  assert.equal(exactSshProfileMatch([profile], "deploy@[2001:db8::1]:22"), undefined);
+  assert.equal(exactSshProfileMatch([profile], "other@2001:db8::1"), undefined);
+  const hostname = { ...profile, host: "lab.example" };
+  assert.equal(exactSshProfileMatch([hostname], "deploy@lab.example"), hostname);
+  assert.equal(exactSshProfileMatch([hostname], "deploy@lab.example:22"), undefined);
+});
+
+test("IPv6 profile suggestions match bracketed targets and bare addresses", () => {
+  const profile = { id: "v6", label: "IPv6 server", host: "2001:db8::1", port: 2222, user: "deploy", identityFile: "" };
+  const entries = sshProfileEntries(toProfilesPanelModel([profile], { imported: [], skipped: 0, diagnostics: [] }));
+  for (const query of ["deploy@2001:db8::1", "deploy@2001:db8::1:2222", "deploy@[2001:db8::1]:2222", "deploy@[2001:db8::1]", "[2001:db8::1]:2222", "2001:db8::1", ""]) {
+    assert.equal(profileMatchesTarget(profile, query), true, query);
+    assert.deepEqual(filterSshProfileEntries(entries, query).map((entry) => entry.key), ["saved:v6"]);
+  }
+  assert.equal(profileMatchesTarget(profile, "[2001:db8::2]"), false);
+  assert.deepEqual(filterSshProfileEntries(entries, "[2001:db8::2]"), []);
+  assert.deepEqual(filterSshProfileEntries([], "[2001:db8::1]"), []);
 });
 
 test("sshProfileEntries shows a saved host once when ssh config has the same endpoint", () => {

@@ -8,7 +8,8 @@ export interface ParsedSshTarget {
 }
 
 export function formatSshTarget(user: string, host: string, port = 22): string {
-  const identity = user ? `${user}@${host}` : host;
+  const targetHost = host.includes(":") && !(host.startsWith("[") && host.endsWith("]")) ? `[${host}]` : host;
+  const identity = user ? `${user}@${targetHost}` : targetHost;
   return port === 22 ? identity : `${identity}:${port}`;
 }
 
@@ -18,7 +19,7 @@ export function formatSshTarget(user: string, host: string, port = 22): string {
  */
 export function sshTargetHasInvalidPort(raw: string): boolean {
   const value = raw.trim();
-  const match = value.match(/:(\d+)$/);
+  const match = value.match(/(?:^|@)(?:\[[^\]]+\]|[^:[\]]+):(\d+)$/);
   return Boolean(match && parseSshPort(match[1]) === null);
 }
 
@@ -45,7 +46,7 @@ export function parseSshTarget(raw: string): ParsedSshTarget | null {
   }
 
   const colon = rest.lastIndexOf(":");
-  if (colon > 0 && /^\d+$/.test(rest.slice(colon + 1))) {
+  if (colon > 0 && colon === rest.indexOf(":") && /^\d+$/.test(rest.slice(colon + 1))) {
     const port = parseSshPort(rest.slice(colon + 1));
     if (port === null) return null;
     const host = rest.slice(0, colon).trim();
@@ -65,7 +66,10 @@ export function withSshTargetPort(raw: string, portText: string): string {
 }
 
 export function sshTargetHaystack(profile: SshHostProfile): string {
-  return `${profile.label} ${profile.user}@${profile.host}:${profile.port}`.toLowerCase();
+  const host = formatSshTarget("", profile.host);
+  const identity = `${profile.label} ${profile.user}@${host}:${profile.port}`;
+  const bareHost = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+  return (bareHost === host ? identity : `${identity} ${profile.user}@${bareHost}:${profile.port}`).toLowerCase();
 }
 
 export function profileMatchesTarget(profile: SshHostProfile, query: string): boolean {
@@ -88,7 +92,7 @@ export function exactSshProfileMatch(profiles: SshHostProfile[], raw: string): S
     if (!parsed) return false;
     return parsed.host.toLowerCase() === host
       && (parsed.user ? parsed.user === profile.user : true)
-      && (parsed.port ?? 22) === profile.port;
+      && ((parsed.port === undefined && parsed.host.includes(":")) || (parsed.port ?? 22) === profile.port);
   });
 }
 

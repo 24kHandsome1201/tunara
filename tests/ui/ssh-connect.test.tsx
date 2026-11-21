@@ -172,6 +172,36 @@ describe("SSH connection sheet", () => {
     expect(hostInput().value).toBe("deploy@lab.example:2200");
   });
 
+  test.each([22, 2222])("reopens an IPv6 connection on port %s without corrupting the target", async (port) => {
+    const profile = { id: "v6", label: "IPv6 server", host: "2001:db8::1", port, user: "deploy", auth_method: "agent", identity_file: "" };
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [profile];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    const first = render(<SshConnect onClose={vi.fn()} />);
+    fireEvent.change(hostInput(), { target: { value: `deploy@[2001:db8::1]:${port}` } });
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(connect.disabled).toBe(false));
+    fireEvent.click(connect);
+    const remote = useSessionsStore.getState().sessions[0].remote!;
+    expect(remote).toMatchObject({ host: "2001:db8::1", port, user: "deploy" });
+    first.unmount();
+    useUIStore.setState({ sshPrefill: remote });
+    render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
+    expect(hostInput().value).toBe(`deploy@[2001:db8::1]${port === 22 ? "" : `:${port}`}`);
+    expect((document.getElementById("ssh-connect-port") as HTMLInputElement).value).toBe(String(port));
+    await waitFor(() => expect(within(screen.getByRole("listbox")).getByRole("option", { name: /IPv6 server/ })).toBeTruthy());
+    fireEvent.change(hostInput(), { target: { value: `deploy@[2001:db8::1]:${port}` } });
+    fireEvent.change(document.getElementById("ssh-connect-port")!, { target: { value: "2200" } });
+    const reopenConnect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    await waitFor(() => expect(reopenConnect.disabled).toBe(false));
+    fireEvent.click(reopenConnect);
+    const sessions = useSessionsStore.getState().sessions;
+    expect(sessions[sessions.length - 1].remote).toMatchObject({ host: "2001:db8::1", port: 2200 });
+  });
+
   test("shows a port typed in the target in the Port field", () => {
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);
