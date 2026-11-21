@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useT } from "@/modules/i18n";
 import { useUIStore } from "@/state/ui";
-import { hostProfileButtonLabel, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
+import { hostProfileButtonLabel, liveSessionsForHost, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
 import { sshProfileEntries } from "@/modules/ssh/hosts-model";
-import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
+import { representativeSession } from "@/modules/session/sidebar-groups";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import type { Session } from "./types";
 import { useSshProfilesPanel } from "./useSshProfilesPanel";
@@ -86,7 +86,7 @@ export function SidebarHosts({ sessions, activeSessionId, onSelectSession }: Sid
           {!loading && profiles.length === 0 && <span className="sidebar-hosts-state">{t("sidebar.hosts.empty")}</span>}
           {visibleProfiles.map((entry) => {
             const { profile, source } = entry;
-            const live = liveSessionsOnEndpoint(sessions, profile);
+            const live = liveSessionsForHost(sessions, entry, panel);
             const latest = representativeSession(live, activeSessionId);
             const online = live.some((session) => readyBindingForSession(session));
             const connecting = !online && live.some((session) => session.connection && !["failed", "disconnected", "exited"].includes(session.connection.phase));

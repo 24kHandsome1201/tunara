@@ -328,3 +328,41 @@ test("local HerdR chip reflects blocked panes reported by the HerdR socket API",
   expect(chip.getAttribute("data-herdr-blocked")).toBe("true");
   expect(chip.getAttribute("title")).toBe("HerdR panes: 1 blocked, 1 working, 0 done. Focused pane: /repo.");
 });
+
+test("saved hosts on one endpoint behind different bastions keep their own status while sessions share a group", async () => {
+  const bastion = (id: string, host: string) => ({ id, label: id, host, port: 22, user: "deploy", identity_file: "" });
+  const database = (id: string, label: string, jump: string) => ({ ...bastion(id, "10.0.0.5"), label, proxy_jump_profile_id: jump });
+  mockIPC((command) => {
+    if (command === "ssh_hosts_load") {
+      return [bastion("jump-eu", "eu.example.test"), bastion("jump-us", "us.example.test"), database("db-eu", "EU database", "jump-eu"), database("db-us", "US database", "jump-us")];
+    }
+    if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+    return undefined;
+  });
+  const viaBastion = (id: string, jumpId: string, jumpHost: string, phase: "ready" | "disconnected") => sshSession(id, "/srv", "10.0.0.5", {
+    remote: { host: "10.0.0.5", port: 22, user: "deploy", authMethod: "agent", route: { profileId: jumpId, jump: { host: jumpHost, port: 22, user: "deploy", authMethod: "agent" } } },
+    ptyId: 9,
+    transportGeneration: `tg-${id}`,
+    connection: { transport: "ssh", phase, source: "backend", updatedAt: 1 },
+  });
+  const onSelect = vi.fn();
+  render(
+    <Sidebar
+      sessions={[viaBastion("live-eu", "jump-eu", "eu.example.test", "ready"), viaBastion("old-us", "jump-us", "us.example.test", "disconnected")]}
+      activeSessionId="live-eu"
+      onSelectSession={onSelect}
+    />,
+  );
+
+  expect(screen.getByRole("group", { name: /^deploy@10\.0\.0\.5, SSH, Terminals: 2/ })).toBeTruthy();
+
+  fireEvent.click(await screen.findByRole("button", { name: /SSH hosts · 4/ }));
+  const euRow = await screen.findByRole("button", { name: "EU database" });
+  const usRow = screen.getByRole("button", { name: "US database" });
+  expect(euRow.dataset.status).toBe("online");
+  expect(usRow.dataset.status).toBe("offline");
+
+  fireEvent.click(usRow);
+  expect(onSelect).toHaveBeenCalledWith("old-us");
+  expect(onSelect).not.toHaveBeenCalledWith("live-eu");
+});
