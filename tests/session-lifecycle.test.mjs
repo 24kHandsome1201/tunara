@@ -269,6 +269,9 @@ test("cwdChangedUpdate resets git state and requests git refresh", () => {
   assert.equal(update.patch.branch, "");
   assert.equal(update.patch.gitState, "unknown");
   assert.equal(update.patch.changes, undefined);
+  assert.ok("workspace" in update.patch);
+  assert.equal(update.patch.workspace, undefined);
+  assert.equal(update.patch.workspaceState, "unknown");
   // cd command should be cleared.
   assert.equal(update.patch.lastCommand, undefined);
 });

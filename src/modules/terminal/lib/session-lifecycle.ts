@@ -231,6 +231,10 @@ export function cwdChangedUpdate(
       branch: "",
       gitState: "unknown",
       changes: undefined,
+      // The old repository identity no longer applies; "unknown" lets
+      // background hydration resolve the new one before the session is focused.
+      workspace: undefined,
+      workspaceState: "unknown",
       shellTitle: undefined,
       suppressShellTitle: false,
       ...(/^(?:cd|pushd|popd)(?:\s|$)/.test(lastCommand)
