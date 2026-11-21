@@ -91,13 +91,14 @@ impl ReverseForwardHub {
         Ok(())
     }
 
-    pub fn remove(&self, remote_bind_host: &str, remote_port: u32) {
+    pub fn remove(&self, remote_bind_host: &str, remote_port: u32) -> bool {
         let Ok(key_host) = canonical_loopback(remote_bind_host).ok_or(()) else {
-            return;
+            return false;
         };
         if let Ok(mut map) = self.inner.lock() {
-            map.remove(&(key_host, remote_port));
+            return map.remove(&(key_host, remote_port)).is_some();
         }
+        false
     }
 
     pub fn try_accept(
