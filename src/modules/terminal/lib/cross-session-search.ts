@@ -110,9 +110,24 @@ export function compileTerminalSearch(query: string, options: TerminalSearchOpti
       const lowered = line.toLowerCase();
       const index = lowered.indexOf(needle);
       if (index < 0) return null;
-      // Some case mappings change string length; keep offsets inside the line.
-      const start = Math.min(index, line.length);
-      return { start, end: Math.min(line.length, start + needle.length) };
+      const end = index + needle.length;
+      if (lowered.length === line.length) return { start: index, end };
+      let sourceOffset = 0;
+      let foldedOffset = 0;
+      let start = 0;
+      for (const char of line) {
+        const foldedLength = char.toLowerCase().length;
+        const sameLength = foldedLength === char.length;
+        if (foldedOffset <= index) {
+          start = sourceOffset + (sameLength ? index - foldedOffset : 0);
+        }
+        if (end <= foldedOffset + foldedLength) {
+          return { start, end: sourceOffset + (sameLength ? end - foldedOffset : char.length) };
+        }
+        sourceOffset += char.length;
+        foldedOffset += foldedLength;
+      }
+      return null;
     },
   };
 }
