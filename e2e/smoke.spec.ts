@@ -37,37 +37,50 @@ test("typing echoes through the mocked PTY", async ({ page, backend }) => {
   await expect(page.locator(".xterm-rows").first()).toContainText("from-backend");
 });
 
-test("New terminal takes keyboard focus from an open diff reader", async ({ page, backend }) => {
-  await openLocalTerminal(page, backend);
-  await page.evaluate(() => {
-    const invoke = window.__TAURI_INTERNALS__.invoke as (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
-    window.__TAURI_INTERNALS__.invoke = (cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === "git_status") return Promise.resolve({
-        branch: "main",
-        files: [{ path: "app.ts", status: "M", stage: "unstaged", added: 1, removed: 1 }],
-      });
-      if (cmd === "git_diff") return Promise.resolve({
-        kind: "text", path: "app.ts", patch: "@@ -1 +1 @@\n-old value\n+new value\n", truncated: false, totalLines: 3,
-      });
-      return invoke(cmd, args);
-    };
-  });
-  await backend.emitPtyOutput(1, "\x1b]7;file://localhost/home/e2e/project\x07");
-  await page.getByRole("tab", { name: "Changes", exact: true }).click();
-  await page.getByRole("button", { name: "app.ts", exact: true }).click();
-  const diff = page.getByText("new value", { exact: false });
-  await expect(diff).toBeVisible();
+for (const method of ["button", "shortcut"] as const) {
+  test(`New terminal takes keyboard focus from an open diff reader (${method})`, async ({ page, backend }) => {
+    await openLocalTerminal(page, backend);
+    await page.evaluate(() => {
+      const invoke = window.__TAURI_INTERNALS__.invoke as (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+      window.__TAURI_INTERNALS__.invoke = (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "git_status") return Promise.resolve({
+          branch: "main",
+          files: [{ path: "app.ts", status: "M", stage: "unstaged", added: 1, removed: 1 }],
+        });
+        if (cmd === "git_diff") return Promise.resolve({
+          kind: "text", path: "app.ts", patch: "@@ -1 +1 @@\n-old value\n+new value\n", truncated: false, totalLines: 3,
+        });
+        return invoke(cmd, args);
+      };
+    });
+    await backend.emitPtyOutput(1, "\x1b]7;file://localhost/home/e2e/project\x07");
+    await page.getByRole("tab", { name: "Changes", exact: true }).click();
+    await page.getByRole("button", { name: "app.ts", exact: true }).click();
+    const diff = page.getByText("new value", { exact: false });
+    await expect(diff).toBeVisible();
 
-  await page.getByRole("button", { name: "New terminal", exact: true }).click();
-  await expect.poll(() => backend.openPtyIds()).toEqual([1, 2]);
-  const [, newSessionId] = await terminalSessionIds(page);
-  await expect.poll(() => focusedTerminalSessionId(page)).toBe(newSessionId);
-  await page.keyboard.type("echo focused");
-  await page.keyboard.press("Enter");
-  await expect.poll(() => backend.ptyWrites(2)).toBe("echo focused\r");
-  await expect.poll(() => backend.openPtyIds()).toEqual([1, 2]);
-  await expect(diff).toBeVisible();
-});
+    if (method === "shortcut") {
+      const search = page.getByRole("textbox", { name: "Search in this file…" });
+      await search.click();
+      await expect(search).toBeFocused();
+      await page.keyboard.press("Meta+t");
+    } else {
+      await page.getByRole("button", { name: "New terminal", exact: true }).click();
+    }
+    await expect.poll(() => backend.openPtyIds()).toEqual([1, 2]);
+    const [, newSessionId] = await terminalSessionIds(page);
+    await expect.poll(() => focusedTerminalSessionId(page)).toBe(newSessionId);
+    await page.keyboard.type("echo focused");
+    await page.keyboard.press("Enter");
+    await expect.poll(() => backend.ptyWrites(2)).toBe("echo focused\r");
+    await expect.poll(() => backend.openPtyIds()).toEqual([1, 2]);
+    await expect(diff).toBeVisible();
+
+    await page.keyboard.press("Meta+w");
+    await expect.poll(() => backend.openPtyIds()).toEqual([1]);
+    await expect(diff).toBeVisible();
+  });
+}
 
 test("⌘D splits the pane and focus switches between panes", async ({ page, backend }) => {
   await openLocalTerminal(page, backend);
