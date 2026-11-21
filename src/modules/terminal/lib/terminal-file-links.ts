@@ -97,10 +97,16 @@ function readLogicalLine(term: Terminal, bufferLineNumber: number): { text: stri
     const next = buffer.getLine(y + 1);
     const continues = next?.isWrapped === true;
     rows.push({ line, y: y + 1, offset: text.length });
-    text += line.translateToString(!continues);
+    text += continues ? wrappedRowText(line, next) : line.translateToString(true);
     if (!continues) break;
   }
   return { text, rows };
+}
+
+/** xterm leaves the last cell empty when a wide character does not fit and wraps; that cell is not a space. */
+function wrappedRowText(line: IBufferLine, next: IBufferLine): string {
+  const padded = line.getCell(line.length - 1)?.getChars() === "" && next.getCell(0)?.getWidth() === 2;
+  return line.translateToString(false, 0, padded ? line.length - 1 : line.length);
 }
 
 function rowIndexForOffset(rows: LogicalLineRow[], offset: number, endInclusive: boolean): number {

@@ -136,8 +136,17 @@ test("a terminal file link that fails to open is logged and surfaced as an error
 function fakeWrappedTerminal(rows: { text: string; isWrapped?: boolean }[]): { term: Terminal; provider: () => ILinkProvider } {
   let registered: ILinkProvider | null = null;
   const lines = rows.map(({ text, isWrapped = false }) => {
-    const cells = [...text].map((char) => ({ getChars: () => char, getWidth: () => 1 }));
-    return { isWrapped, length: cells.length, getCell: (x: number) => cells[x], translateToString: () => text };
+    // "\0" is an empty cell; Han characters take two cells, as in xterm.
+    const cells = [...text].flatMap((char) => {
+      if (char === "\0") return [{ getChars: () => "", getWidth: () => 1 }];
+      if (/\p{Script=Han}/u.test(char)) return [{ getChars: () => char, getWidth: () => 2 }, { getChars: () => "", getWidth: () => 0 }];
+      return [{ getChars: () => char, getWidth: () => 1 }];
+    });
+    const translateToString = (trimRight = false, start = 0, end = cells.length) => {
+      const value = cells.slice(start, end).map((cell) => cell.getChars() || (cell.getWidth() ? " " : "")).join("");
+      return trimRight ? value.trimEnd() : value;
+    };
+    return { isWrapped, length: cells.length, getCell: (x: number) => cells[x], translateToString };
   });
   const term = {
     buffer: { active: { getLine: (y: number) => lines[y] } },
@@ -191,4 +200,18 @@ test("rows split by a real line break keep their own links and cwd", () => {
   expect(second).toMatchObject({ text: "src/file.ts:12:3", range: { start: { x: 1, y: 2 }, end: { x: 16, y: 2 } } });
   second.activate(new MouseEvent("click"), second.text);
   expect(createResource).toHaveBeenCalledWith("/cwd-2/src/file.ts", 12, 3);
+});
+
+test("the empty cell xterm leaves before a wrapped wide character is not part of the path", () => {
+  const createResource = vi.fn(() => null);
+  const { term, provider } = fakeWrappedTerminal([
+    { text: "cd '/home/dev/\0" },
+    { text: "项目/src' done", isWrapped: true },
+  ]);
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource });
+
+  const [link] = linksForRow(provider(), 2);
+  expect(link).toMatchObject({ text: "/home/dev/项目/src", range: { start: { x: 5, y: 1 }, end: { x: 8, y: 2 } } });
+  link.activate(new MouseEvent("click", { ctrlKey: true }), link.text);
+  expect(createResource).toHaveBeenCalledWith("/home/dev/项目/src", undefined, undefined);
 });
