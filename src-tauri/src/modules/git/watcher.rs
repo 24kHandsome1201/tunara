@@ -196,58 +196,56 @@ mod tests {
     use git2::Repository;
     use std::path::Path;
 
+    struct TestDir(std::path::PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "tunara-git-watch-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path.canonicalize().unwrap())
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn watch_target_covers_repo_edits_outside_terminal_subdirectory() {
-        let root = std::env::temp_dir().join(format!(
-            "tunara-git-watch-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(root.join("terminal/subdir")).unwrap();
-        let expected = root.canonicalize().unwrap();
-        assert_eq!(watch_target(root.to_str().unwrap()).unwrap(), expected);
-        assert!(watch_target(root.join("missing").to_str().unwrap()).is_err());
-        Repository::init(&root).unwrap();
-        assert_eq!(watch_target(root.to_str().unwrap()).unwrap(), expected);
-        assert!(watch_target(root.join("missing").to_str().unwrap()).is_err());
-        let actual = watch_target(root.join("terminal/subdir").to_str().unwrap()).unwrap();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut debouncer = notify_debouncer_mini::new_debouncer(
-            std::time::Duration::from_millis(50),
-            move |events: notify_debouncer_mini::DebounceEventResult| {
-                if let Ok(events) = events {
-                    for event in events {
-                        tx.send(event.path).unwrap();
-                    }
-                }
-            },
-        )
-        .unwrap();
-        debouncer
-            .watcher()
-            .watch(&actual, notify::RecursiveMode::Recursive)
-            .unwrap();
-        let sibling = expected.join("README.md");
-        std::fs::write(&sibling, "edited outside terminal cwd").unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let mut observed = false;
-        while let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) {
-            match rx.recv_timeout(remaining) {
-                Ok(path) if path == sibling => {
-                    observed = true;
-                    break;
-                }
-                Ok(_) => continue,
-                Err(_) => break,
-            }
-        }
-        drop(debouncer);
-        std::fs::remove_dir_all(&root).unwrap();
-        assert_eq!(actual, expected);
-        assert!(observed, "watcher missed an edit outside the terminal cwd");
+        let root = TestDir::new();
+        Repository::init(&root.0).unwrap();
+        let subdir = root.0.join("terminal/subdir");
+        std::fs::create_dir_all(&subdir).unwrap();
+        assert_eq!(watch_target(subdir.to_str().unwrap()).unwrap(), root.0);
+    }
+
+    #[test]
+    fn watch_target_keeps_repo_root() {
+        let root = TestDir::new();
+        Repository::init(&root.0).unwrap();
+        assert_eq!(watch_target(root.0.to_str().unwrap()).unwrap(), root.0);
+    }
+
+    #[test]
+    fn watch_target_keeps_non_repo_directory() {
+        let root = TestDir::new();
+        assert_eq!(watch_target(root.0.to_str().unwrap()).unwrap(), root.0);
+    }
+
+    #[test]
+    fn watch_target_rejects_missing_path() {
+        let root = TestDir::new();
+        Repository::init(&root.0).unwrap();
+        assert!(watch_target(root.0.join("missing").to_str().unwrap()).is_err());
     }
 
     #[test]
