@@ -7,7 +7,7 @@ export type MarkdownBlock =
   | { type: "code"; language?: string; text: string; key: string }
   | { type: "quote"; text: string; key: string }
   | { type: "unordered-list"; items: string[]; key: string }
-  | { type: "ordered-list"; items: string[]; key: string }
+  | { type: "ordered-list"; start: number; items: string[]; key: string }
   | { type: "table"; header: string[]; rows: string[][]; alignments: MarkdownAlignment[]; key: string }
   | { type: "mdx-source"; kind: MdxSourceKind; text: string; key: string }
   | { type: "rule"; key: string };
@@ -213,10 +213,12 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       continue;
     }
     if (/^\s*\d+\.\s/.test(line)) {
+      const number = Number.parseInt(line.trimStart(), 10);
+      const start = Number.isSafeInteger(number) ? number : 1;
       const items = [line.replace(/^\s*\d+\.\s/, "")];
       index++;
       while (index < lines.length && /^\s*\d+\.\s/.test(lines[index])) items.push(lines[index++].replace(/^\s*\d+\.\s/, ""));
-      blocks.push({ type: "ordered-list", items, key: keys.make(`ol-${compact(items.join("|"))}`) });
+      blocks.push({ type: "ordered-list", start, items, key: keys.make(`ol-${compact(items.join("|"))}`) });
       continue;
     }
     if (line.trim() === "") {

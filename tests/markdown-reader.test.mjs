@@ -10,6 +10,16 @@ import {
   splitGfmTableRow,
 } from "../src/modules/editor/markdown-reader.ts";
 
+test("ordered lists retain a sanitized first-item start number", () => {
+  for (const [marker, expected] of [["3", 3], ["003", 3], ["0", 0], ["1", 1], ["9".repeat(400), 1]]) {
+    const { blocks } = parseMarkdownDocument(`${marker}. third step\n4. fourth step`);
+    assert.equal(blocks[0].start, expected);
+    assert.deepEqual(blocks[0].items, ["third step", "fourth step"]);
+  }
+  assert.deepEqual(parseMarkdownDocument("").blocks, []);
+  assert.equal(parseMarkdownDocument('3x. not a list').blocks[0].type, "paragraph");
+});
+
 test("headings produce semantic toc entries and stable unique unicode anchors", () => {
   const parsed = parseMarkdownDocument("# 快速开始\n## Install & Run\n## Install & Run\n# **快速开始**");
   assert.deepEqual(parsed.toc, [

@@ -241,6 +241,18 @@ describe("FilePreview editor behavior", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  test("renders ordered lists with only non-default start attributes", async () => {
+    mockIPC((command) => command === "fs_read_file" ? {
+      ...original, content: "3. third step\n4. fourth step\n\n1. first step\n\n0. zero step",
+    } : null);
+    renderLocal("steps.md");
+    await screen.findByRole("textbox", { name: "Edit steps.md" });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    const lists = screen.getAllByRole("list");
+    expect(lists.map((list) => list.getAttribute("start"))).toEqual(["3", null, "0"]);
+    expect(lists[0].textContent).toBe("third stepfourth step");
+  });
+
   test("keeps the Markdown mode switch and save flow keyboard-complete", async () => {
     let writes = 0;
     mockIPC((command) => {
