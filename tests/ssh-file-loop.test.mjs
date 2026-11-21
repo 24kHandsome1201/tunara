@@ -99,6 +99,35 @@ test("delimited width includes rows beyond the display limit", () => {
   assert.deepEqual(parseTabularPreview("dump.csv", "a,b")?.rows, []);
 });
 
+test("delimited previews preserve all output when the widest rows are hidden", () => {
+  for (const [kind, delimiter] of [["csv", ","], ["tsv", "\t"]]) {
+    const fileName = `dump.${kind}`;
+    const longCell = "x".repeat(241);
+    const visible = Array.from({ length: 199 }, (_, index) => String(index));
+    const content = `\r\n\n${delimiter}col1${delimiter}col4\r`
+      + `"${delimiter}\r\n\r\n"""${delimiter}${longCell}\r\n`
+      + `${visible.join("\n")}\n\n`;
+    const wide = delimiter.repeat(41);
+    const columns = [
+      "col1_2", "col1", "col4", "col4_2",
+      ...Array.from({ length: 36 }, (_, index) => `col${index + 5}`),
+    ];
+    assert.deepEqual(parseTabularPreview(fileName, content + wide), {
+      kind,
+      columns,
+      rows: [
+        [`${delimiter}\r\n\r\n"`, `${"x".repeat(240)}…`, ...Array(38).fill("")],
+        ...visible.map((value) => [value, ...Array(39).fill("")]),
+      ],
+      rowCount: 202,
+      columnCount: 42,
+      truncated: true,
+    });
+    assert.equal(parseTabularPreview(fileName, content + wide + '"unfinished'), null);
+    assert.equal(parseTabularPreview(fileName, ""), null);
+  }
+});
+
 test("tabular preview stays text-only for json and csv", () => {
   const json = parseTabularPreview("users.json", JSON.stringify([{ id: 1, name: "<script>" }, { id: 2, name: "ok" }]));
   assert.equal(json?.kind, "json");

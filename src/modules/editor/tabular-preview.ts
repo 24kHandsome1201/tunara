@@ -63,19 +63,28 @@ export function parseDelimitedTable(content: string, kind: "csv" | "tsv"): Tabul
   const delimiter = kind === "tsv" ? "\t" : ",";
   const rows: string[][] = [];
   let row: string[] = [];
+  let rowWidth = 0;
+  let rowCount = 0;
+  let width = 0;
   let cell = "";
   let quoted = false;
   const pushCell = () => {
-    row.push(clipCell(cell));
+    if (rowCount <= MAX_ROWS) row.push(clipCell(cell));
+    rowWidth += 1;
     cell = "";
   };
   const pushRow = () => {
-    if (row.length === 1 && row[0] === "" && rows.length === 0) {
+    if (rowCount === 0 && rowWidth === 1 && row[0] === "") {
       row = [];
-      return;
+    } else {
+      if (rowCount <= MAX_ROWS) {
+        rows.push(row);
+        row = [];
+      }
+      rowCount += 1;
+      width = Math.max(width, rowWidth);
     }
-    rows.push(row);
-    row = [];
+    rowWidth = 0;
   };
   for (let index = 0; index < content.length; index++) {
     const ch = content[index];
@@ -109,12 +118,11 @@ export function parseDelimitedTable(content: string, kind: "csv" | "tsv"): Tabul
     cell += ch;
   }
   if (quoted) return null;
-  if (cell !== "" || row.length > 0) {
+  if (cell !== "" || rowWidth > 0) {
     pushCell();
     pushRow();
   }
   if (rows.length === 0) return null;
-  const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
   const usedNames = new Set(rows[0].filter(Boolean));
   const columns = Array.from({ length: width }, (_, index) => {
     if (rows[0][index]) return rows[0][index];
@@ -125,11 +133,10 @@ export function parseDelimitedTable(content: string, kind: "csv" | "tsv"): Tabul
     usedNames.add(name);
     return name;
   });
-  const body = rows.slice(1);
   const visibleWidth = Math.min(width, MAX_COLUMNS);
-  const visibleRows = body.slice(0, MAX_ROWS).map((row) =>
+  const visibleRows = rows.slice(1).map((row) =>
     Array.from({ length: visibleWidth }, (_, index) => row[index] ?? ""));
-  return finishTable(kind, columns, visibleRows, body.length);
+  return finishTable(kind, columns, visibleRows, rowCount - 1);
 }
 
 export function parseJsonTable(content: string): TabularPreview | null {
