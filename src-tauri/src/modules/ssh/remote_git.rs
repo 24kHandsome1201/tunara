@@ -470,6 +470,11 @@ fn parse_porcelain_v2(raw: &str) -> Result<(StatusResult, RemoteState), ()> {
             if bytes[1] != b'.' {
                 files.push(file_change(path, bytes[1] as char, "unstaged"));
             }
+        } else if let Some(fields) = record.strip_prefix("u ") {
+            if let Some(path) = fields.splitn(10, ' ').nth(9).filter(|p| !p.is_empty()) {
+                files.push(file_change(path, 'M', "staged"));
+                files.push(file_change(path, 'M', "unstaged"));
+            }
         } else if let Some(path) = record.strip_prefix("? ") {
             files.push(file_change(path, '?', "untracked"));
         }
@@ -1303,6 +1308,112 @@ mod tests {
     use super::*;
 
     static REMOTE_REPO_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn porcelain_v2_real_merge_conflict_matches_local_deltas() {
+        let path = std::env::temp_dir().join(format!(
+            "tunara-remote-conflict-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&path)
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        for args in [
+            vec!["init", "-b", "main"],
+            vec!["config", "user.name", "Test"],
+            vec!["config", "user.email", "test@example.com"],
+            vec!["config", "commit.gpgsign", "false"],
+        ] {
+            assert!(git(&args).status.success());
+        }
+        for (branch, content) in [("main", "base\n"), ("side", "side\n"), ("main", "main\n")] {
+            if branch == "side" {
+                assert!(git(&["checkout", "-b", branch]).status.success());
+            } else if content != "base\n" {
+                assert!(git(&["checkout", branch]).status.success());
+            }
+            std::fs::write(path.join("conflicted file.txt"), content).unwrap();
+            assert!(git(&["add", "."]).status.success());
+            assert!(git(&["commit", "-m", content.trim()]).status.success());
+        }
+        assert_eq!(git(&["merge", "side"]).status.code(), Some(1));
+        let output = git(&["status", "--porcelain=v2", "-z"]);
+        assert!(output.status.success());
+        let raw = String::from_utf8(output.stdout).unwrap();
+        println!("real git status: {}", raw.replace('\0', "\\0"));
+        let (status, _) = parse_porcelain_v2(&raw).unwrap();
+        let repo = git2::Repository::open(&path).unwrap();
+        let tree = repo.head().unwrap().peel_to_tree().unwrap();
+        for (diff, stage) in [
+            (
+                repo.diff_tree_to_index(Some(&tree), None, None).unwrap(),
+                "staged",
+            ),
+            (repo.diff_index_to_workdir(None, None).unwrap(), "unstaged"),
+        ] {
+            let delta = diff.deltas().next().unwrap();
+            assert_eq!(delta.status(), git2::Delta::Conflicted);
+            let file = status
+                .files
+                .iter()
+                .find(|file| file.stage == stage)
+                .unwrap();
+            assert_eq!(
+                file.path,
+                delta.new_file().path().unwrap().to_str().unwrap()
+            );
+            assert_eq!(file.status, "M");
+            println!(
+                "parsed: {} {} {} (local delta: {:?})",
+                file.path,
+                file.status,
+                file.stage,
+                delta.status()
+            );
+        }
+        assert_eq!(status.files.len(), 2);
+        drop(tree);
+        drop(repo);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn porcelain_v2_unmerged_files_match_local_changes() {
+        for xy in ["UU", "AA", "DU", "UD", "DD", "AU", "UA"] {
+            let raw = format!(
+                "u {xy} N... 100644 100644 100644 100644 \
+                 1111111111111111111111111111111111111111 \
+                 2222222222222222222222222222222222222222 \
+                 3333333333333333333333333333333333333333 path with spaces.txt\0"
+            );
+            let (status, _) = parse_porcelain_v2(&raw).unwrap();
+            assert_eq!(status.files.len(), 2, "{xy}");
+            for (file, stage) in status.files.iter().zip(["staged", "unstaged"]) {
+                assert_eq!(file.path, "path with spaces.txt");
+                assert_eq!(file.status, "M");
+                assert_eq!(file.stage, stage);
+                assert_eq!((file.added, file.removed), (0, 0));
+            }
+        }
+    }
+
+    #[test]
+    fn porcelain_v2_ignores_incomplete_unmerged_records() {
+        for raw in ["", "u UU", "u UU N... 100644", "u UU N... 0 0 0 0 a b c "] {
+            let (status, _) = parse_porcelain_v2(raw).unwrap();
+            assert!(status.files.is_empty());
+        }
+    }
 
     #[test]
     fn porcelain_v2_covers_upstream_detached_unborn_and_files() {
