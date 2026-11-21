@@ -31,6 +31,30 @@ test("headings produce semantic toc entries and stable unique unicode anchors", 
   assert.deepEqual(parsed.blocks.filter((block) => block.type === "heading").map((block) => block.id), parsed.toc.map((entry) => entry.id));
 });
 
+test("H4–H6 interrupt paragraphs and keep following text separate", () => {
+  const parsed = parseMarkdownDocument("Intro\n#### Event: git-changed\nFired when the repo changes.\n##### Level five\n###### Level six");
+  assert.deepEqual(parsed.blocks.map(({ type, level, text }) => ({ type, level, text })), [
+    { type: "paragraph", level: undefined, text: "Intro" },
+    { type: "heading", level: 4, text: "Event: git-changed" },
+    { type: "paragraph", level: undefined, text: "Fired when the repo changes." },
+    { type: "heading", level: 5, text: "Level five" },
+    { type: "heading", level: 6, text: "Level six" },
+  ]);
+  assert.deepEqual(parsed.toc, [
+    { level: 4, text: "Event: git-changed", id: "event-git-changed" },
+    { level: 5, text: "Level five", id: "level-five" },
+    { level: 6, text: "Level six", id: "level-six" },
+  ]);
+});
+
+test("seven or more opening hashes remain paragraph text", () => {
+  const parsed = parseMarkdownDocument("####### Not a heading\n######## Still prose");
+  assert.equal(parsed.blocks.length, 1);
+  assert.equal(parsed.blocks[0].type, "paragraph");
+  assert.equal(parsed.blocks[0].text, "####### Not a heading ######## Still prose");
+  assert.deepEqual(parsed.toc, []);
+});
+
 test("heading closing hashes require separating whitespace", () => {
   const cases = [
     ["## C#", "C#", "c"],
@@ -158,7 +182,8 @@ test("FilePreview renders semantic headings, toc navigation, tables, and languag
   assert.match(source, /maxHeight: "min\(35vh, 240px\)"/);
   assert.match(source, /<h1 id=\{block\.id\} tabIndex=\{-1\}/);
   assert.match(source, /<h2 id=\{block\.id\} tabIndex=\{-1\}/);
-  assert.match(source, /<h3 id=\{block\.id\} tabIndex=\{-1\}/);
+  assert.match(source, /const Heading = `h\$\{block\.level\}` as "h3" \| "h4" \| "h5" \| "h6"/);
+  assert.match(source, /<Heading id=\{block\.id\} tabIndex=\{-1\}/);
   assert.match(source, /<table style=\{\{ width: "max-content", minWidth: "100%"/);
   assert.match(source, /minWidth: 96, maxWidth: 280/);
   assert.match(source, /role="region" tabIndex=\{0\} aria-label=\{staticT\("preview\.markdown\.table"\)\}/);
