@@ -112,6 +112,19 @@ export function liveSessionsOnEndpoint(
   return sessions.filter((session) => sidebarGroupKey(session) === key);
 }
 
+/** Live sessions on this endpoint opened through this jump host, or directly when `jump` is missing. */
+export function liveSessionsOnRoute(
+  sessions: readonly Session[],
+  endpoint: SshEndpointRef,
+  jump: SshEndpointRef | undefined,
+): Session[] {
+  const jumpKey = jump ? sidebarGroupKeyFromEndpoint(jump) : null;
+  return liveSessionsOnEndpoint(sessions, endpoint).filter((session) => {
+    const sessionJump = session.remote?.route?.jump;
+    return (sessionJump ? sidebarGroupKeyFromEndpoint(sessionJump) : null) === jumpKey;
+  });
+}
+
 export function sshCardConnectionPhase(
   session: Pick<Session, "remote" | "connection">,
 ): ConnectionPhase | null {

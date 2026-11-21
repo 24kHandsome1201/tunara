@@ -1,5 +1,7 @@
 import type { SshHostProfile, SshProfileEntryV1, SshProfilesPanelModelV1 } from "./hosts-model.ts";
 import { resolveSshProfileRoute } from "./hosts-model.ts";
+import { liveSessionsOnRoute } from "../session/sidebar-groups.ts";
+import type { Session } from "../../ui/types.ts";
 
 export function sshConnectPrefillFromProfile(
   profile: SshHostProfile,
@@ -54,4 +56,15 @@ export function hostProfileButtonLabel(profile: SshHostProfile): string {
   const label = profile.label.trim();
   if (label) return label;
   return profile.port === 22 ? `${profile.user}@${profile.host}` : `${profile.user}@${profile.host}:${profile.port}`;
+}
+
+/** Live sessions a host row may reuse: its own target reached through the jump route it connects with. */
+export function liveSessionsForHost(
+  sessions: readonly Session[],
+  entry: SshProfileEntryV1,
+  panel: SshProfilesPanelModelV1,
+): Session[] {
+  const resolution = resolveSshProfileRoute(entry.profile.id, entry.source, panel);
+  if (resolution.status === "rejected") return [];
+  return liveSessionsOnRoute(sessions, resolution.route.target, resolution.route.jump);
 }

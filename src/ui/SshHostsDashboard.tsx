@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/modules/i18n";
 import { loadSshProfilesPanel, sshProfileEntries, type SshProfileEntryV1, type SshProfilesPanelModelV1 } from "@/modules/ssh/hosts-bridge";
-import { hostProfileButtonLabel, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
-import { liveSessionsOnEndpoint, representativeSession } from "@/modules/session/sidebar-groups";
+import { hostProfileButtonLabel, liveSessionsForHost, sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
+import { representativeSession } from "@/modules/session/sidebar-groups";
 import { readyBindingForSession } from "@/modules/terminal/lib/connection-state";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -79,7 +79,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
   const visibleHosts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return hosts.filter((entry) => {
-      const live = liveSessionsOnEndpoint(sessions, entry.profile);
+      const live = liveSessionsForHost(sessions, entry, panel);
       const online = connectionState(live).kind === "online";
       if (filter === "online" && !online) return false;
       if (filter === "offline" && online) return false;
@@ -88,10 +88,10 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
       const alias = entry.configProfile?.label ?? "";
       return `${profile.label} ${alias} ${profile.user} ${profile.host} ${profile.port}`.toLowerCase().includes(normalized);
     });
-  }, [filter, hosts, query, sessions]);
+  }, [filter, hosts, panel, query, sessions]);
 
   const selected = hosts.find((host) => host.key === selectedKey) ?? null;
-  const selectedLive = selected ? liveSessionsOnEndpoint(sessions, selected.profile) : [];
+  const selectedLive = selected ? liveSessionsForHost(sessions, selected, panel) : [];
   const selectedConnection = connectionState(selectedLive);
 
   const sourceLabel = (entry: DashboardHost) => entry.source === "saved"
@@ -99,7 +99,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
     : "~/.ssh/config";
 
   const openConnection = (entry: DashboardHost) => {
-    const live = liveSessionsOnEndpoint(useSessionsStore.getState().sessions, entry.profile);
+    const live = liveSessionsForHost(useSessionsStore.getState().sessions, entry, panel);
     const current = representativeSession(live.filter((session) => readyBindingForSession(session)), useSessionsStore.getState().activeSessionId ?? "");
     if (current) {
       useSessionsStore.getState().setActive(current.id);
@@ -161,7 +161,7 @@ export function SshHostsDashboard({ sessions }: { sessions: Session[] }) {
           )}
           <div className="ssh-host-grid">
             {visibleHosts.map((entry) => {
-              const live = liveSessionsOnEndpoint(sessions, entry.profile);
+              const live = liveSessionsForHost(sessions, entry, panel);
               const connection = connectionState(live);
               return (
                 <button
