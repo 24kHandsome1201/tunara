@@ -37,12 +37,16 @@ export function safeMarkdownLanguage(raw: string | undefined): SafeMarkdownLangu
 }
 
 class UniqueValueBuilder {
-  private counts = new Map<string, number>();
+  private used = new Set<string>();
+  private nextSuffix = new Map<string, number>();
 
   make(base: string): string {
-    const count = this.counts.get(base) ?? 0;
-    this.counts.set(base, count + 1);
-    return count === 0 ? base : `${base}-${count + 1}`;
+    let suffix = this.nextSuffix.get(base) ?? 1;
+    let value = suffix === 1 ? base : `${base}-${suffix}`;
+    while (this.used.has(value)) value = `${base}-${++suffix}`;
+    this.nextSuffix.set(base, suffix + 1);
+    this.used.add(value);
+    return value;
   }
 }
 
