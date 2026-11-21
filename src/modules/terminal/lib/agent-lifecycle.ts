@@ -25,7 +25,9 @@ export interface AgentHookEvent {
 }
 
 const AGENT_LIFECYCLE_OSC_PREFIXES = new Set(["tunara-agent", "conduit-agent"]);
-const NPX_AGENT_PACKAGES = new Map<string, AgentCode>();
+const NPX_AGENT_PACKAGES = new Map<string, AgentCode>([
+  ["@anthropic-ai/claude-code", "CC"],
+]);
 
 const AGENT_SHELL_TITLE_ALIASES = new Set(
   [

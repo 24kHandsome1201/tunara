@@ -373,6 +373,13 @@ test("remote Bash 3.2 prompt markers keep submitted-input command detection enab
   assert.equal(shouldScanTerminalInput(true, true), true);
 });
 
+test("agent command detection recognises Claude Code launched through npx", () => {
+  assert.equal(detectAgentCommand("npx -y @anthropic-ai/claude-code@latest"), "CC");
+  assert.equal(detectAgentCommand("cd ~/app && npx --yes @anthropic-ai/claude-code@2.0.1 --continue"), "CC");
+  assert.equal(detectAgentCommand("npx @anthropic-ai/claude-code"), "CC");
+  assert.equal(detectAgentCommand("npx -y @anthropic-ai/claude-code-router"), null);
+});
+
 test("agent command detection maps conservative shell command heads and wrappers", () => {
   assert.equal(detectAgentCommand("claude --dangerously-skip-permissions"), "CC");
   assert.equal(detectAgentCommand("\x1b[32mcodex\x1b[0m exec"), "CX");
