@@ -133,6 +133,14 @@ test("IPv6 targets survive formatting and parsing without inventing a port", () 
   assert.equal(parseSshTarget(""), null);
 });
 
+test("already bracketed IPv6 profile hosts are formatted exactly once", () => {
+  for (const port of [22, 2222]) {
+    const target = formatSshTarget("deploy", "[2001:db8::1]", port);
+    assert.equal(target, `deploy@[2001:db8::1]${port === 22 ? "" : `:${port}`}`);
+    assert.deepEqual(parseSshTarget(target), { user: "deploy", host: "2001:db8::1", ...(port === 22 ? {} : { port }) });
+  }
+});
+
 test("withSshTargetPort only rewrites an explicit target port with a numeric Port", () => {
   assert.equal(withSshTargetPort("alice@prod:2222", "2200"), "alice@prod:2200");
   assert.equal(withSshTargetPort("[2001:db8::1]:2222", "2200"), "[2001:db8::1]:2200");

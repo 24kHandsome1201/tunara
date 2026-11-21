@@ -8,7 +8,7 @@ export interface ParsedSshTarget {
 }
 
 export function formatSshTarget(user: string, host: string, port = 22): string {
-  const targetHost = host.includes(":") ? `[${host}]` : host;
+  const targetHost = host.includes(":") && !(host.startsWith("[") && host.endsWith("]")) ? `[${host}]` : host;
   const identity = user ? `${user}@${targetHost}` : targetHost;
   return port === 22 ? identity : `${identity}:${port}`;
 }
@@ -66,7 +66,7 @@ export function withSshTargetPort(raw: string, portText: string): string {
 }
 
 export function sshTargetHaystack(profile: SshHostProfile): string {
-  const host = profile.host.includes(":") ? `[${profile.host}]` : profile.host;
+  const host = formatSshTarget("", profile.host);
   return `${profile.label} ${profile.user}@${host}:${profile.port}`.toLowerCase();
 }
 
