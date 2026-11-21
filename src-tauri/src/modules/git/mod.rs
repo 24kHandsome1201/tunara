@@ -321,6 +321,9 @@ fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, Str
     let mut lines = 0usize;
     let mut truncated = false;
     diff.print(git2::DiffFormat::Patch, |_d, _h, l| {
+        if truncated {
+            return true;
+        }
         let content = std::str::from_utf8(l.content()).unwrap_or("");
         let origin = l.origin();
         let prefix_len = if matches!(origin, '+' | '-' | ' ') {
@@ -447,7 +450,7 @@ fn delta_mark(delta: &git2::DiffDelta) -> char {
 
 #[cfg(test)]
 mod tests {
-    use super::{git_diff, status_cache_key, DiffScope, FileDiff};
+    use super::{git_diff, status_cache_key, DiffScope, FileDiff, DIFF_MAX_BYTES};
     use git2::{Repository, Signature};
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -527,6 +530,55 @@ mod tests {
         );
         assert_eq!(DiffScope::from_stage(None), DiffScope::Combined);
         assert_eq!(DiffScope::from_stage(Some("unknown")), DiffScope::Combined);
+    }
+
+    fn unstaged_text_diff(contents: &str) -> FileDiff {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).expect("init repo");
+        commit_file(&repo, &dir.path, "file.txt", "base\n");
+        std::fs::write(dir.path.join("file.txt"), contents).expect("write unstaged file");
+        git_diff(
+            dir.path.to_string_lossy().into_owned(),
+            "file.txt".into(),
+            Some("unstaged".into()),
+        )
+        .expect("unstaged diff")
+    }
+
+    #[test]
+    fn git_diff_truncation_keeps_only_the_patch_prefix() {
+        let long_line = "x".repeat(300 * 1024);
+        let FileDiff::Text {
+            patch,
+            truncated,
+            total_lines,
+            ..
+        } = unstaged_text_diff(&format!("first\n{long_line}\nlast\n"))
+        else {
+            panic!("expected text diff");
+        };
+
+        assert!(truncated);
+        assert!(patch.len() <= DIFF_MAX_BYTES);
+        assert!(patch.ends_with("-base\n+first\n"), "patch was {patch:?}");
+        assert_eq!(total_lines, 2);
+    }
+
+    #[test]
+    fn git_diff_below_limit_keeps_all_lines() {
+        let FileDiff::Text {
+            patch,
+            truncated,
+            total_lines,
+            ..
+        } = unstaged_text_diff("first\nmiddle\nlast\n")
+        else {
+            panic!("expected text diff");
+        };
+
+        assert!(!truncated);
+        assert!(patch.ends_with("-base\n+first\n+middle\n+last\n"));
+        assert_eq!(total_lines, 4);
     }
 
     #[test]
