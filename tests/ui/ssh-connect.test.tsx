@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { takeSshCredentials } from "@/modules/ssh/pending-credentials";
+import { toProfile, toProfilesPanelModel } from "@/modules/ssh/hosts-model";
+import { sshConnectPrefillFromEntry } from "@/modules/ssh/hosts-prefill";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { SshConnect } from "@/ui/overlays/SshConnect";
@@ -39,6 +41,28 @@ function SshDialogHarness() {
 }
 
 describe("SSH connection sheet", () => {
+  test("prefills a saved routed host with its bastion rather than itself", async () => {
+    const rawProfiles = [
+      { id: "jump", label: "Bastion", host: "jump.example", port: 22, user: "ops", identity_file: "" },
+      { id: "target", label: "Target", host: "target.internal", port: 22, user: "deploy", identity_file: "", proxy_jump_profile_id: "jump" },
+    ];
+    const profiles = rawProfiles.map(toProfile);
+    const panel = toProfilesPanelModel(profiles, { imported: [], skipped: 0, diagnostics: [] });
+    const prefill = sshConnectPrefillFromEntry({ key: "target", source: "saved", profile: profiles[1] }, panel);
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return rawProfiles;
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    useUIStore.setState({ sshPrefill: prefill });
+    render(<SshConnect onClose={vi.fn()} />);
+    openAdvanced();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(prefill.route?.profileId).toBe("jump");
+    expect((screen.getByLabelText("Direct or via ProxyJump host") as HTMLSelectElement).value).toBe("jump");
+    expect(screen.queryByText(/already uses ProxyJump cannot itself be a jump host/)).toBeNull();
+  });
+
   beforeEach(() => {
     useSessionsStore.setState({ sessions: [], activeSessionId: null });
     useUIStore.setState({ overlay: "ssh", sshPrefill: null, inspectorTab: "files", sidebarVisible: true });
