@@ -242,14 +242,18 @@ describe("FilePreview editor behavior", () => {
   });
 
   test("renders ordered lists with only non-default start attributes", async () => {
+    const paddingLeft = vi.spyOn(CSSStyleDeclaration.prototype, "paddingLeft", "set");
     mockIPC((command) => command === "fs_read_file" ? {
-      ...original, content: "3. third step\n4. fourth step\n\n1. first step\n\n0. zero step",
+      ...original, content: "3. third step\n4. fourth step\n\n1. first step\n\n0. zero step\n\n1000. continued step\n1001. next step\n\n99. last two-digit step\n100. first three-digit step",
     } : null);
     renderLocal("steps.md");
     await screen.findByRole("textbox", { name: "Edit steps.md" });
     fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     const lists = screen.getAllByRole("list");
-    expect(lists.map((list) => list.getAttribute("start"))).toEqual(["3", null, "0"]);
+    expect(lists.map((list) => list.getAttribute("start"))).toEqual(["3", null, "0", "1000", "99"]);
+    expect(lists.slice(0, 3).map((list) => list.style.paddingLeft)).toEqual(["16px", "16px", "16px"]);
+    expect(paddingLeft).toHaveBeenCalledWith("max(16px, 5ch)");
+    expect(paddingLeft).toHaveBeenCalledWith("max(16px, 4ch)");
     expect(lists[0].textContent).toBe("third stepfourth step");
   });
 
