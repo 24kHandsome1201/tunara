@@ -72,6 +72,13 @@ export function getTerminalSnapshot(sessionId: string): PersistedTerminalSnapsho
   return snapshots.get(sessionId);
 }
 
+export function updateTerminalSnapshotViewport(sessionId: string, viewportY: number, baseY: number): void {
+  const snapshot = snapshots.get(sessionId);
+  if (!snapshot || (snapshot.viewportY === viewportY && snapshot.baseY === baseY)) return;
+  snapshots.set(sessionId, { ...snapshot, viewportY, baseY });
+  dirty = true;
+}
+
 export function getAllTerminalSnapshots(): Record<string, PersistedTerminalSnapshot> {
   return Object.fromEntries(snapshots);
 }

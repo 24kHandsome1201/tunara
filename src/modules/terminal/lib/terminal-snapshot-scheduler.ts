@@ -1,6 +1,6 @@
 import type { Terminal } from "@xterm/xterm";
 import type { SerializeAddon } from "@xterm/addon-serialize";
-import { updateTerminalSnapshot } from "./terminal-snapshot.ts";
+import { getTerminalSnapshot, updateTerminalSnapshot, updateTerminalSnapshotViewport } from "./terminal-snapshot.ts";
 import { captureSafeTerminalHistory } from "./terminal-safe-history.ts";
 
 export function createTerminalSnapshotScheduler({
@@ -26,12 +26,19 @@ export function createTerminalSnapshotScheduler({
 
   let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
   let lastSnapshotAt = 0;
+  let contentDirty = false;
 
   const capture = () => {
     snapshotTimer = null;
     if (!shouldCapture()) return;
+    const id = sessionId();
+    const existing = getTerminalSnapshot(id);
+    if (!contentDirty && existing && existing.cols === term.cols && existing.rows === term.rows) {
+      updateTerminalSnapshotViewport(id, term.buffer.active.viewportY, term.buffer.active.baseY);
+      return;
+    }
     lastSnapshotAt = Date.now();
-    updateTerminalSnapshot(sessionId(), {
+    updateTerminalSnapshot(id, {
       serialized: serializeAddon.serialize(),
       safeHistory: captureSafeTerminalHistory(term),
       viewportY: term.buffer.active.viewportY,
@@ -41,9 +48,10 @@ export function createTerminalSnapshotScheduler({
       capturedAt: lastSnapshotAt,
       truncated: false,
     });
+    contentDirty = false;
   };
 
-  const schedule = () => {
+  const scheduleViewport = () => {
     // A capture is already pending — the latest output will be included when it
     // fires, so don't stack timers.
     if (snapshotTimer) return;
@@ -58,22 +66,32 @@ export function createTerminalSnapshotScheduler({
     snapshotTimer = setTimeout(capture, delay);
   };
 
+  const schedule = () => {
+    contentDirty = true;
+    scheduleViewport();
+  };
+
   const flush = () => {
     if (snapshotTimer) {
       clearTimeout(snapshotTimer);
       snapshotTimer = null;
     }
+    contentDirty = true;
     capture();
   };
 
   return {
     schedule,
+    scheduleViewport,
     flush,
     dispose() {
       // If output was pending capture when this terminal is torn down (pane
       // close / app quit), flush it synchronously so the very last batch makes
       // it into the restore snapshot instead of being dropped with the timer.
-      if (snapshotTimer) flush();
+      if (snapshotTimer) {
+        clearTimeout(snapshotTimer);
+        capture();
+      }
     },
   };
 }
