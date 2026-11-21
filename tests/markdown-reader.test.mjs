@@ -27,6 +27,14 @@ test("empty or punctuation-only headings receive deterministic section anchors",
   assert.deepEqual(parsed.toc.map((entry) => entry.id), ["section", "section-2"]);
 });
 
+test("generated anchors never collide with a literal heading of the same name", () => {
+  const parsed = parseMarkdownDocument("# Foo\n# Foo\n# Foo-2\n# Foo");
+  assert.deepEqual(parsed.toc.map((entry) => entry.id), ["foo", "foo-2", "foo-2-2", "foo-3"]);
+  const literalFirst = parseMarkdownDocument("# Foo-2\n# Foo\n# Foo");
+  assert.deepEqual(literalFirst.toc.map((entry) => entry.id), ["foo-2", "foo", "foo-3"]);
+  assert.equal(new Set(parsed.blocks.map((block) => block.key)).size, parsed.blocks.length);
+});
+
 test("GFM tables parse alignment, escaped pipes, inline code pipes, and pad short rows", () => {
   assert.deepEqual(splitGfmTableRow("| a \\| b | `x|y` |"), ["a | b", "`x|y`"]);
   const parsed = parseMarkdownDocument([
