@@ -289,6 +289,21 @@ describe("FilePreview editor behavior", () => {
     expect(writes).toBe(1);
   });
 
+  test("renders quoted paragraphs without dropping a literal backtick", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { ...original, content: "> **Note** `example`\n> \n> `\n\n>No space" };
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("notes.md");
+    fireEvent.click(await screen.findByRole("tab", { name: "Preview" }));
+
+    const quote = (await screen.findByText("Note")).closest("blockquote");
+    expect(Array.from(quote?.querySelectorAll("p") ?? [], (p) => p.textContent)).toEqual(["Note example", "`"]);
+    expect(quote?.querySelector("code")?.textContent).toBe("example");
+    expect(screen.getByText("No space").closest("blockquote")).toBe(quote?.nextElementSibling);
+  });
+
   test("keeps Markdown source visible while syntax highlighting is debounced", async () => {
     mockIPC((command) => {
       if (command === "fs_read_file") return original;
