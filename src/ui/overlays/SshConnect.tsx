@@ -188,6 +188,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     prefill?.host ? formatSshTarget(prefill.user ?? "", prefill.host, prefill.port ?? 22) : ""
   ));
   const [port, setPort] = useState(prefill?.port ? String(prefill.port) : "22");
+  const [portEdited, setPortEdited] = useState(false);
   const [authMethod, setAuthMethod] = useState<SshAuthMethod>(prefill?.authMethod ?? "auto");
   const [identityFile, setIdentityFile] = useState(prefill?.identityFile ?? "");
   const [certificateFile, setCertificateFile] = useState(prefill?.certificateFile ?? "");
@@ -250,6 +251,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setRouteResolution(null);
     setTarget("");
     setPort("22");
+    setPortEdited(false);
     setAuthMethod("auto");
     setIdentityFile("");
     setCertificateFile("");
@@ -319,6 +321,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     const { target: profile, jump } = resolution.route;
     setTarget(formatSshTarget(profile.user, profile.host, profile.port));
     setPort(String(profile.port));
+    setPortEdited(false);
     setAuthMethod(profile.authMethod ?? "auto");
     // A saved row that shadows a config entry keeps that entry's IdentityFile when it has none.
     const keyFallback = profile.identityFile ? undefined : fallback;
@@ -496,7 +499,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     connectInFlightRef.current = true;
     const attempt = ++connectAttemptRef.current;
     setConnecting(true);
-    const safePort = parsed?.port ?? aliasTarget?.port ?? match?.port ?? normalizeSshPort(port);
+    const safePort = parsed?.port ?? (portEdited ? normalizeSshPort(port) : aliasTarget?.port ?? match?.port ?? normalizeSshPort(port));
     // pty-bridge only forwards IdentityFile for `key`. Auto with a known path
     // therefore opens as key so ssh-config / saved IdentityFile still reaches russh.
     const usesKeyMaterial = nextAuth === "key" || (nextAuth === "auto" && nextIdentity.trim().length > 0);
@@ -753,7 +756,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <div className="ssh-connect-form" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
               <div>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
                 {portFieldInvalid && (
                   <span id="ssh-connect-port-field-error" role="alert" className="ssh-connect-message" data-tone="warning">
                     {t("ssh.port_invalid")}
