@@ -88,6 +88,11 @@ interface FileExplorerProps {
   remoteHost?: string;
 }
 
+function UnreadableNotice({ count }: { count: number }) {
+  if (count === 0) return null;
+  return <div role="status" style={{ padding: "0 6px 8px", fontSize: "var(--fs-meta)", lineHeight: "18px", color: "var(--c-text-5)" }}>Skipped {count} unreadable {count === 1 ? "folder" : "folders"} — results may be incomplete</div>;
+}
+
 export function FileExplorer({
   sessionId,
   rootDir,
@@ -221,6 +226,7 @@ export function FileExplorer({
     grepHits,
     searchLoading,
     searchError,
+    searchUnreadable,
     searchTruncated,
     grepTruncated,
     searchLimit,
@@ -1350,13 +1356,14 @@ export function FileExplorer({
                 <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
               </>
             ) : grepHits.length === 0 ? (
-              <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
+              <><PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} /><UnreadableNotice count={searchUnreadable} /></>
             ) : (
               <>
                 <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
                   <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{grepHits.length}</span>
                 </div>
+                <UnreadableNotice count={searchUnreadable} />
                 {grepHits.map((group) => (
                   <div key={group.path} style={{ marginBottom: 6 }}>
                     <div style={{ padding: "3px var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
@@ -1394,13 +1401,14 @@ export function FileExplorer({
               <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
             </>
           ) : searchHits.length === 0 ? (
-            <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
+            <><PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} /><UnreadableNotice count={searchUnreadable} /></>
           ) : (
             <>
               <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
                 <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{searchHits.length}</span>
               </div>
+              <UnreadableNotice count={searchUnreadable} />
               {searchHits.map((hit) => {
                 const isExpanded = activeFilePath === hit.path;
                 return (

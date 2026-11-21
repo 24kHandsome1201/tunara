@@ -140,6 +140,7 @@ pub struct GrepResponse {
     pub hits: Vec<GrepHit>,
     pub truncated: bool,
     pub files_scanned: usize,
+    pub unreadable: usize,
 }
 
 fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, String> {
@@ -212,6 +213,7 @@ fn fs_grep_blocking(
 
     let hits: Arc<Mutex<Vec<GrepHit>>> = Arc::new(Mutex::new(Vec::new()));
     let scanned = Arc::new(AtomicUsize::new(0));
+    let unreadable = Arc::new(AtomicUsize::new(0));
     let truncated = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let root_path = Arc::new(root_path);
@@ -221,6 +223,7 @@ fn fs_grep_blocking(
     walker.run(|| {
         let hits = hits.clone();
         let scanned = scanned.clone();
+        let unreadable = unreadable.clone();
         let truncated = truncated.clone();
         let root_path = root_path.clone();
         let matcher = matcher.clone();
@@ -233,7 +236,12 @@ fn fs_grep_blocking(
             }
             let dent = match dent {
                 Ok(d) => d,
-                Err(_) => return WalkState::Continue,
+                Err(err) => {
+                    if err.io_error().is_some() {
+                        unreadable.fetch_add(1, Ordering::Relaxed);
+                    }
+                    return WalkState::Continue;
+                }
             };
             if !dent.file_type().map(|t| t.is_file()).unwrap_or(false) {
                 return WalkState::Continue;
@@ -305,6 +313,7 @@ fn fs_grep_blocking(
         hits: final_hits,
         truncated: truncated.load(Ordering::Relaxed),
         files_scanned: scanned.load(Ordering::Relaxed),
+        unreadable: unreadable.load(Ordering::Relaxed),
     })
 }
 
@@ -369,6 +378,43 @@ mod tests {
     use super::{build_globset, fs_grep_blocking, validate_request_id, FsSearchCancellationState};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_folder_preserves_readable_matches() {
+        use std::os::unix::fs::PermissionsExt;
+        let root =
+            std::env::temp_dir().join(format!("tunara-grep-unreadable-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("locked")).unwrap();
+        std::fs::write(root.join("needle.txt"), "needle").unwrap();
+        std::fs::write(root.join("locked/needle.txt"), "needle").unwrap();
+        std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o0))
+            .unwrap();
+        if std::fs::read_dir(root.join("locked")).is_ok() {
+            std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+            std::fs::remove_dir_all(&root).unwrap();
+            return;
+        }
+        let result = fs_grep_blocking(
+            "needle".into(),
+            root.to_string_lossy().into_owned(),
+            None,
+            None,
+            Some(20),
+            Arc::new(AtomicBool::new(false)),
+        );
+        std::fs::set_permissions(root.join("locked"), std::fs::Permissions::from_mode(0o700))
+            .unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        let response = result.unwrap();
+        println!(
+            "grep: hits={} unreadable={}",
+            response.hits.len(),
+            response.unreadable
+        );
+        assert_eq!(response.hits.len(), 1);
+        assert_eq!(response.unreadable, 1);
+    }
 
     #[test]
     fn operation_cancellation_is_namespaced_and_handles_precancel() {

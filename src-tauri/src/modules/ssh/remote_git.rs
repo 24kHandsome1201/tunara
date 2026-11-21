@@ -1289,6 +1289,7 @@ pub async fn ssh_fs_grep(
             hits,
             truncated,
             files_scanned,
+            unreadable: 0,
         })
     })
     .await

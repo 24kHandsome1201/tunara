@@ -203,6 +203,7 @@ export function installMockBackend(): TunaraE2EHandle {
     ssh_hosts_import_config: () => ({ imported: [], skipped: 0, diagnostics: [] }),
     ssh_known_hosts_list_v1: () => [],
     fs_read_dir: () => [],
+    fs_search: () => ({ hits: [], unreadable: 0 }),
     fs_resolve_dir: (args) => asString(args?.path) || HOME,
     git_status: () => null,
     git_diff: () => "",
