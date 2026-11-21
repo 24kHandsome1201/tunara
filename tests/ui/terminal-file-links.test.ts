@@ -215,3 +215,23 @@ test("the empty cell xterm leaves before a wrapped wide character is not part of
   link.activate(new MouseEvent("click", { ctrlKey: true }), link.text);
   expect(createResource).toHaveBeenCalledWith("/home/dev/项目/src", undefined, undefined);
 });
+
+test("hovering a line that wraps across the scrollback reads a bounded window of rows", () => {
+  const createResource = vi.fn(() => null);
+  const filler = "x".repeat(20);
+  const { term, provider } = fakeWrappedTerminal(Array.from({ length: 2000 }, (_, row) => ({
+    text: row === 1000 ? " /tmp/a/b.ts:7:9    " : filler,
+    isWrapped: row > 0,
+  })));
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource });
+  const getLine = vi.spyOn(term.buffer.active, "getLine");
+
+  const [link] = linksForRow(provider(), 1001);
+  expect(link).toMatchObject({ text: "/tmp/a/b.ts:7:9", range: { start: { x: 2, y: 1001 }, end: { x: 16, y: 1001 } } });
+  link.activate(new MouseEvent("click"), link.text);
+  expect(createResource).toHaveBeenCalledWith("/tmp/a/b.ts", 7, 9);
+  expect(new Set(getLine.mock.calls.map(([y]) => y)).size).toBeLessThan(500);
+
+  // A token longer than the window is never a link, rather than a link to a cut-off path.
+  expect(linksForRow(provider(), 1500)).toEqual([]);
+});

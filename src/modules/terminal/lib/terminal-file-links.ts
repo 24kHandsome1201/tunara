@@ -43,11 +43,13 @@ export function registerTerminalFileLinkProvider(
         callback(undefined);
         return;
       }
-      const { text, rows } = logical;
+      const { text, rows, cutStart, cutEnd } = logical;
       const matches = [
         ...findTerminalFileLinkMatches(text).map((match) => ({ ...match, directory: false })),
         ...findTerminalDirectoryLinkMatches(text).map((match) => ({ ...match, line: undefined, column: undefined, directory: true })),
-      ].filter((match) => rangeIncludesRow(rows, match.startIndex, match.endIndex, bufferLineNumber));
+      ].filter((match) => !(cutStart && match.startIndex === 0)
+        && !(cutEnd && match.endIndex === text.length)
+        && rangeIncludesRow(rows, match.startIndex, match.endIndex, bufferLineNumber));
       if (matches.length === 0) {
         callback(undefined);
         return;
@@ -83,14 +85,37 @@ interface LogicalLineRow {
   offset: number;
 }
 
-/** Joins the soft-wrapped rows around a buffer row so a path that wraps is matched whole. */
-function readLogicalLine(term: Terminal, bufferLineNumber: number): { text: string; rows: LogicalLineRow[] } | undefined {
+/** Longest link joined across wrapped rows: Linux PATH_MAX plus a `:line:column` suffix. */
+const MAX_WRAPPED_LINK_LENGTH = 4096 + 14;
+
+interface LogicalLine {
+  text: string;
+  rows: LogicalLineRow[];
+  /** The line continues before `text`, so a match at its start may be part of a longer token. */
+  cutStart: boolean;
+  /** The line continues after `text`, so a match at its end may be part of a longer token. */
+  cutEnd: boolean;
+}
+
+/**
+ * Joins the soft-wrapped rows around a buffer row so a path that wraps is matched whole. Reads at
+ * most one maximum link length on each side, so hovering a line that wraps across the whole
+ * scrollback stays as cheap as hovering a short one.
+ */
+function readLogicalLine(term: Terminal, bufferLineNumber: number): LogicalLine | undefined {
   const buffer = term.buffer.active;
-  let first = bufferLineNumber - 1;
-  if (!buffer.getLine(first)) return undefined;
-  while (first > 0 && buffer.getLine(first)?.isWrapped) first -= 1;
+  const hovered = bufferLineNumber - 1;
+  if (!buffer.getLine(hovered)) return undefined;
+  let first = hovered;
+  let before = 0;
+  while (first > 0 && before < MAX_WRAPPED_LINK_LENGTH && buffer.getLine(first)?.isWrapped) {
+    first -= 1;
+    before += buffer.getLine(first)?.length ?? 0;
+  }
   const rows: LogicalLineRow[] = [];
   let text = "";
+  let after = 0;
+  let cutEnd = false;
   for (let y = first; ; y += 1) {
     const line = buffer.getLine(y);
     if (!line) break;
@@ -98,9 +123,14 @@ function readLogicalLine(term: Terminal, bufferLineNumber: number): { text: stri
     const continues = next?.isWrapped === true;
     rows.push({ line, y: y + 1, offset: text.length });
     text += continues ? wrappedRowText(line, next) : line.translateToString(true);
+    if (y > hovered) after += line.length;
     if (!continues) break;
+    if (after >= MAX_WRAPPED_LINK_LENGTH) {
+      cutEnd = true;
+      break;
+    }
   }
-  return { text, rows };
+  return { text, rows, cutStart: first > 0 && buffer.getLine(first)?.isWrapped === true, cutEnd };
 }
 
 /** xterm leaves the last cell empty when a wide character does not fit and wraps; that cell is not a space. */
