@@ -193,7 +193,7 @@ test("bare IPv6 identities keep a matching profile's nondefault port", () => {
 test("IPv6 profile suggestions match bracketed targets and bare addresses", () => {
   const profile = { id: "v6", label: "IPv6 server", host: "2001:db8::1", port: 2222, user: "deploy", identityFile: "" };
   const entries = sshProfileEntries(toProfilesPanelModel([profile], { imported: [], skipped: 0, diagnostics: [] }));
-  for (const query of ["deploy@[2001:db8::1]:2222", "deploy@[2001:db8::1]", "[2001:db8::1]:2222", "2001:db8::1", ""]) {
+  for (const query of ["deploy@2001:db8::1", "deploy@2001:db8::1:2222", "deploy@[2001:db8::1]:2222", "deploy@[2001:db8::1]", "[2001:db8::1]:2222", "2001:db8::1", ""]) {
     assert.equal(profileMatchesTarget(profile, query), true, query);
     assert.deepEqual(filterSshProfileEntries(entries, query).map((entry) => entry.key), ["saved:v6"]);
   }

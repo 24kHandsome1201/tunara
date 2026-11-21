@@ -67,7 +67,9 @@ export function withSshTargetPort(raw: string, portText: string): string {
 
 export function sshTargetHaystack(profile: SshHostProfile): string {
   const host = formatSshTarget("", profile.host);
-  return `${profile.label} ${profile.user}@${host}:${profile.port}`.toLowerCase();
+  const identity = `${profile.label} ${profile.user}@${host}:${profile.port}`;
+  const bareHost = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+  return (bareHost === host ? identity : `${identity} ${profile.user}@${bareHost}:${profile.port}`).toLowerCase();
 }
 
 export function profileMatchesTarget(profile: SshHostProfile, query: string): boolean {
