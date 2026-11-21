@@ -221,7 +221,7 @@ function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQ
     <>
       {parts.map((part, index) => {
         const key = `${index}:${part.slice(0, 48)}`;
-        if (part.startsWith("`") && part.endsWith("`")) {
+        if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) {
           return (
             <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent-text)" }}>
               <HighlightedText text={part.slice(1, -1)} query={findQuery} cursor={cursor} />
@@ -276,8 +276,16 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
         </figure>
       );
     }
-    case "quote":
-      return <div style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}><InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} /></div>;
+    case "quote": {
+      const paragraphs = block.text.trim().split(/\n(?:[ \t]*\n)+/).filter(Boolean);
+      return (
+        <blockquote style={{ borderTop: "1px solid var(--c-border-1)", borderBottom: "1px solid var(--c-border-1)", background: "var(--c-bg-1)", padding: "7px 8px", color: "var(--c-text-4)", margin: "6px 0", fontSize: "var(--fs-secondary)", lineHeight: 1.65 }}>
+          {paragraphs.map((text, index) => (
+            <p key={index} style={{ margin: index === 0 ? 0 : "7px 0 0" }}><InlineText text={text} findQuery={findQuery} matchCursor={matchCursor} /></p>
+          ))}
+        </blockquote>
+      );
+    }
     case "unordered-list": {
       return (
         <ul style={{ paddingLeft: 16, margin: "4px 0", listStyle: "disc" }}>
@@ -286,8 +294,9 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
       );
     }
     case "ordered-list": {
+      const markerDigits = String(block.start + block.items.length - 1).length;
       return (
-        <ol style={{ paddingLeft: 16, margin: "4px 0" }}>
+        <ol start={block.start === 1 ? undefined : block.start} style={{ paddingLeft: markerDigits === 1 ? 16 : `max(16px, ${markerDigits + 1}ch)`, margin: "4px 0" }}>
           {block.items.map((item, index) => <li key={`${index}:${item}`} style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65 }}><InlineText text={item} findQuery={findQuery} matchCursor={matchCursor} /></li>)}
         </ol>
       );

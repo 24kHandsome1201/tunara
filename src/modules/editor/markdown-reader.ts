@@ -7,7 +7,7 @@ export type MarkdownBlock =
   | { type: "code"; language?: string; text: string; key: string }
   | { type: "quote"; text: string; key: string }
   | { type: "unordered-list"; items: string[]; key: string }
-  | { type: "ordered-list"; items: string[]; key: string }
+  | { type: "ordered-list"; start: number; items: string[]; key: string }
   | { type: "table"; header: string[]; rows: string[][]; alignments: MarkdownAlignment[]; key: string }
   | { type: "mdx-source"; kind: MdxSourceKind; text: string; key: string }
   | { type: "rule"; key: string };
@@ -120,6 +120,8 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
   });
 }
 
+const QUOTE_MARKER = /^>[ \t]?/;
+
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
   // MDX constructs are only recognized when the caller marks the source .mdx.
@@ -198,10 +200,9 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       index++;
       continue;
     }
-    if (line.startsWith("> ")) {
-      const quote = [line.slice(2)];
-      index++;
-      while (index < lines.length && lines[index].startsWith("> ")) quote.push(lines[index++].slice(2));
+    if (QUOTE_MARKER.test(line)) {
+      const quote: string[] = [];
+      while (index < lines.length && QUOTE_MARKER.test(lines[index])) quote.push(lines[index++].replace(QUOTE_MARKER, ""));
       blocks.push({ type: "quote", text: quote.join("\n"), key: keys.make(`quote-${compact(quote.join(" "))}`) });
       continue;
     }
@@ -213,10 +214,12 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       continue;
     }
     if (/^\s*\d+\.\s/.test(line)) {
+      const number = Number.parseInt(line.trimStart(), 10);
+      const start = Number.isSafeInteger(number) ? number : 1;
       const items = [line.replace(/^\s*\d+\.\s/, "")];
       index++;
       while (index < lines.length && /^\s*\d+\.\s/.test(lines[index])) items.push(lines[index++].replace(/^\s*\d+\.\s/, ""));
-      blocks.push({ type: "ordered-list", items, key: keys.make(`ol-${compact(items.join("|"))}`) });
+      blocks.push({ type: "ordered-list", start, items, key: keys.make(`ol-${compact(items.join("|"))}`) });
       continue;
     }
     if (line.trim() === "") {
@@ -226,7 +229,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
 
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,6})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
+    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,6})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !QUOTE_MARKER.test(lines[index]) && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
       if (index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
       paragraph.push(lines[index++]);
     }

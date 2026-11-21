@@ -10,6 +10,16 @@ import {
   splitGfmTableRow,
 } from "../src/modules/editor/markdown-reader.ts";
 
+test("ordered lists retain a sanitized first-item start number", () => {
+  for (const [marker, expected] of [["3", 3], ["003", 3], ["0", 0], ["1", 1], ["9".repeat(400), 1]]) {
+    const { blocks } = parseMarkdownDocument(`${marker}. third step\n4. fourth step`);
+    assert.equal(blocks[0].start, expected);
+    assert.deepEqual(blocks[0].items, ["third step", "fourth step"]);
+  }
+  assert.deepEqual(parseMarkdownDocument("").blocks, []);
+  assert.equal(parseMarkdownDocument('3x. not a list').blocks[0].type, "paragraph");
+});
+
 test("headings produce semantic toc entries and stable unique unicode anchors", () => {
   const parsed = parseMarkdownDocument("# 快速开始\n## Install & Run\n## Install & Run\n# **快速开始**");
   assert.deepEqual(parsed.toc, [
@@ -101,6 +111,23 @@ test("backtick and tilde fences retain the language label and exact body", () =>
   assert.deepEqual(parsed.blocks.map((block) => block.type === "code" ? [block.language, block.text] : null), [
     ["ts", "const x = 1;"],
     ["bash", "echo ok"],
+  ]);
+});
+
+test("blank quote markers keep paragraphs in the same blockquote", () => {
+  const { blocks } = parseMarkdownDocument("> **Note** Keep both paragraphs.\n>\n>   \n> Second paragraph.\n\n> Separate quote.");
+  assert.deepEqual(blocks.map(({ type, text }) => [type, text]), [
+    ["quote", "**Note** Keep both paragraphs.\n\n  \nSecond paragraph."],
+    ["quote", "Separate quote."],
+  ]);
+});
+
+test("quote markers without a space start a quote after ordinary prose", () => {
+  const { blocks } = parseMarkdownDocument("Intro > comparison\n>no space\n>\twith a tab\nBack to prose");
+  assert.deepEqual(blocks.map(({ type, text }) => [type, text]), [
+    ["paragraph", "Intro > comparison"],
+    ["quote", "no space\nwith a tab"],
+    ["paragraph", "Back to prose"],
   ]);
 });
 

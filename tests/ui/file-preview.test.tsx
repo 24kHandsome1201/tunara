@@ -241,6 +241,22 @@ describe("FilePreview editor behavior", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  test("renders ordered lists with only non-default start attributes", async () => {
+    const paddingLeft = vi.spyOn(CSSStyleDeclaration.prototype, "paddingLeft", "set");
+    mockIPC((command) => command === "fs_read_file" ? {
+      ...original, content: "3. third step\n4. fourth step\n\n1. first step\n\n0. zero step\n\n1000. continued step\n1001. next step\n\n99. last two-digit step\n100. first three-digit step",
+    } : null);
+    renderLocal("steps.md");
+    await screen.findByRole("textbox", { name: "Edit steps.md" });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    const lists = screen.getAllByRole("list");
+    expect(lists.map((list) => list.getAttribute("start"))).toEqual(["3", null, "0", "1000", "99"]);
+    expect(lists.slice(0, 3).map((list) => list.style.paddingLeft)).toEqual(["16px", "16px", "16px"]);
+    expect(paddingLeft).toHaveBeenCalledWith("max(16px, 5ch)");
+    expect(paddingLeft).toHaveBeenCalledWith("max(16px, 4ch)");
+    expect(lists[0].textContent).toBe("third stepfourth step");
+  });
+
   test("keeps the Markdown mode switch and save flow keyboard-complete", async () => {
     let writes = 0;
     mockIPC((command) => {
@@ -271,6 +287,21 @@ describe("FilePreview editor behavior", () => {
     fireEvent.keyDown(restoredEditor, { key: "s", ctrlKey: true });
     await screen.findByText("Saved");
     expect(writes).toBe(1);
+  });
+
+  test("renders quoted paragraphs without dropping a literal backtick", async () => {
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { ...original, content: "> **Note** `example`\n> \n> `\n\n>No space" };
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("notes.md");
+    fireEvent.click(await screen.findByRole("tab", { name: "Preview" }));
+
+    const quote = (await screen.findByText("Note")).closest("blockquote");
+    expect(Array.from(quote?.querySelectorAll("p") ?? [], (p) => p.textContent)).toEqual(["Note example", "`"]);
+    expect(quote?.querySelector("code")?.textContent).toBe("example");
+    expect(screen.getByText("No space").closest("blockquote")).toBe(quote?.nextElementSibling);
   });
 
   test("keeps Markdown source visible while syntax highlighting is debounced", async () => {
