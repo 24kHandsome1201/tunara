@@ -221,9 +221,10 @@ export function FileExplorer({
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [uploadReloadKey, setUploadReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
   const searchRoot = remoteExplorerSearchRoot(currentPath, isRemote ? homeDir : baseDir);
-  const search = useExplorerSearch({ baseDir: searchRoot, includeHidden, reloadKey, isRemote, remotePtyId, remoteDisconnected });
+  const search = useExplorerSearch({ baseDir: searchRoot, includeHidden, reloadKey: reloadKey + uploadReloadKey, isRemote, remotePtyId, remoteDisconnected });
   const {
     searchQuery,
     searchMode,
@@ -336,6 +337,21 @@ export function FileExplorer({
     ? { logicalSessionId: sessionId, physicalPtyId: remotePtyId, transportGeneration }
     : null, [isRemote, remotePtyId, sessionId, transportGeneration]);
   useEffect(() => () => { downloadChooserPendingRef.current = null; }, [binding]);
+  useLayoutEffect(() => {
+    if (!binding || !currentPath.startsWith("/")) return;
+    const directory = currentPath.replace(/\/+$/, "") || "/";
+    return useTransferStore.subscribe((state, previous) => {
+      const upload = state.lastCompletedUpload;
+      if (upload && upload !== previous.lastCompletedUpload
+        && upload.binding.logicalSessionId === binding.logicalSessionId
+        && upload.binding.physicalPtyId === binding.physicalPtyId
+        && upload.binding.transportGeneration === binding.transportGeneration
+        && parentPath(upload.destination) === directory) {
+        invalidateRemoteSearchCache(binding.physicalPtyId);
+        setUploadReloadKey((n) => n + 1);
+      }
+    });
+  }, [binding, currentPath]);
   const activeTransferNotice = useTransferStore((s) =>
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
@@ -521,8 +537,12 @@ export function FileExplorer({
     useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => pushHostRecentPath(prefs, currentPath));
   }, [prefsKey, currentPath]);
 
+  const listingContext = useMemo(() => ({ treeRequestContext, baseDir, reloadKey }), [treeRequestContext, baseDir, reloadKey]);
+  const loadedListingContext = useRef<typeof listingContext | null>(null);
   useEffect(() => {
-    beginListingEpoch();
+    // An upload only changes the root entries; keep unrelated expanded folders and reads.
+    const backgroundRefresh = loadedListingContext.current === listingContext;
+    if (!backgroundRefresh) beginListingEpoch();
     if (baseDir === null) return;
     if (!isRemote && !currentPath.startsWith("/")) {
       // A fresh local session reports `~` until OSC 7 arrives. Resolve it to
@@ -552,8 +572,10 @@ export function FileExplorer({
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setError(false);
+    if (!backgroundRefresh) {
+      setLoading(true);
+      setError(false);
+    }
     const read =
       isRemote && remotePtyId !== undefined
         ? sshReadDir(remotePtyId, currentPath, includeHidden)
@@ -563,12 +585,13 @@ export function FileExplorer({
         if (!cancelled) {
           setEntries(e);
           setCachedListingKey(`${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`);
-          resetExpansion();
+          if (!backgroundRefresh) resetExpansion();
+          loadedListingContext.current = listingContext;
           setLoading(false);
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && !backgroundRefresh) {
           setEntries([]);
           setCachedListingKey(null);
           setError(true);
@@ -576,7 +599,7 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, reloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration, beginListingEpoch, resetExpansion, setCurrentPath]);
+  }, [currentPath, includeHidden, listingContext, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, beginListingEpoch, resetExpansion, setCurrentPath]);
 
   const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();

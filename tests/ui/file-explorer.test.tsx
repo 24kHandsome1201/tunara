@@ -574,6 +574,66 @@ describe("FileExplorer workspace files", () => {
     expect(useUIStore.getState().toasts.filter((toast) => toast.title === "Upload complete")).toEqual([]);
   });
 
+  test.each([
+    { folder: "/srv/app", generation: "current", openFolder: false, refreshes: true },
+    { folder: "/srv/app", generation: "current", openFolder: true, refreshes: true },
+    { folder: "/srv/app/other", generation: "current", openFolder: false, refreshes: false },
+    { folder: "/srv/app", generation: "previous", openFolder: false, refreshes: false },
+  ])("refreshes Files only for a completed upload in its folder and transport ($folder, $generation, expanded=$openFolder)", async ({ folder, generation, openFolder, refreshes }) => {
+    useTransferStore.getState().replaceItemsForTest([]);
+    let reads = 0;
+    let uploaded = false;
+    let finishUpload!: () => void;
+    const upload = new Promise((resolve) => {
+      finishUpload = () => {
+        uploaded = true;
+        resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
+      };
+    });
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") {
+        reads += 1;
+        if ((payload as { path: string }).path === "/srv/app/docs") {
+          return [{ name: "guide.txt", kind: "file", size: 2, mtime: 0 }];
+        }
+        return [
+          ...(openFolder ? [{ name: "docs", kind: "dir", size: 0, mtime: 0 }] : []),
+          ...(uploaded && folder === "/srv/app" ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
+        ];
+      }
+      if (command === "ssh_transfer_upload") return upload;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    if (openFolder) {
+      const docs = await screen.findByRole("treeitem", { name: /^docs/ });
+      fireEvent.keyDown(docs, { key: "ArrowRight" });
+      await screen.findByRole("treeitem", { name: /^guide\.txt/ });
+    } else {
+      await screen.findByText("Directory is empty");
+    }
+    const initialReads = reads;
+    const transferId = useTransferStore.getState().enqueue({
+      binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: generation },
+      direction: "upload",
+      source: "/home/alice/report.txt",
+      destination: `${folder}/report.txt`,
+      conflict: "rename",
+    });
+    const status = () => useTransferStore.getState().itemsById.get(transferId)?.status;
+    await waitFor(() => expect(status()).toBe("running"));
+    expect(reads).toBe(initialReads);
+
+    await act(async () => finishUpload());
+    expect(status()).toBe("completed");
+    if (refreshes) expect(await screen.findByRole("treeitem", { name: /report\.txt/ })).toBeTruthy();
+    else expect(screen.getByText("Directory is empty")).toBeTruthy();
+    if (openFolder) expect(screen.getByRole("treeitem", { name: /^guide\.txt/ })).toBeTruthy();
+    expect(reads).toBe(initialReads + Number(refreshes));
+  });
+
   test("uploads every file selected by a legacy SSH session and continues after one fails", async () => {
     useUIStore.setState({ toasts: [] });
     const uploads: Array<{ localPath: string; remotePath: string; overwrite: boolean }> = [];
