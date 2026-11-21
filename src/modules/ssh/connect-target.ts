@@ -8,7 +8,8 @@ export interface ParsedSshTarget {
 }
 
 export function formatSshTarget(user: string, host: string, port = 22): string {
-  const identity = user ? `${user}@${host}` : host;
+  const targetHost = host.includes(":") ? `[${host}]` : host;
+  const identity = user ? `${user}@${targetHost}` : targetHost;
   return port === 22 ? identity : `${identity}:${port}`;
 }
 
@@ -18,7 +19,7 @@ export function formatSshTarget(user: string, host: string, port = 22): string {
  */
 export function sshTargetHasInvalidPort(raw: string): boolean {
   const value = raw.trim();
-  const match = value.match(/:(\d+)$/);
+  const match = value.match(/(?:^|@)(?:\[[^\]]+\]|[^:[\]]+):(\d+)$/);
   return Boolean(match && parseSshPort(match[1]) === null);
 }
 
@@ -45,7 +46,7 @@ export function parseSshTarget(raw: string): ParsedSshTarget | null {
   }
 
   const colon = rest.lastIndexOf(":");
-  if (colon > 0 && /^\d+$/.test(rest.slice(colon + 1))) {
+  if (colon > 0 && colon === rest.indexOf(":") && /^\d+$/.test(rest.slice(colon + 1))) {
     const port = parseSshPort(rest.slice(colon + 1));
     if (port === null) return null;
     const host = rest.slice(0, colon).trim();

@@ -116,6 +116,22 @@ test("parseSshTarget accepts user@host[:port], aliases, and IPv6", () => {
   assert.equal(formatSshTarget("alice", "prod", 2222), "alice@prod:2222");
 });
 
+test("IPv6 targets survive formatting and parsing without inventing a port", () => {
+  for (const host of ["2001:db8::1", "2001:db8::0", "::1"]) {
+    assert.deepEqual(parseSshTarget(host), { user: "", host });
+    assert.equal(sshTargetHasInvalidPort(host), false);
+    assert.equal(withSshTargetPort(host, "2200"), host);
+    for (const port of [22, 2222]) {
+      const target = formatSshTarget("deploy", host, port);
+      assert.equal(target, `deploy@[${host}]${port === 22 ? "" : `:${port}`}`);
+      assert.deepEqual(parseSshTarget(target), { user: "deploy", host, ...(port === 22 ? {} : { port }) });
+    }
+  }
+  assert.equal(parseSshTarget("[2001:db8::1]:99999"), null);
+  assert.equal(sshTargetHasInvalidPort("[2001:db8::1]:99999"), true);
+  assert.equal(parseSshTarget(""), null);
+});
+
 test("withSshTargetPort only rewrites an explicit target port with a numeric Port", () => {
   assert.equal(withSshTargetPort("alice@prod:2222", "2200"), "alice@prod:2200");
   assert.equal(withSshTargetPort("[2001:db8::1]:2222", "2200"), "[2001:db8::1]:2200");
