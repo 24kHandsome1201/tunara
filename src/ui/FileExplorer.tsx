@@ -89,8 +89,13 @@ interface FileExplorerProps {
 }
 
 function UnreadableNotice({ count }: { count: number }) {
+  const t = useT();
   if (count === 0) return null;
-  return <div role="status" style={{ padding: "0 6px 8px", fontSize: "var(--fs-meta)", lineHeight: "18px", color: "var(--c-text-5)" }}>Skipped {count} unreadable {count === 1 ? "folder" : "folders"} — results may be incomplete</div>;
+  return (
+    <div role="status" style={{ padding: "0 6px 8px", fontSize: "var(--fs-meta)", lineHeight: "18px", color: "var(--c-text-5)" }}>
+      {t(count === 1 ? "explorer.search_unreadable_one" : "explorer.search_unreadable_other", { count })}
+    </div>
+  );
 }
 
 export function FileExplorer({
@@ -1356,7 +1361,10 @@ export function FileExplorer({
                 <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
               </>
             ) : grepHits.length === 0 ? (
-              <><PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} /><UnreadableNotice count={searchUnreadable} /></>
+              <>
+                <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
+                <UnreadableNotice count={searchUnreadable} />
+              </>
             ) : (
               <>
                 <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
@@ -1401,7 +1409,10 @@ export function FileExplorer({
               <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
             </>
           ) : searchHits.length === 0 ? (
-            <><PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} /><UnreadableNotice count={searchUnreadable} /></>
+            <>
+              <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
+              <UnreadableNotice count={searchUnreadable} />
+            </>
           ) : (
             <>
               <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>

@@ -117,10 +117,11 @@ export interface GrepHit {
 }
 
 export interface GrepResponse {
-  unreadable?: number;
   hits: GrepHit[];
   truncated: boolean;
   filesScanned: number;
+  /** Remote search omits this count. */
+  unreadable?: number;
 }
 
 export function fsGrep(

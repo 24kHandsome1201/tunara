@@ -430,6 +430,8 @@
   "explorer.no_match": "No matching files",
   "explorer.results": "Results",
   "explorer.search_mode.switch_to_content": "Switch to content search",
+  "explorer.search_unreadable_one": "Skipped {{count}} unreadable folder — results may be incomplete",
+  "explorer.search_unreadable_other": "Skipped {{count}} unreadable folders — results may be incomplete",
   "explorer.search_mode.switch_to_name": "Switch to file-name search",
   "explorer.search_placeholder_content": "Search in file contents",
   "explorer.content_no_match": "No matching content",
