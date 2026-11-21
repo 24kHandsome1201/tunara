@@ -56,6 +56,25 @@ test("buildMiniDiffRows produces stable unique keys per row", () => {
   assert.equal(new Set(keys).size, keys.length);
 });
 
+test("buildMiniDiffRows keeps header-like content styled inside hunks", () => {
+  const rows = buildMiniDiffRows([
+    "--- a/foo.txt", "+++ b/foo.txt", "@@ -1,2 +1,2 @@",
+    "---x", "----x", "+++y", "++++y", "\\ No newline at end of file",
+    "--- a/next.txt", "+++ b/next.txt", "@@ -0,0 +1 @@", "+++next",
+    "diff --git a/last.txt b/last.txt", "--- a/last.txt", "+++ b/last.txt",
+    "@@ -1 +1 @@", "--- a/header-like-content", "\\ No newline at end of file",
+    "+++ b/header-like-content", "\\ No newline at end of file",
+  ].join("\n"));
+  assert.deepEqual(rows.filter((r) => r.isDel).map((r) => r.line), [
+    "---x", "----x", "--- a/header-like-content",
+  ]);
+  assert.deepEqual(rows.filter((r) => r.isAdd).map((r) => r.line), [
+    "+++y", "++++y", "+++next", "+++ b/header-like-content",
+  ]);
+  assert.ok(rows.filter((r) => r.line.startsWith("\\")).every((r) => !r.isAdd && !r.isDel));
+  assert.equal(rows.filter((r) => r.isHunk).length, 3);
+});
+
 test("collectHunkTexts excludes prelude lines and joins each hunk into a single string", () => {
   const rows = buildMiniDiffRows(SAMPLE_PATCH);
   const hunks = collectHunkTexts(rows);
