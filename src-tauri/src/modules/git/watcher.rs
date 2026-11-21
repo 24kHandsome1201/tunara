@@ -67,6 +67,19 @@ fn is_noisy_path(path: &Path) -> bool {
         || s.contains("/.DS_Store")
 }
 
+fn watch_target(expanded: &str) -> Result<PathBuf, String> {
+    let path = Path::new(expanded)
+        .canonicalize()
+        .map_err(|e| format!("canonicalize {}: {}", expanded, e))?;
+    let repo = Repository::discover(&path).ok();
+    match repo.as_ref().and_then(Repository::workdir) {
+        Some(workdir) => workdir
+            .canonicalize()
+            .map_err(|e| format!("canonicalize {}: {}", workdir.display(), e)),
+        None => Ok(path),
+    }
+}
+
 #[tauri::command]
 pub fn git_watch(
     repo_path: String,
@@ -78,9 +91,7 @@ pub fn git_watch(
     // target needs an absolute path, which we resolve separately.
     let key = PathBuf::from(&repo_path);
     let expanded = expand_tilde(&repo_path);
-    let watch_target = Path::new(&expanded)
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {}", expanded, e))?;
+    let watch_target = watch_target(&expanded)?;
 
     let mut map = state.inner.lock().map_err(|e| e.to_string())?;
     if let Some(entry) = map.get_mut(&key) {
@@ -181,8 +192,63 @@ pub fn shutdown_all(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::is_noisy_path;
+    use super::{is_noisy_path, watch_target};
+    use git2::Repository;
     use std::path::Path;
+
+    #[test]
+    fn watch_target_covers_repo_edits_outside_terminal_subdirectory() {
+        let root = std::env::temp_dir().join(format!(
+            "tunara-git-watch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("terminal/subdir")).unwrap();
+        let expected = root.canonicalize().unwrap();
+        assert_eq!(watch_target(root.to_str().unwrap()).unwrap(), expected);
+        assert!(watch_target(root.join("missing").to_str().unwrap()).is_err());
+        Repository::init(&root).unwrap();
+        assert_eq!(watch_target(root.to_str().unwrap()).unwrap(), expected);
+        assert!(watch_target(root.join("missing").to_str().unwrap()).is_err());
+        let actual = watch_target(root.join("terminal/subdir").to_str().unwrap()).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut debouncer = notify_debouncer_mini::new_debouncer(
+            std::time::Duration::from_millis(50),
+            move |events: notify_debouncer_mini::DebounceEventResult| {
+                if let Ok(events) = events {
+                    for event in events {
+                        tx.send(event.path).unwrap();
+                    }
+                }
+            },
+        )
+        .unwrap();
+        debouncer
+            .watcher()
+            .watch(&actual, notify::RecursiveMode::Recursive)
+            .unwrap();
+        let sibling = expected.join("README.md");
+        std::fs::write(&sibling, "edited outside terminal cwd").unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut observed = false;
+        while let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) {
+            match rx.recv_timeout(remaining) {
+                Ok(path) if path == sibling => {
+                    observed = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(_) => break,
+            }
+        }
+        drop(debouncer);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(actual, expected);
+        assert!(observed, "watcher missed an edit outside the terminal cwd");
+    }
 
     #[test]
     fn is_noisy_path_flags_git_internal_and_build_dirs() {
