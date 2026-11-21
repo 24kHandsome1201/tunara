@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -45,6 +45,15 @@ fn ssh_session(state: &State<'_, PtyState>, id: u32) -> Result<std::sync::Arc<Se
 /// local `git_diff` text-preview budget (256 KiB) — DiffPanel already renders
 /// `tooLarge` beyond that.
 const MAX_STATUS_BYTES: usize = 256 * 1024;
+const MAX_NUMSTAT_BYTES: usize = 256 * 1024;
+const NUMSTAT_MARKER: &str = "\0TUNARA_NUMSTAT\0";
+const UNSTAGED_MARKER: &str = "\0TUNARA_UNSTAGED\0";
+const NUMSTAT_END: &str = "\0TUNARA_NUMSTAT_END\0";
+const MAX_SNAPSHOT_BYTES: usize = MAX_STATUS_BYTES
+    + MAX_NUMSTAT_BYTES
+    + NUMSTAT_MARKER.len()
+    + UNSTAGED_MARKER.len()
+    + NUMSTAT_END.len();
 const MAX_DIFF_BYTES: usize = 256 * 1024;
 /// Line cap mirroring the local path's `DIFF_MAX_LINES` (git/mod.rs), so the
 /// DiffPanel shows the same "truncated" hint for local and remote diffs.
@@ -570,6 +579,97 @@ fn cached_snapshot_response(
     }
 }
 
+fn remote_status_command(cwd: &str) -> Result<String, String> {
+    let cwd = remote_git_cwd(cwd)?;
+    let status = format!("git -C {cwd} status --porcelain=v2 --branch --no-renames -z || {{ printf 'TUNARA_V1\\0'; git -C {cwd} status --porcelain=v1 --branch --no-renames -z; rc=$?; printf 'TUNARA_META\\0TUNARA_RC %s\\n' \"$rc\"; git -C {cwd} symbolic-ref --short HEAD 2>/dev/null || git -C {cwd} rev-parse HEAD 2>/dev/null || true; git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null || true; }}");
+    Ok(format!("{status}; printf '\\0TUNARA_NUMSTAT\\0'; git -C {cwd} diff --cached --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_UNSTAGED\\0'; git -C {cwd} diff --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_NUMSTAT_END\\0'"))
+}
+
+fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), String> {
+    let (raw, numstat) = raw.split_once(NUMSTAT_MARKER).unwrap_or((raw, ""));
+    if raw.len() > MAX_STATUS_BYTES {
+        return Err("status too large".into());
+    }
+    let (mut status, upstream) = if let Some(v1) = raw.strip_prefix("TUNARA_V1\0") {
+        let (status_raw, meta) = v1.split_once("TUNARA_META\0").unwrap_or((v1, ""));
+        if !meta.starts_with("TUNARA_RC 0\n") {
+            return Err("fatal: not a git repository".into());
+        }
+        let status = parse_porcelain_v1(status_raw);
+        let mut lines = meta.lines().skip(1);
+        let branch = lines.next().unwrap_or("").trim();
+        let counts = lines
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .filter_map(|v| v.parse::<usize>().ok())
+            .collect::<Vec<_>>();
+        Ok((status, parse_v1_remote(branch, &counts)))
+    } else {
+        parse_porcelain_v2(raw).map_err(|_| "malformed git status".to_string())
+    }?;
+    if let Some((staged, unstaged)) = numstat
+        .strip_suffix(NUMSTAT_END)
+        .and_then(|data| data.split_once(UNSTAGED_MARKER))
+        .filter(|(staged, unstaged)| staged.len() + unstaged.len() <= MAX_NUMSTAT_BYTES)
+    {
+        if let (Some(staged), Some(unstaged)) = (parse_numstat(staged), parse_numstat(unstaged)) {
+            let conflicts: HashSet<&str> = raw
+                .split('\0')
+                .filter_map(|record| {
+                    if let Some(fields) = record.strip_prefix("u ") {
+                        fields.splitn(10, ' ').nth(9)
+                    } else if raw.starts_with("TUNARA_V1\0")
+                        && matches!(
+                            record.get(..3),
+                            Some("UU " | "AA " | "DU " | "UD " | "DD " | "AU " | "UA ")
+                        )
+                    {
+                        record.get(3..)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for file in &mut status.files {
+                if conflicts.contains(file.path.as_str()) {
+                    continue;
+                }
+                let counts = match file.stage.as_str() {
+                    "staged" => staged.get(file.path.as_str()),
+                    "unstaged" => unstaged.get(file.path.as_str()),
+                    _ => None,
+                };
+                if let Some(&(added, removed)) = counts {
+                    file.added = added;
+                    file.removed = removed;
+                }
+            }
+        }
+    }
+    Ok((status, upstream))
+}
+
+fn parse_numstat(raw: &str) -> Option<HashMap<&str, (usize, usize)>> {
+    if !raw.is_empty() && !raw.ends_with('\0') {
+        return None;
+    }
+    let mut counts = HashMap::new();
+    for record in raw.split_terminator('\0') {
+        let mut fields = record.splitn(3, '\t');
+        let added = fields.next()?;
+        let removed = fields.next()?;
+        let path = fields.next().filter(|path| !path.is_empty())?;
+        let count = if added == "-" && removed == "-" {
+            (0, 0)
+        } else {
+            (added.parse().ok()?, removed.parse().ok()?)
+        };
+        counts.insert(path, count);
+    }
+    Some(counts)
+}
+
 /// Generation-safe aggregate used by every remote Review consumer. Modern Git
 /// needs one status exec; its fallback remains in that same channel. Workspace
 /// discovery is a second exec only on a snapshot cache miss.
@@ -633,21 +733,11 @@ pub async fn ssh_remote_git_snapshot_v1(
         let session = state.get_for_ssh_binding(&request.binding).ok_or_else(|| "stale binding".to_string())?;
         let ssh = match session.as_ref() { Session::Ssh(ssh) => ssh, _ => return Err("stale binding".into()) };
         let cwd = remote_git_cwd(&request.cwd)?;
-        let command = format!("git -C {cwd} status --porcelain=v2 --branch --no-renames -z || {{ printf 'TUNARA_V1\\0'; git -C {cwd} status --porcelain=v1 --branch --no-renames -z; rc=$?; printf 'TUNARA_META\\0TUNARA_RC %s\\n' \"$rc\"; git -C {cwd} symbolic-ref --short HEAD 2>/dev/null || git -C {cwd} rev-parse HEAD 2>/dev/null || true; git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null || true; }}");
+        let command = remote_status_command(&request.cwd)?;
         crate::modules::perf_counters::git_process();
-        let raw = ssh.exec_cancellable(&command, MAX_STATUS_BYTES + 1, cancelled.clone()).await?;
+        let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
         if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) { return Err("cancelled".into()); }
-        if raw.len() > MAX_STATUS_BYTES { return Err("status too large".into()); }
-        let (status, upstream) = if let Some(v1) = raw.strip_prefix("TUNARA_V1\0") {
-            let (status_raw, meta) = v1.split_once("TUNARA_META\0").unwrap_or((v1, ""));
-            if !meta.starts_with("TUNARA_RC 0\n") { return Err("fatal: not a git repository".into()); }
-            let status = parse_porcelain_v1(status_raw);
-            let mut lines = meta.lines().skip(1);
-            let branch = lines.next().unwrap_or("").trim();
-            let counts = lines.next().unwrap_or("").split_whitespace().filter_map(|v| v.parse::<usize>().ok()).collect::<Vec<_>>();
-            let remote = parse_v1_remote(branch, &counts);
-            (status, remote)
-        } else { parse_porcelain_v2(&raw).map_err(|_| "malformed git status".to_string())? };
+        let (status, upstream) = parse_status_snapshot(&raw)?;
         let workspace = if cached_workspace.is_some() {
             cached_workspace
         } else {
@@ -1308,6 +1398,216 @@ pub async fn ssh_fs_grep(
 mod tests {
     use super::*;
 
+    struct SnapshotTestRepo(std::path::PathBuf);
+
+    impl SnapshotTestRepo {
+        fn new() -> Self {
+            let repo = Self(std::env::temp_dir().join(format!(
+                "tunara-numstat-{}-{}",
+                std::process::id(),
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            )));
+            std::fs::create_dir(&repo.0).unwrap();
+            repo.git(&["init", "-b", "main"]);
+            repo
+        }
+
+        fn git(&self, args: &[&str]) -> String {
+            let output = std::process::Command::new("git")
+                .args([
+                    "-C",
+                    self.0.to_str().unwrap(),
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "-c",
+                    "commit.gpgsign=false",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            String::from_utf8(output.stdout).unwrap()
+        }
+
+        fn snapshot(&self) -> StatusResult {
+            self.snapshot_with_shell("").unwrap()
+        }
+
+        fn snapshot_with_shell(&self, prefix: &str) -> Result<StatusResult, String> {
+            let command = format!(
+                "{prefix} {}",
+                remote_status_command(self.0.to_str().unwrap()).unwrap()
+            );
+            let output = std::process::Command::new("sh")
+                .args(["-c", &command])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            parse_status_snapshot(&String::from_utf8(output.stdout).unwrap())
+                .map(|(status, _)| status)
+        }
+    }
+
+    impl Drop for SnapshotTestRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn snapshot_real_git_line_counts_match_numstat() {
+        let repo = SnapshotTestRepo::new();
+        std::fs::write(repo.0.join("both stages.txt"), "one\ntwo\nthree\n").unwrap();
+        std::fs::write(repo.0.join("staged.txt"), "old\n").unwrap();
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "base"]);
+        std::fs::write(repo.0.join("both stages.txt"), "one\nstaged\nthree\n").unwrap();
+        std::fs::write(repo.0.join("staged.txt"), "new\nextra\n").unwrap();
+        repo.git(&["add", "."]);
+        std::fs::write(
+            repo.0.join("both stages.txt"),
+            "one\nthree\nadded one\nadded two\nadded three\n",
+        )
+        .unwrap();
+        let status = repo.snapshot();
+        assert_eq!(status.files.len(), 3);
+        for (args, stage) in [
+            (
+                vec!["diff", "--cached", "--numstat", "--no-renames", "-z"],
+                "staged",
+            ),
+            (vec!["diff", "--numstat", "--no-renames", "-z"], "unstaged"),
+        ] {
+            let expected = repo.git(&args);
+            for record in expected.split_terminator('\0') {
+                let fields = record.splitn(3, '\t').collect::<Vec<_>>();
+                let file = status
+                    .files
+                    .iter()
+                    .find(|f| f.path == fields[2] && f.stage == stage)
+                    .unwrap();
+                let counts = (
+                    fields[0].parse::<usize>().unwrap(),
+                    fields[1].parse::<usize>().unwrap(),
+                );
+                assert_eq!((file.added, file.removed), counts, "{stage}: {}", file.path);
+                println!("{stage}: {} +{} -{}", file.path, file.added, file.removed);
+            }
+        }
+        let fallback = repo.snapshot_with_shell("git() { for arg do if [ \"$arg\" = --porcelain=v2 ]; then return 1; fi; done; command git \"$@\"; };").unwrap();
+        for (file, fallback_file) in status.files.iter().zip(&fallback.files) {
+            assert_eq!(
+                (&file.path, &file.stage, file.added, file.removed),
+                (
+                    &fallback_file.path,
+                    &fallback_file.stage,
+                    fallback_file.added,
+                    fallback_file.removed
+                )
+            );
+        }
+        for prefix in [
+            "git() { for arg do if [ \"$arg\" = --numstat ]; then return 1; fi; done; command git \"$@\"; };",
+            "git() { for arg do case \"$arg\" in --porcelain=v2|--numstat) return 1;; esac; done; command git \"$@\"; };",
+        ] {
+            let status = repo.snapshot_with_shell(prefix).unwrap();
+            assert_eq!(status.files.len(), 3);
+            assert!(status.files.iter().all(|file| (file.added, file.removed) == (0, 0)));
+        }
+    }
+
+    #[test]
+    fn numstat_preserves_paths_and_handles_binary_empty_and_truncated_output() {
+        let counts = parse_numstat("3\t1\twith spaces\0-\t-\tbinary\0").unwrap();
+        assert_eq!(counts["with spaces"], (3, 1));
+        assert_eq!(counts["binary"], (0, 0));
+        let counts = parse_numstat("2\t4\ttab\tand\nnewline\0").unwrap();
+        assert_eq!(counts["tab\tand\nnewline"], (2, 4));
+        assert!(parse_numstat("").unwrap().is_empty());
+        for raw in [
+            "1\t2\tpath",
+            "1\t2\tgood\0partial",
+            "1\t2\0",
+            "-\t1\tpath\0",
+            "invalid\t2\tpath\0",
+            "1\t2\t\0",
+        ] {
+            assert!(parse_numstat(raw).is_none(), "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn snapshot_numstat_budget_does_not_consume_status_budget() {
+        let raw = format!("? {}\0", "x".repeat(MAX_STATUS_BYTES - 3));
+        assert_eq!(raw.len(), MAX_STATUS_BYTES);
+        let complete = format!("{raw}{NUMSTAT_MARKER}{UNSTAGED_MARKER}{NUMSTAT_END}");
+        assert_eq!(parse_status_snapshot(&complete).unwrap().0.files.len(), 1);
+        assert!(parse_status_snapshot(&(raw.clone() + "x")).is_err());
+        assert!(parse_status_snapshot(
+            &(raw + "x" + NUMSTAT_MARKER + UNSTAGED_MARKER + NUMSTAT_END)
+        )
+        .is_err());
+        let raw = "1 .M N... 100644 100644 100644 abc def file\0";
+        let valid = format!("{raw}{NUMSTAT_MARKER}{UNSTAGED_MARKER}3\t1\tfile\0{NUMSTAT_END}");
+        let (status, _) = parse_status_snapshot(&valid).unwrap();
+        assert_eq!((status.files[0].added, status.files[0].removed), (3, 1));
+        for numstat in [
+            format!("{UNSTAGED_MARKER}3\t1\tfile\0"),
+            format!("{UNSTAGED_MARKER}3\t1\tfile{NUMSTAT_END}"),
+            format!(
+                "{UNSTAGED_MARKER}3\t1\tfile\x000\t0\t{}\0{NUMSTAT_END}",
+                "x".repeat(MAX_NUMSTAT_BYTES)
+            ),
+        ] {
+            let (status, _) =
+                parse_status_snapshot(&format!("{raw}{NUMSTAT_MARKER}{numstat}")).unwrap();
+            assert_eq!(status.files.len(), 1);
+            assert_eq!((status.files[0].added, status.files[0].removed), (0, 0));
+        }
+    }
+
+    #[test]
+    fn snapshot_unborn_and_non_repository_keep_status_semantics() {
+        let repo = SnapshotTestRepo::new();
+        std::fs::write(repo.0.join("untracked.txt"), "one\ntwo\n").unwrap();
+        let status = repo.snapshot();
+        assert_eq!(status.files[0].stage, "untracked");
+        assert_eq!((status.files[0].added, status.files[0].removed), (0, 0));
+        let local = git2::Repository::open(&repo.0).unwrap();
+        let mut options = git2::DiffOptions::new();
+        options.include_untracked(true).recurse_untracked_dirs(true);
+        let diff = local
+            .diff_index_to_workdir(None, Some(&mut options))
+            .unwrap();
+        let mut lines = 0;
+        diff.foreach(
+            &mut |_, _| true,
+            None,
+            None,
+            Some(&mut |_, _, line| {
+                if matches!(line.origin(), '+' | '-') {
+                    lines += 1;
+                }
+                true
+            }),
+        )
+        .unwrap();
+        assert_eq!(lines, 0);
+        println!("local untracked counts: +0 -0; remote untracked counts: +0 -0");
+        drop(diff);
+        drop(local);
+        repo.git(&["add", "."]);
+        let status = repo.snapshot();
+        assert_eq!((status.files[0].added, status.files[0].removed), (2, 0));
+        std::fs::remove_dir_all(repo.0.join(".git")).unwrap();
+        assert_eq!(
+            repo.snapshot_with_shell("").unwrap_err(),
+            "fatal: not a git repository"
+        );
+    }
+
     #[test]
     fn remote_diff_from_subdirectory_uses_repository_relative_paths() {
         use std::{fs, process::Command};
@@ -1425,6 +1725,18 @@ mod tests {
         let raw = String::from_utf8(output.stdout).unwrap();
         println!("real git status: {}", raw.replace('\0', "\\0"));
         let (status, _) = parse_porcelain_v2(&raw).unwrap();
+        let command = remote_status_command(path.to_str().unwrap()).unwrap();
+        let output = std::process::Command::new("sh")
+            .args(["-c", &command])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let (counted_status, _) =
+            parse_status_snapshot(&String::from_utf8(output.stdout).unwrap()).unwrap();
+        assert!(counted_status
+            .files
+            .iter()
+            .all(|file| (file.added, file.removed) == (0, 0)));
         let repo = git2::Repository::open(&path).unwrap();
         let tree = repo.head().unwrap().peel_to_tree().unwrap();
         for (diff, stage) in [
@@ -1436,6 +1748,20 @@ mod tests {
         ] {
             let delta = diff.deltas().next().unwrap();
             assert_eq!(delta.status(), git2::Delta::Conflicted);
+            let mut lines = 0;
+            diff.foreach(
+                &mut |_, _| true,
+                None,
+                None,
+                Some(&mut |_, _, line| {
+                    if matches!(line.origin(), '+' | '-') {
+                        lines += 1;
+                    }
+                    true
+                }),
+            )
+            .unwrap();
+            assert_eq!(lines, 0);
             let file = status
                 .files
                 .iter()
