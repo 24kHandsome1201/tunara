@@ -464,6 +464,18 @@ fn local_identity(path: &Path, size: u64) -> Result<PartialIdentity, String> {
     }
 }
 
+async fn download_checkpoint_identity(
+    local: &mut tokio::fs::File,
+    path: &Path,
+    size: u64,
+) -> Result<PartialIdentity, String> {
+    local
+        .flush()
+        .await
+        .map_err(|error| format!("flush local download partial failed: {error}"))?;
+    local_identity(path, size)
+}
+
 fn local_snapshot(path: &Path) -> Result<(u64, String, PartialIdentity), String> {
     let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
     let mut hash = Sha256::new();
@@ -898,7 +910,7 @@ pub async fn ssh_transfer_download(
                         &recovery_id,
                         bytes_transferred,
                         format!("{:x}", hasher.clone().finalize()),
-                        local_identity(&partial, bytes_transferred)?,
+                        download_checkpoint_identity(&mut local, &partial, bytes_transferred).await?,
                     )?;
                     last_checkpoint = Instant::now();
                 }
@@ -962,6 +974,11 @@ pub async fn ssh_transfer_download(
         }
         .await;
 
+        let flush_result = local
+            .flush()
+            .await
+            .map_err(|error| format!("flush local download partial failed: {error}"));
+        let transfer_result = transfer_result.and(flush_result);
         drop(local);
         let outcome = if let Err(message) = transfer_result {
             let persistence =
@@ -1516,6 +1533,103 @@ pub async fn ssh_transfer_upload(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn download_checkpoint_validates_empty_and_changed_partials() {
+        let path =
+            std::env::temp_dir().join(format!("tunara-checkpoint-empty-{}", std::process::id()));
+        let mut local = tokio::fs::File::create(&path).await.unwrap();
+        assert!(download_checkpoint_identity(&mut local, &path, 0)
+            .await
+            .is_ok());
+        assert_eq!(
+            download_checkpoint_identity(&mut local, &path, 1)
+                .await
+                .unwrap_err(),
+            "local partial identity changed"
+        );
+        std::fs::remove_file(&path).unwrap();
+        assert!(download_checkpoint_identity(&mut local, &path, 0)
+            .await
+            .is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn download_checkpoint_reports_pending_write_errors() {
+        let path = Path::new("/dev/full");
+        let mut local = tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .await
+            .unwrap();
+        local.write_all(b"chunk").await.unwrap();
+        let error = download_checkpoint_identity(&mut local, path, 5)
+            .await
+            .unwrap_err();
+        assert!(
+            error.starts_with("flush local download partial failed:"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn download_checkpoint_waits_for_pending_local_write() {
+        use std::future::Future;
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            for offset in [0, 17] {
+                let path = std::env::temp_dir().join(format!(
+                    "tunara-checkpoint-{}-{offset}",
+                    std::process::id()
+                ));
+                std::fs::write(&path, vec![1; offset]).unwrap();
+                let mut local = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&path)
+                    .await
+                    .unwrap();
+                let (started_tx, started_rx) = std::sync::mpsc::channel();
+                let (release_tx, release_rx) = std::sync::mpsc::channel();
+                let blocker = tokio::task::spawn_blocking(move || {
+                    started_tx.send(()).unwrap();
+                    let _ = release_rx.recv();
+                });
+                started_rx.recv().unwrap();
+                let chunk = vec![7; 64 * 1024];
+                local.write_all(&chunk).await.unwrap();
+                let expected = (offset + chunk.len()) as u64;
+                let actual = std::fs::metadata(&path).unwrap().len();
+                assert_eq!(actual, offset as u64, "write must still be queued");
+                let result = {
+                    let mut checkpoint = std::pin::pin!(download_checkpoint_identity(
+                        &mut local, &path, expected
+                    ));
+                    let mut release = Some(release_tx);
+                    std::future::poll_fn(|cx| {
+                        let polled = checkpoint.as_mut().poll(cx);
+                        if let Some(sender) = release.take() {
+                            sender.send(()).unwrap();
+                        }
+                        polled
+                    })
+                    .await
+                };
+                blocker.await.unwrap();
+                local.flush().await.unwrap();
+                std::fs::remove_file(&path).unwrap();
+                assert!(
+                    result.is_ok(),
+                    "checkpoint failed: {}; expected size={expected}, actual size before checkpoint={actual}",
+                    result.unwrap_err()
+                );
+            }
+        });
+    }
 
     fn recovery_preparation(direction: &str) -> RecoveryPreparation {
         let (source_identity, partial) = if direction == "download" {
