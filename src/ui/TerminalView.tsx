@@ -387,6 +387,8 @@ function TerminalViewImpl({
       });
       const scrollSnapshotDisposable = term.onScroll(() => snapshotScheduler.scheduleViewport());
       cleanups.push(() => scrollSnapshotDisposable.dispose());
+      const resizeSnapshotDisposable = term.onResize(() => snapshotScheduler.scheduleViewport());
+      cleanups.push(() => resizeSnapshotDisposable.dispose());
       cleanups.push(snapshotScheduler.dispose);
       const cwd = dir === "~" ? undefined : dir;
       useSessionsStore.getState().handleConnectionEvent(sessionIdRef.current, {
@@ -394,7 +396,7 @@ function TerminalViewImpl({
         transport,
       });
       const oscGuard = createTerminalOscGuard();
-      const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => { previewScanner.push(bytes); recordTerminalAtlasOutputPressure(bytes.byteLength); } });
+      const previewScanner = createPreviewOutputScanner((output) => useSessionsStore.getState().handleTerminalOutput(sessionIdRef.current, output)); const outputBuffer = createTerminalOutputBuffer(term, { onOverflow: TERMINAL_BENCHMARK_MODE ? () => recordTerminalBenchmarkOverflow(sessionIdRef.current) : undefined, onWritten: (bytes) => { snapshotScheduler.schedule(); previewScanner.push(bytes); recordTerminalAtlasOutputPressure(bytes.byteLength); } });
       cleanups.push(() => outputBuffer.dispose()); cleanups.push(previewScanner.dispose);
       if (TERMINAL_BENCHMARK_MODE) cleanups.push(registerTerminalBenchmarkSnapshotReader(sessionIdRef.current, async () => { await outputBuffer.drain(); return serializeAddon.serialize(); }));
       // Declared before ptyHandlers so exit can disable input even if it races openSessionPty.
@@ -418,7 +420,6 @@ function TerminalViewImpl({
           if (guarded.byteLength === 0) acknowledge();
           else outputBuffer.push(guarded, acknowledge);
           blocks.updateActiveBlockEnd(currentBufferRow());
-          snapshotScheduler.schedule();
           const current = getCurrentSession();
           if (current?.agent) {
             if (PROMPT_READY_AGENTS.has(current.agent)) {
@@ -518,7 +519,7 @@ function TerminalViewImpl({
           transport: "local",
         });
       }
-      const onWriteError = createInputQueueFullWarner(term);
+      const onWriteError = createInputQueueFullWarner(term, snapshotScheduler.schedule);
       const writePty = (data: string) => {
         if (!inputToPtyEnabled || !ptyRef.current) return; const pty = ptyRef.current;
         pty.write(data).catch(onWriteError);

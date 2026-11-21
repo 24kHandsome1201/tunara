@@ -55,7 +55,7 @@ export function emitTerminalNotification(sessionId: string, notification: Termin
  * silently losing input. Other errors ("no session", "ssh session closed") are
  * benign races with teardown and stay quiet.
  */
-export function createInputQueueFullWarner(term: Terminal) {
+export function createInputQueueFullWarner(term: Terminal, onWritten?: () => void) {
   let lastWarn = 0;
   return (err: unknown) => {
     const msg = String(err ?? "");
@@ -63,7 +63,7 @@ export function createInputQueueFullWarner(term: Terminal) {
     const now = Date.now();
     if (now - lastWarn <= 2000) return;
     lastWarn = now;
-    term.write(`\r\n\x1b[2m${t("terminal.inline.input_queue_full")}\x1b[0m\r\n`);
+    term.write(`\r\n\x1b[2m${t("terminal.inline.input_queue_full")}\x1b[0m\r\n`, onWritten);
   };
 }
 

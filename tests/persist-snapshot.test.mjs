@@ -3,6 +3,7 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { createTerminalSnapshotScheduler } from "../src/modules/terminal/lib/terminal-snapshot-scheduler.ts";
+import { createTerminalOutputBuffer } from "../src/modules/terminal/lib/terminal-output-buffer.ts";
 import { trimTerminalSnapshotSerialized } from "../src/modules/terminal/lib/terminal-snapshot-trim.ts";
 import {
   consumeTerminalSnapshotDirty,
@@ -708,6 +709,55 @@ test("terminal snapshot scroll captures preserve content and upgrade pending out
     assert.equal(serializations, 7);
     assert.equal(consumeTerminalSnapshotDirty(), false);
   } finally {
+    scheduler.dispose();
+    removeTerminalSnapshot(sessionId);
+    consumeTerminalSnapshotDirty();
+  }
+});
+
+test("terminal output parsed after a capture schedules a fresh full snapshot", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 100_000 });
+  const sessionId = "late-parsed-output";
+  let serialized = "before";
+  let serializations = 0;
+  let completeWrite;
+  const term = {
+    buffer: { active: { viewportY: 0, baseY: 0 } },
+    cols: 80,
+    rows: 24,
+    write(_bytes, callback) {
+      completeWrite = () => {
+        serialized = "after";
+        scheduler.scheduleViewport();
+        callback();
+      };
+    },
+  };
+  const scheduler = createTerminalSnapshotScheduler({
+    term,
+    serializeAddon: { serialize: () => { serializations += 1; return serialized; } },
+    sessionId: () => sessionId,
+    isActive: () => true,
+  });
+  const buffer = createTerminalOutputBuffer(term, {
+    requestFrame: () => 1,
+    cancelFrame: () => {},
+    onWritten: scheduler.schedule,
+  });
+  try {
+    scheduler.flush();
+    buffer.push(new TextEncoder().encode("after"));
+    t.mock.timers.tick(120);
+    scheduler.scheduleViewport();
+    t.mock.timers.tick(5000);
+    assert.equal(getTerminalSnapshot(sessionId).serialized, "before");
+    assert.equal(serializations, 1);
+    completeWrite();
+    t.mock.timers.tick(5000);
+    assert.equal(getTerminalSnapshot(sessionId).serialized, "after");
+    assert.equal(serializations, 2);
+  } finally {
+    buffer.dispose();
     scheduler.dispose();
     removeTerminalSnapshot(sessionId);
     consumeTerminalSnapshotDirty();
