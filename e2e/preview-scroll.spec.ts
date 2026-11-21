@@ -37,11 +37,6 @@ async function wheel(page: Page, root: Locator, delta: number) {
 test("long Markdown preview wheel-scrolls down", async ({ page }) => {
   const root = await openPreview(page, "guide.md", markdown);
   await wheel(page, root, 650);
-  if (process.env.PREVIEW_SCROLL_SCREENSHOT) {
-    await page.waitForTimeout(300);
-    await page.screenshot({ path: process.env.PREVIEW_SCROLL_SCREENSHOT });
-    console.log(await root.evaluate((el) => ({ height: el.clientHeight, scrollHeight: el.scrollHeight, scrollTop: el.scrollTop, parentHeight: el.parentElement?.clientHeight, parentOverflow: getComputedStyle(el.parentElement!).overflow })));
-  }
   await expect.poll(() => root.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 });
 
