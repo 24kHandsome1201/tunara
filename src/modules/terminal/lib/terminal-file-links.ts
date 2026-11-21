@@ -44,9 +44,11 @@ export function registerTerminalFileLinkProvider(
         return;
       }
       const { text, rows, cutStart, cutEnd } = logical;
+      // Quote pairing depends on text outside a cut window, so quoted directory paths cannot be read there.
+      const directoryMatches = (cutStart || cutEnd) && /["']/.test(text) ? [] : findTerminalDirectoryLinkMatches(text);
       const matches = [
         ...findTerminalFileLinkMatches(text).map((match) => ({ ...match, directory: false })),
-        ...findTerminalDirectoryLinkMatches(text).map((match) => ({ ...match, line: undefined, column: undefined, directory: true })),
+        ...directoryMatches.map((match) => ({ ...match, line: undefined, column: undefined, directory: true })),
       ].filter((match) => !(cutStart && match.startIndex === 0)
         && !(cutEnd && match.endIndex === text.length)
         && rangeIncludesRow(rows, match.startIndex, match.endIndex, bufferLineNumber));

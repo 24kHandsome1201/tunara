@@ -235,3 +235,14 @@ test("hovering a line that wraps across the scrollback reads a bounded window of
   // A token longer than the window is never a link, rather than a link to a cut-off path.
   expect(linksForRow(provider(), 1500)).toEqual([]);
 });
+
+test("a cut window with quotes yields no directory link, since its quote pairing is unknown", () => {
+  const filler = "x".repeat(20);
+  const { term, provider } = fakeWrappedTerminal(Array.from({ length: 2000 }, (_, row) => ({
+    text: row === 0 ? `"${filler.slice(1)}` : row === 900 ? `${filler.slice(10)}"${filler.slice(11)}` : row === 1000 ? ` "/tmp/My Files" xxx` : filler,
+    isWrapped: row > 0,
+  })));
+  registerTerminalFileLinkProvider(term, { getCwd: () => "~", createResource: () => null });
+
+  expect(linksForRow(provider(), 1001)).toEqual([]);
+});
