@@ -9,8 +9,11 @@ import {
 } from "../src/modules/terminal/lib/terminal-utils.ts";
 import { createTerminalOscGuard } from "../src/modules/terminal/lib/terminal-osc-guard.ts";
 import {
+  MAX_SAFE_TERMINAL_HISTORY_BYTES,
   captureSafeTerminalHistory,
   safeHistoryForTerminal,
+  sanitizeTerminalHistoryText,
+  tailTerminalHistoryWithinUtf8Limit,
 } from "../src/modules/terminal/lib/terminal-safe-history.ts";
 
 const ESC = "\x1b";
@@ -136,6 +139,90 @@ test("safe history UTF-8 tail limits do not split non-BMP code points", () => {
   const history = captureSafeTerminalHistory(terminal, 8);
   assert.equal(history, "🙂🙂");
   assert.equal(new TextEncoder().encode(history).byteLength, 8);
+});
+
+const historyEncoder = new TextEncoder();
+
+function referenceUtf8Tail(text, limit) {
+  const points = Array.from(text);
+  while (historyEncoder.encode(points.join("")).byteLength > limit) points.shift();
+  return points.join("");
+}
+
+test("UTF-8 tail agrees with TextEncoder at every byte boundary", () => {
+  const text = "a\udc00é中👩🏽‍💻\ud800b\uFEFF";
+  for (let limit = 0; limit <= historyEncoder.encode(text).byteLength; limit += 1) {
+    assert.equal(tailTerminalHistoryWithinUtf8Limit(text, limit), referenceUtf8Tail(text, limit));
+  }
+});
+
+test("safe history agrees with forward projection at every byte boundary", () => {
+  const fixtures = [
+    [
+      ["", true],
+      ["first\u0007", false],
+      ["", false],
+      ["e\u0301\u202e\t\r\n", true],
+      undefined,
+      ["e", false],
+      ["\u0301\ud83d", true],
+      ["\x1b", true],
+      ["\ude42", true],
+      ["", false],
+      ["\u2069", true],
+    ],
+    [["\x1b", false], undefined, ["", true], ["", false]],
+    [["old", true], ["\ud83d", false], ["\ude42abcd", true]],
+    [],
+  ];
+  for (const rows of fixtures) {
+    const lines = [];
+    for (const row of rows) {
+      if (!row) continue;
+      const [raw, wrapped] = row;
+      const text = sanitizeTerminalHistoryText(raw);
+      if (wrapped && lines.length) lines[lines.length - 1] += text;
+      else lines.push(text);
+    }
+    while (lines.at(-1) === "") lines.pop();
+    const fullHistory = lines.join("\n");
+    const terminal = {
+      buffer: {
+        normal: {
+          length: rows.length,
+          getLine(index) {
+            const row = rows[index];
+            return row && { isWrapped: row[1], translateToString: () => row[0] };
+          },
+        },
+      },
+    };
+    for (let limit = 0; limit <= historyEncoder.encode(fullHistory).byteLength + 1; limit += 1) {
+      assert.equal(captureSafeTerminalHistory(terminal, limit), referenceUtf8Tail(fullHistory, limit));
+    }
+  }
+});
+
+test("safe history only reads the retained tail of 100k normal-buffer rows", () => {
+  const budget = MAX_SAFE_TERMINAL_HISTORY_BYTES;
+  const row = "x".repeat(1023);
+  for (const wrapped of [false, true]) {
+    let reads = 0;
+    const terminal = {
+      buffer: {
+        normal: {
+          length: 100_000,
+          getLine(index) {
+            reads += 1;
+            return { isWrapped: wrapped && index > 0, translateToString: () => row };
+          },
+        },
+      },
+    };
+    const expected = wrapped ? "x".repeat(budget) : ("\n" + row).repeat(budget / 1024);
+    assert.equal(captureSafeTerminalHistory(terminal), expected);
+    assert.ok(reads <= 258, `read ${reads} rows instead of only the tail`);
+  }
 });
 
 test("OSC guard turns tabs in window titles into spaces before xterm drops them", () => {
