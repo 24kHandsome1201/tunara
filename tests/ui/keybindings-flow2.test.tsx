@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import {
   analyzeTerminalKeybindingRisk,
   analyzeTerminalScopedKeybindingRisk,
@@ -17,12 +17,96 @@ import { useSessionsStore } from "@/state/sessions";
 import { Modal } from "@/ui/overlays/Modal";
 import { isMac } from "@/ui/lib/platform";
 
+const platform = vi.hoisted(() => ({ isMac: false }));
+vi.mock("@/ui/lib/platform", () => platform);
+
+beforeEach(() => { platform.isMac = false; });
+
 function KeyboardHarness() {
   useKeybindings();
   return null;
 }
 
+function renderShortcutInputs() {
+  render(<>
+    <KeyboardHarness />
+    <div className="xterm"><textarea aria-label="terminal input" /></div>
+    <input aria-label="ordinary input" />
+  </>);
+  const terminal = screen.getByRole("textbox", { name: "terminal input" });
+  const onTerminalKey = vi.fn();
+  terminal.addEventListener("keydown", onTerminalKey, { capture: true });
+  terminal.focus();
+  return { terminal, onTerminalKey };
+}
+
+function altKeyDown(target: HTMLElement, init: KeyboardEventInit, altGraph = false) {
+  const event = createEvent.keyDown(target, { ...init, altKey: true }) as KeyboardEvent;
+  // Happy DOM reports AltGraph for any Alt event.
+  vi.spyOn(event, "getModifierState").mockImplementation((key) => key === "AltGraph" && altGraph);
+  return event;
+}
+
 describe("flow 2 keybindings", () => {
+  it("splits a focused Linux terminal without delivering the shortcut to xterm", () => {
+    useSessionsStore.setState({
+      sessions: [{ id: "shell", title: "Shell", dir: "/tmp", branch: "main", runState: "idle", updatedAt: 1 }],
+      activeSessionId: "shell",
+    });
+    useUIStore.setState({ keybindings: defaultKeybindingsForPlatform("linux") });
+    const { terminal, onTerminalKey } = renderShortcutInputs();
+
+    const shortcut = altKeyDown(terminal, { key: "D", shiftKey: true });
+    fireEvent(terminal, shortcut);
+
+    expect(useSessionsStore.getState().sessions).toHaveLength(2);
+    expect(useUIStore.getState().split.root).toMatchObject({ direction: "horizontal" });
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(onTerminalKey).not.toHaveBeenCalled();
+  });
+
+  it("captures a custom Linux Alt binding only from the terminal, leaving shell and IME input alone", () => {
+    useUIStore.setState({ keybindings: { ...defaultKeybindingsForPlatform("linux"), commandPalette: "Alt+J" } });
+    const { terminal, onTerminalKey } = renderShortcutInputs();
+    const chord = { key: "j" };
+    const ordinaryInput = screen.getByRole("textbox", { name: "ordinary input" });
+    const outside = altKeyDown(ordinaryInput, chord);
+    fireEvent(ordinaryInput, outside);
+    expect(outside.defaultPrevented).toBe(false);
+    expect(useUIStore.getState().overlay).toBeNull();
+
+    const passthrough = [
+      altKeyDown(terminal, { key: "x" }),
+      altKeyDown(terminal, { ...chord, isComposing: true }),
+      altKeyDown(terminal, { ...chord, keyCode: 229 } as KeyboardEventInit),
+      altKeyDown(terminal, chord, true),
+    ];
+    for (const event of passthrough) {
+      fireEvent(terminal, event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(onTerminalKey.mock.calls.map(([event]) => event)).toEqual(passthrough);
+    expect(useUIStore.getState().overlay).toBeNull();
+    onTerminalKey.mockClear();
+
+    const shortcut = altKeyDown(terminal, chord);
+    fireEvent(terminal, shortcut);
+    expect(useUIStore.getState().overlay).toBe("command-palette");
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(onTerminalKey).not.toHaveBeenCalled();
+  });
+
+  it("leaves macOS Option input with xterm even when an Option-only binding exists", () => {
+    platform.isMac = true;
+    useUIStore.setState({ keybindings: { ...defaultKeybindingsForPlatform("macos"), commandPalette: "Alt+J" } });
+    const { terminal, onTerminalKey } = renderShortcutInputs();
+    const optionInput = altKeyDown(terminal, { key: "j" });
+    fireEvent(terminal, optionInput);
+    expect(onTerminalKey).toHaveBeenCalledExactlyOnceWith(optionInput);
+    expect(optionInput.defaultPrevented).toBe(false);
+    expect(useUIStore.getState().overlay).toBeNull();
+  });
+
   it("requires a fresh key press to confirm closing a running session", () => {
     useSessionsStore.setState({
       sessions: [{ id: "busy", title: "Busy", dir: "/tmp", branch: "main", runState: "running", updatedAt: 1 }],

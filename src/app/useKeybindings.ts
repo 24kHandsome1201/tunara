@@ -179,7 +179,9 @@ export function useKeybindings() {
         window.dispatchEvent(new CustomEvent("tunara:reader-find", { detail: { sessionId: sessionIdFromPaneId(ui.focusedPaneId) } }));
         return;
       }
-      if (isEditableTarget(e.target) && !hasPlatformModKey(e, isMac)) return;
+      const terminalAlt = !isMac && e.altKey && e.target instanceof HTMLElement && !!e.target.closest(".xterm");
+      if (terminalAlt && e.getModifierState("AltGraph")) return;
+      if (!terminalAlt && isEditableTarget(e.target) && !hasPlatformModKey(e, isMac)) return;
       // These exact chords are fixed terminal-menu recovery paths. Do not let
       // a hand-edited app binding run first in capture phase and double-execute
       // with the terminal menu. Modified variants remain configurable.
@@ -191,6 +193,8 @@ export function useKeybindings() {
         if (isTerminalKeybindingAction(action)) continue;
         if (!matchesKeybinding(e, bindings[action], isMac)) continue;
         e.preventDefault();
+        // xterm handles Alt input even when the keydown's default is prevented.
+        if (terminalAlt) e.stopPropagation();
         if (action === "closeSession" && e.repeat) return;
         advanceTerminalFocusEpoch();
         runAction(action);
