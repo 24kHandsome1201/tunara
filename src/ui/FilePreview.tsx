@@ -221,7 +221,7 @@ function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQ
     <>
       {parts.map((part, index) => {
         const key = `${index}:${part.slice(0, 48)}`;
-        if (part.startsWith("`") && part.endsWith("`")) {
+        if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) {
           return (
             <code key={key} style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", background: "var(--c-bg-3)", borderRadius: 3, padding: "0 3px", color: "var(--c-accent-text)" }}>
               <HighlightedText text={part.slice(1, -1)} query={findQuery} cursor={cursor} />
