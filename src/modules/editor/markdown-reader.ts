@@ -2,7 +2,7 @@ export type MarkdownAlignment = "left" | "center" | "right" | null;
 export type MdxSourceKind = "module" | "component" | "expression";
 
 export type MarkdownBlock =
-  | { type: "heading"; level: 1 | 2 | 3; text: string; id: string; key: string }
+  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string; id: string; key: string }
   | { type: "paragraph"; text: string; key: string }
   | { type: "code"; language?: string; text: string; key: string }
   | { type: "quote"; text: string; key: string }
@@ -13,7 +13,7 @@ export type MarkdownBlock =
   | { type: "rule"; key: string };
 
 export interface MarkdownTocEntry {
-  level: 1 | 2 | 3;
+  level: 1 | 2 | 3 | 4 | 5 | 6;
   text: string;
   id: string;
 }
@@ -161,9 +161,9 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       continue;
     }
 
-    const heading = line.match(/^(#{1,3})\s+(.+?)\s*$/);
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*$/);
     if (heading) {
-      const level = heading[1].length as 1 | 2 | 3;
+      const level = heading[1].length as MarkdownTocEntry["level"];
       const text = heading[2].replace(/(?:^|[ \t]+)#+[ \t]*$/, "").trimEnd();
       const id = slugs.make(markdownHeadingSlug(text));
       blocks.push({ type: "heading", level, text, id, key: keys.make(`heading-${id}`) });
@@ -226,7 +226,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
 
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,3})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
+    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,6})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !lines[index].startsWith("> ") && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
       if (index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
       paragraph.push(lines[index++]);
     }

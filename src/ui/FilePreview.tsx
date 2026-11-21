@@ -262,7 +262,8 @@ function MarkdownBlock({ block, findQuery, matchCursor }: { block: MarkdownReade
       const children = <InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} />;
       if (block.level === 1) return <h1 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 700, scrollMarginTop: 12 }}>{children}</h1>;
       if (block.level === 2) return <h2 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 650, scrollMarginTop: 12 }}>{children}</h2>;
-      return <h3 id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 600, scrollMarginTop: 12 }}>{children}</h3>;
+      const Heading = `h${block.level}` as "h3" | "h4" | "h5" | "h6";
+      return <Heading id={block.id} tabIndex={-1} style={{ ...style, fontWeight: 600, scrollMarginTop: 12 }}>{children}</Heading>;
     }
     case "paragraph":
       return <div style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", lineHeight: 1.65, margin: "0 0 7px" }}><InlineText text={block.text} findQuery={findQuery} matchCursor={matchCursor} /></div>;
