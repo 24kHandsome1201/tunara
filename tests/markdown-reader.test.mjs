@@ -26,6 +26,15 @@ test("list nesting requires the previous item's content column", () => {
   assert.deepEqual(parseMarkdownDocument("- First\n - Second\n   - Child\n- Third").blocks[0].items, ["First", "Second", "Third"]);
 });
 
+test("tabs after list markers advance to the next tab stop", () => {
+  for (const source of ["-\tParent\n\t- Child", "1.\tParent\n\t- Child"]) {
+    const { blocks } = parseMarkdownDocument(source);
+    assert.equal(blocks.length, 1);
+    assert.deepEqual(blocks[0].items, ["Parent"]);
+    assert.deepEqual(blocks[0].children[0][0].items, ["Child"]);
+  }
+});
+
 test("lists preserve indentation, mixed children, and nested starts", () => {
   const source = "- Install\n  - macOS\n  - Linux\n- Run\n\n3. Deploy\n   7. Stage\n      - [x] **Ready**\n        2. Confirm\n   8. Ship\n4. Done";
   const { blocks } = parseMarkdownDocument(source);

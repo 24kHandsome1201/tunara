@@ -127,6 +127,11 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
 const QUOTE_MARKER = /^>[ \t]?/;
 const LIST_ITEM = /^([ \t]*)([-*]|\d+\.)(\s+)([\s\S]*)$/;
 
+function advanceColumn(column: number, whitespace: string): number {
+  for (const char of whitespace) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+  return column;
+}
+
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
   // MDX constructs are only recognized when the caller marks the source .mdx.
@@ -139,7 +144,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
   let index = 0;
 
   function readList(first: RegExpMatchArray): MarkdownList {
-    const indent = first[1].replace(/\t/g, "    ").length;
+    const indent = advanceColumn(0, first[1]);
     const ordered = first[2].endsWith(".");
     const number = Number.parseInt(first[2], 10);
     const list: MarkdownList = {
@@ -150,7 +155,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
     while (index < lines.length) {
       const match = lines[index].match(LIST_ITEM);
       if (!match) break;
-      const depth = match[1].replace(/\t/g, "    ").length;
+      const depth = advanceColumn(0, match[1]);
       if (depth < indent) break;
       if (list.items.length > 0 && depth >= contentColumn) {
         const children = list.children ??= {};
@@ -158,7 +163,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       } else {
         if (match[2].endsWith(".") !== ordered) break;
         list.items.push(match[4]);
-        contentColumn = depth + match[2].length + match[3].replace(/\t/g, "    ").length;
+        contentColumn = advanceColumn(depth + match[2].length, match[3]);
         index++;
       }
     }
