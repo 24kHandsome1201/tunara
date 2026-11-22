@@ -9,6 +9,7 @@
 //! `cargo test --lib` never builds this module. See docs/TESTING.md.
 
 mod auth_matrix;
+mod forwarding;
 mod harness;
 mod host_key;
 mod proxy_jump;

@@ -142,29 +142,17 @@ test("CI enforces Tauri npm/cargo major.minor version coupling", () => {
   assert.match(script, /major\.minor|npmMM|cargoMM/);
 });
 
-test("cargo-audit ignore list stays in lockstep across CI, audit.toml, and docs", () => {
+test("cargo audit runs in CI without advisory exceptions", () => {
   const workflow = read(".github/workflows/security.yml");
-  const auditToml = read("src-tauri/.cargo/audit.toml");
   const advisories = read("docs/DEPENDENCY_ADVISORIES.md");
   const changelog = read("CHANGELOG.md");
-  const expected = ["RUSTSEC-2023-0071"];
 
-  const workflowIgnores = [...workflow.matchAll(/cargo audit((?: --ignore RUSTSEC-\d{4}-\d+)+)/g)]
-    .flatMap((match) => [...match[1].matchAll(/RUSTSEC-\d{4}-\d+/g)].map((item) => item[0]));
-  const tomlIgnores = [...auditToml.matchAll(/"(RUSTSEC-\d{4}-\d+)"/g)].map((match) => match[1]);
-
-  assert.deepEqual(workflowIgnores, expected);
-  assert.deepEqual(tomlIgnores, expected);
-  for (const id of expected) {
-    assert.match(advisories, new RegExp(id));
-    assert.match(changelog, new RegExp(id));
-    assert.match(workflow, new RegExp(`--ignore ${id}`));
-  }
-  assert.doesNotMatch(auditToml, /RUSTSEC-2026-0235/);
-  assert.doesNotMatch(workflow, /--ignore RUSTSEC-2026-0235/);
+  const commands = [...workflow.matchAll(/^\s*run: (cargo audit\b.*)$/gm)].map((match) => match[1]);
+  assert.deepEqual(commands, ["cargo audit"]);
+  assert.ok(!existsSync(resolve(root, "src-tauri/.cargo/audit.toml")));
+  assert.match(advisories, /RUSTSEC-2023-0071/);
+  assert.match(changelog, /RUSTSEC-2023-0071/);
   for (const id of ["RUSTSEC-2026-0367", "RUSTSEC-2026-0368", "RUSTSEC-2026-0369"]) {
-    assert.doesNotMatch(auditToml, new RegExp(id));
-    assert.doesNotMatch(workflow, new RegExp(`--ignore ${id}`));
     assert.match(advisories, new RegExp(id));
   }
 });

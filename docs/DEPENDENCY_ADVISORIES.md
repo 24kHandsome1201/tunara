@@ -1,31 +1,15 @@
 # Dependency security advisories
 
-This document records **accepted residual risk** from transitive Rust dependencies
-and the **bump policy** for security-sensitive pins. CI enforces the same ignores
-via `src-tauri/.cargo/audit.toml` and `.github/workflows/security.yml`.
+This document records dependency security fixes and the **bump policy** for
+security-sensitive pins. CI runs `cargo audit` from `src-tauri` without ignores.
 
-## RUSTSEC-2023-0071 — `rsa` Marvin timing sidechannel
+## Resolved: `russh`, `libz-sys`, and `rsa`
 
-| Field | Detail |
-|-------|--------|
-| Advisory | [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html) |
-| Crate | `rsa` (transitive) |
-| Path | `russh` → `ssh-key` → `rsa` (`cargo tree -i rsa`) |
-| Upstream status | No fixed `rsa` release; unresolved timing sidechannel in RSA decryption |
-
-### Why we accept the risk
-
-- Tunara is an **interactive desktop SSH client**, not a server doing high-volume RSA operations.
-- Exploitation requires an **active network MITM** harvesting many RSA decryption timing samples.
-- Tunara **prefers ed25519** keys (agent / configured key first); RSA host-key and pubkey auth are fallbacks.
-- Dropping `rsa` would mean dropping RSA-server compatibility entirely.
-
-### When to revisit
-
-- `rsa` ships a release that addresses the advisory, **or**
-- `russh` exposes a feature flag to build without RSA support and we accept the compatibility trade-off.
-
-Then: `cargo update`, re-run `cargo audit`, and remove `RUSTSEC-2023-0071` from `audit.toml` and the security workflow ignores.
+| Advisory | Crate: previous → resolved |
+|----------|----------------------------|
+| [RUSTSEC-2026-0492](https://rustsec.org/advisories/RUSTSEC-2026-0492.html), [RUSTSEC-2026-0495](https://rustsec.org/advisories/RUSTSEC-2026-0495.html) | `russh` 0.61.2 → 0.65.4 |
+| [RUSTSEC-2026-0544](https://rustsec.org/advisories/RUSTSEC-2026-0544.html) | `libz-sys` 1.1.31 → 1.1.33 |
+| [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html) — Marvin timing sidechannel | `rsa` 0.10.0-rc.18 → 0.10.0 (via `russh`), so the audit exception was removed |
 
 ---
 
@@ -72,7 +56,7 @@ versions also harden signature verification and macOS replacement/rollback.
 - The crate is no longer in `Cargo.lock`; `cargo audit` covers this path by absence.
 
 ```bash
-cargo audit --ignore RUSTSEC-2023-0071
+cargo audit
 ```
 
 | Field | Detail |
@@ -90,7 +74,7 @@ cargo audit --ignore RUSTSEC-2023-0071
 - The dependency path remains covered by the normal `cargo audit` gate.
 
 ```bash
-cargo audit --ignore RUSTSEC-2023-0071
+cargo audit
 ```
 
 ---
@@ -100,7 +84,7 @@ cargo audit --ignore RUSTSEC-2023-0071
 `src-tauri/Cargo.toml` pins:
 
 ```toml
-russh = "=0.61.2"
+russh = "=0.65.4"
 ```
 
 `russh` is **pre-1.0** and has shipped breaking changes across patch releases. The exact pin locks the reviewed SSH transport stack (connect/auth, channel multiplexing, SFTP subsystem, key handling via `russh::keys`).
@@ -111,8 +95,8 @@ Only **deliberately**, never via a blind `cargo update`:
 
 1. Read `russh` / `russh-sftp` changelogs for breaking API or behavior changes.
 2. Run the full test matrix locally: `cargo test`, SSH integration smoke (connect, shell, SFTP, known_hosts TOFU).
-3. Re-run `cargo audit` and update `audit.toml` / security workflow ignores if the transitive graph changes.
-4. Update the pin comment in `Cargo.toml` with the reviewed version and rationale.
+3. Re-run `cargo audit` without ignores.
+4. Update the exact pin in `Cargo.toml`.
 5. If the bump changes SSH error strings, check `src/modules/ssh/failure-reason.ts` substring matchers.
 
 ---
@@ -124,9 +108,9 @@ Use this checklist whenever bumping **Tauri**, **russh**, or running a broad `ca
 | Step | Action |
 |------|--------|
 | 1 | `bash scripts/check-tauri-version-coupling.sh` — npm `@tauri-apps/api` and `@tauri-apps/plugin-*` major.minor must match the paired crates in `Cargo.lock` |
-| 2 | `cargo audit` — no new unignored advisories |
+| 2 | `cargo audit` — no vulnerabilities and review any advisory warnings |
 | 3 | `pnpm audit --prod --audit-level high` — no new high/critical npm issues |
 | 4 | `cargo test` + `pnpm test:node` |
 | 5 | macOS: `cargo build --release --bin tunara` (CI macOS job) or full `pnpm tauri build` for bundle/signing changes |
 | 6 | macOS titlebar / vibrancy: visual check per [VISUAL_QA.md](./archive/VISUAL_QA.md) |
-| 7 | Update this doc, `CHANGELOG.md` Known security advisories, and `audit.toml` if ignore rationale changes |
+| 7 | Record advisory resolutions here and in `CHANGELOG.md` |

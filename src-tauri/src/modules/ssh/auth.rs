@@ -812,25 +812,30 @@ mod tests {
                 .success());
         }
         struct KeyServer(russh::keys::PublicKey);
+        impl KeyServer {
+            fn check_key(&self, key: &russh::keys::PublicKey) -> server::Auth {
+                if key.key_data() == self.0.key_data() {
+                    server::Auth::Accept
+                } else {
+                    server::Auth::reject()
+                }
+            }
+        }
         impl server::Handler for KeyServer {
             type Error = russh::Error;
             async fn auth_publickey_offered(
                 &mut self,
-                user: &str,
-                key: &russh::keys::PublicKey,
+                _user: &str,
+                offer: server::PublicKeyOffer<'_>,
             ) -> Result<server::Auth, Self::Error> {
-                self.auth_publickey(user, key).await
+                Ok(self.check_key(offer.public_key))
             }
             async fn auth_publickey(
                 &mut self,
                 _user: &str,
-                key: &russh::keys::PublicKey,
+                key: server::VerifiedPublicKey<'_>,
             ) -> Result<server::Auth, Self::Error> {
-                Ok(if key.key_data() == self.0.key_data() {
-                    server::Auth::Accept
-                } else {
-                    server::Auth::reject()
-                })
+                Ok(self.check_key(key.public_key))
             }
         }
         let host_key = load_secret_key(&unlocked, None).unwrap();

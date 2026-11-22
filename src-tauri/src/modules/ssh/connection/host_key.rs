@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use russh::client;
 use russh::keys::ssh_key::{HashAlg, PublicKey};
+use russh::keys::PublicKeyOrCertificate;
 use tauri::ipc::Channel as IpcChannel;
 use tokio::sync::oneshot;
 
@@ -184,7 +185,13 @@ impl client::Handler for ClientHandler {
         }
     }
 
-    async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
+    async fn check_server_key(
+        &mut self,
+        key: &PublicKeyOrCertificate,
+    ) -> Result<bool, Self::Error> {
+        let PublicKeyOrCertificate::PublicKey { key, .. } = key else {
+            return Ok(false);
+        };
         let accepted = match known_hosts::verify(&self.host, self.port, key) {
             Verdict::Match => Ok::<bool, russh::Error>(true),
             Verdict::Mismatch => {
@@ -280,6 +287,7 @@ impl client::Handler for ClientHandler {
         connected_port: u32,
         _originator_address: &str,
         _originator_port: u32,
+        reply: client::ChannelOpenHandle,
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
         let Some(accept) = self
@@ -288,6 +296,7 @@ impl client::Handler for ClientHandler {
         else {
             return Ok(());
         };
+        reply.accept().await;
         tokio::spawn(async move {
             if let Err(error) = accept.relay(channel).await {
                 log::debug!("ssh reverse forward relay ended: {error}");

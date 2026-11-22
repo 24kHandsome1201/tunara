@@ -2,13 +2,14 @@
 
 All notable changes to Tunara are documented in this file. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## Known security advisories
+## Dependency security
 
-Full rationale, transitive paths, russh pin policy, and bump checklist: **[docs/DEPENDENCY_ADVISORIES.md](docs/DEPENDENCY_ADVISORIES.md)**.
-
-- **RUSTSEC-2023-0071** (`rsa` Marvin timing sidechannel) — pulled transitively via `russh`/`ssh-key` for RSA host-key and RSA pubkey auth. No fixed `rsa` release exists; every russh-based SSH client currently ships with this. Tunara prefers ed25519 keys (RSA is a fallback), and the attack requires an active network MITM harvesting many timing samples from an interactive desktop client. Ignored in `cargo audit` via `src-tauri/.cargo/audit.toml`. **Revisit when `rsa` ships a fix or russh exposes a build without the RSA feature.**
+Advisory resolutions, russh pin policy, and bump checklist: **[docs/DEPENDENCY_ADVISORIES.md](docs/DEPENDENCY_ADVISORIES.md)**.
 
 ## [Unreleased]
+
+### Security
+- Upgrade `russh` to 0.65.4 and `libz-sys` to 1.1.33. The `russh` update also pulls in the `rsa` fix for RUSTSEC-2023-0071, so `cargo audit` no longer ignores it.
 
 ## [3.1.4] - 2026-11-05
 
