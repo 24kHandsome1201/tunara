@@ -125,6 +125,7 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
 }
 
 const QUOTE_MARKER = /^>[ \t]?/;
+const LIST_ITEM = /^([ \t]*)([-*]|\d+\.)\s([\s\S]*)$/;
 
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
@@ -137,8 +138,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
   const slugs = new UniqueValueBuilder();
   let index = 0;
 
-  function readList(): MarkdownList {
-    const first = lines[index].match(/^([ \t]*)([-*]|\d+\.)\s(.*)$/)!;
+  function readList(first: RegExpMatchArray): MarkdownList {
     const indent = first[1].replace(/\t/g, "    ").length;
     const ordered = first[2].endsWith(".");
     const number = Number.parseInt(first[2], 10);
@@ -147,13 +147,13 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       items: [], key: keys.make(`${ordered ? "ol" : "ul"}-${compact(first[3])}`),
     };
     while (index < lines.length) {
-      const match = lines[index].match(/^([ \t]*)([-*]|\d+\.)\s(.*)$/);
+      const match = lines[index].match(LIST_ITEM);
       if (!match) break;
       const depth = match[1].replace(/\t/g, "    ").length;
       if (depth < indent) break;
       if (depth > indent) {
         const children = list.children ??= {};
-        (children[list.items.length - 1] ??= []).push(readList());
+        (children[list.items.length - 1] ??= []).push(readList(match));
       } else {
         if (match[2].endsWith(".") !== ordered) break;
         list.items.push(match[3]);
@@ -236,8 +236,9 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       blocks.push({ type: "quote", text: quote.join("\n"), key: keys.make(`quote-${compact(quote.join(" "))}`) });
       continue;
     }
-    if (/^[ \t]*(?:[-*]|\d+\.)\s/.test(line)) {
-      blocks.push(readList());
+    const listItem = line.match(LIST_ITEM);
+    if (listItem) {
+      blocks.push(readList(listItem));
       continue;
     }
     if (line.trim() === "") {
