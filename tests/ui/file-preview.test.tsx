@@ -304,6 +304,40 @@ describe("FilePreview editor behavior", () => {
     expect(writes).toBe(1);
   });
 
+  test("renders HTTPS Markdown images and keeps unsupported sources inert", async () => {
+    const content = [
+      "![Release chart](https://example.test/chart(v2).png)",
+      "![](https://example.test/decorative.png)",
+      "![Local chart](./chart.png)",
+      "![Unauthorized file](file:///tmp/chart.png)",
+      "![Insecure chart](http://example.test/chart.png)",
+      "![Implicit scheme](//example.test/chart.png)",
+      "![Script URL](javascript:alert(1))",
+      "![HTML document](data:text/html,<script>alert(1)</script>)",
+      "![Inline data](data:image/png;base64,AAAA)",
+      "![Malformed HTTPS](https://)",
+      "`![Code example](https://example.test/chart.png)`",
+      "[Regular link](https://example.test/guide)",
+    ].join("\n\n");
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { ...original, content };
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    renderLocal("notes.md");
+    fireEvent.click(await screen.findByRole("tab", { name: "Preview" }));
+
+    const chart = screen.getByRole("img", { name: "Release chart" });
+    expect(chart.getAttribute("src")).toBe("https://example.test/chart(v2).png");
+    expect(chart.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(Array.from(document.querySelectorAll("img"), (img) => img.getAttribute("alt"))).toEqual(["Release chart", ""]);
+    for (const alt of ["Local chart", "Unauthorized file", "Insecure chart", "Implicit scheme", "Script URL", "HTML document", "Inline data", "Malformed HTTPS"]) {
+      expect(screen.getByText(alt).parentElement?.textContent).toBe(alt);
+    }
+    expect(screen.getByText("![Code example](https://example.test/chart.png)").tagName).toBe("CODE");
+    expect(screen.getByRole("link", { name: "Regular link" }).getAttribute("href")).toBe("https://example.test/guide");
+  });
+
   test("renders quoted paragraphs without dropping a literal backtick", async () => {
     mockIPC((command) => {
       if (command === "fs_read_file") return { ...original, content: "> **Note** `example`\n> \n> `\n\n>No space" };
