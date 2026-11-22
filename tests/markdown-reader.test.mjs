@@ -10,6 +10,46 @@ import {
   splitGfmTableRow,
 } from "../src/modules/editor/markdown-reader.ts";
 
+test("indented code preserves literal text, inner blanks, and remaining indentation", () => {
+  const { blocks } = parseMarkdownDocument('Intro\n\n    <script>& **literal**\n      deeper\n\n\tlast\n    \n\nDone');
+  assert.deepEqual(blocks.map(({ type, text }) => [type, text]), [
+    ["paragraph", "Intro"],
+    ["code", "<script>& **literal**\n  deeper\n\nlast"],
+    ["paragraph", "Done"],
+  ]);
+  assert.equal(parseMarkdownDocument("\tcode").blocks[0].type, "code");
+  assert.deepEqual(parseMarkdownDocument("    \n\t\n").blocks, []);
+});
+
+test("indented code does not interrupt paragraphs or list content", () => {
+  assert.deepEqual(parseMarkdownDocument("Intro\n    continued\n\talso continued").blocks.map(({ type, text }) => [type, text]), [
+    ["paragraph", "Intro     continued \talso continued"],
+  ]);
+  for (const marker of ["-", "1."]) {
+    for (const separator of ["\n", "\n\n"]) {
+      const { blocks } = parseMarkdownDocument(`${marker} Parent${separator}    continuation`);
+      assert.equal(blocks[1].type, "paragraph");
+      assert.equal(blocks[1].text, "    continuation");
+    }
+  }
+  const { blocks } = parseMarkdownDocument("Done\n\n    - literal marker\n    ```\n    literal fence");
+  assert.equal(blocks[1].type, "code");
+  assert.equal(blocks[1].text, "- literal marker\n```\nliteral fence");
+});
+
+test("list-adjacent fences and parent continuations retain their block order", () => {
+  assert.deepEqual(parseMarkdownDocument("- item\n\n  ```js\n  x\n  ```").blocks, [
+    { type: "unordered-list", items: ["item"], key: "ul-item" },
+    { type: "code", language: "js", text: "  x", key: "code-x" },
+  ]);
+  assert.deepEqual(parseMarkdownDocument("- Parent\n  - child\n  more").blocks, [
+    { type: "unordered-list", items: ["Parent"], key: "ul-Parent", children: {
+      0: [{ type: "unordered-list", items: ["child"], key: "ul-child" }],
+    } },
+    { type: "paragraph", text: "  more", key: "paragraph-more" },
+  ]);
+});
+
 test("list items preserve Unicode line and paragraph separators", () => {
   for (const separator of ["\u2028", "\u2029"]) {
     const { blocks } = parseMarkdownDocument(`- First${separator}part\n  3. Nested${separator}part`);
