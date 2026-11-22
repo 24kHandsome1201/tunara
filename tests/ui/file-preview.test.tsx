@@ -307,7 +307,7 @@ describe("FilePreview editor behavior", () => {
   test("renders HTTPS Markdown images and keeps unsupported sources inert", async () => {
     const content = [
       "![Release chart](https://example.test/chart(v2).png)",
-      String.raw`![Escaped chart](https://example.test/chart\(v2\).png)`,
+      String.raw`![Escaped chart](https://example.test/chart\_release\(v2\).png)`,
       "![](https://example.test/decorative.png)",
       "![Local chart](./chart.png)",
       "![Unauthorized file](file:///tmp/chart.png)",
@@ -331,7 +331,7 @@ describe("FilePreview editor behavior", () => {
     const chart = screen.getByRole("img", { name: "Release chart" });
     expect(chart.getAttribute("src")).toBe("https://example.test/chart(v2).png");
     expect(chart.getAttribute("referrerpolicy")).toBe("no-referrer");
-    expect(screen.getByRole("img", { name: "Escaped chart" }).getAttribute("src")).toBe("https://example.test/chart(v2).png");
+    expect(screen.getByRole("img", { name: "Escaped chart" }).getAttribute("src")).toBe("https://example.test/chart_release(v2).png");
     expect(Array.from(document.querySelectorAll("img"), (img) => img.getAttribute("alt"))).toEqual(["Release chart", "Escaped chart", ""]);
     for (const alt of ["Local chart", "Unauthorized file", "Insecure chart", "Implicit scheme", "Script URL", "HTML document", "Inline data", "Malformed HTTPS"]) {
       expect(screen.getByText(alt).parentElement?.textContent).toBe(alt);

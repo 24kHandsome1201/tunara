@@ -215,7 +215,7 @@ function focusMarkdownHref(href: string) {
 }
 
 function markdownImageSrc(destination: string): string | null {
-  const url = destination.replace(/\\([\\()])/g, "$1");
+  const url = destination.replace(/\\([!-/:-@[-`{-~])/g, "$1");
   // The desktop CSP permits HTTPS images; Markdown must not initiate filesystem reads.
   if (!/^https:\/\//i.test(url)) return null;
   try {
