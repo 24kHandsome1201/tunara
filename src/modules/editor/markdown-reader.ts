@@ -1,13 +1,17 @@
 export type MarkdownAlignment = "left" | "center" | "right" | null;
 export type MdxSourceKind = "module" | "component" | "expression";
 
+export type MarkdownList = (
+  | { type: "unordered-list" }
+  | { type: "ordered-list"; start: number }
+) & { items: string[]; children?: Record<number, MarkdownList[]>; key: string };
+
 export type MarkdownBlock =
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string; id: string; key: string }
   | { type: "paragraph"; text: string; key: string }
   | { type: "code"; language?: string; text: string; key: string }
   | { type: "quote"; text: string; key: string }
-  | { type: "unordered-list"; items: string[]; key: string }
-  | { type: "ordered-list"; start: number; items: string[]; key: string }
+  | MarkdownList
   | { type: "table"; header: string[]; rows: string[][]; alignments: MarkdownAlignment[]; key: string }
   | { type: "mdx-source"; kind: MdxSourceKind; text: string; key: string }
   | { type: "rule"; key: string };
@@ -121,6 +125,12 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
 }
 
 const QUOTE_MARKER = /^>[ \t]?/;
+const LIST_ITEM = /^([ \t]*)([-*]|\d+\.)(\s+)([\s\S]*)$/;
+
+function advanceColumn(column: number, whitespace: string): number {
+  for (const char of whitespace) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+  return column;
+}
 
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
@@ -132,6 +142,33 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
   const keys = new UniqueValueBuilder();
   const slugs = new UniqueValueBuilder();
   let index = 0;
+
+  function readList(first: RegExpMatchArray): MarkdownList {
+    const indent = advanceColumn(0, first[1]);
+    const ordered = first[2].endsWith(".");
+    const number = Number.parseInt(first[2], 10);
+    const list: MarkdownList = {
+      ...(ordered ? { type: "ordered-list", start: Number.isSafeInteger(number) ? number : 1 } as const : { type: "unordered-list" } as const),
+      items: [], key: keys.make(`${ordered ? "ol" : "ul"}-${compact(first[4])}`),
+    };
+    let contentColumn = indent;
+    while (index < lines.length) {
+      const match = lines[index].match(LIST_ITEM);
+      if (!match) break;
+      const depth = advanceColumn(0, match[1]);
+      if (depth < indent) break;
+      if (list.items.length > 0 && depth >= contentColumn) {
+        const children = list.children ??= {};
+        (children[list.items.length - 1] ??= []).push(readList(match));
+      } else {
+        if (match[2].endsWith(".") !== ordered) break;
+        list.items.push(match[4]);
+        contentColumn = advanceColumn(depth + match[2].length, match[3]);
+        index++;
+      }
+    }
+    return list;
+  }
 
   while (index < lines.length) {
     const line = lines[index];
@@ -206,20 +243,9 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       blocks.push({ type: "quote", text: quote.join("\n"), key: keys.make(`quote-${compact(quote.join(" "))}`) });
       continue;
     }
-    if (/^\s*[-*]\s/.test(line)) {
-      const items = [line.replace(/^\s*[-*]\s/, "")];
-      index++;
-      while (index < lines.length && /^\s*[-*]\s/.test(lines[index])) items.push(lines[index++].replace(/^\s*[-*]\s/, ""));
-      blocks.push({ type: "unordered-list", items, key: keys.make(`ul-${compact(items.join("|"))}`) });
-      continue;
-    }
-    if (/^\s*\d+\.\s/.test(line)) {
-      const number = Number.parseInt(line.trimStart(), 10);
-      const start = Number.isSafeInteger(number) ? number : 1;
-      const items = [line.replace(/^\s*\d+\.\s/, "")];
-      index++;
-      while (index < lines.length && /^\s*\d+\.\s/.test(lines[index])) items.push(lines[index++].replace(/^\s*\d+\.\s/, ""));
-      blocks.push({ type: "ordered-list", start, items, key: keys.make(`ol-${compact(items.join("|"))}`) });
+    const listItem = line.match(LIST_ITEM);
+    if (listItem) {
+      blocks.push(readList(listItem));
       continue;
     }
     if (line.trim() === "") {

@@ -10,6 +10,46 @@ import {
   splitGfmTableRow,
 } from "../src/modules/editor/markdown-reader.ts";
 
+test("list items preserve Unicode line and paragraph separators", () => {
+  for (const separator of ["\u2028", "\u2029"]) {
+    const { blocks } = parseMarkdownDocument(`- First${separator}part\n  3. Nested${separator}part`);
+    assert.deepEqual(blocks[0].items, [`First${separator}part`]);
+    assert.deepEqual(blocks[0].children[0][0].items, [`Nested${separator}part`]);
+  }
+});
+
+test("list nesting requires the previous item's content column", () => {
+  assert.deepEqual(parseMarkdownDocument("1. First\n 2. Second\n3. Third").blocks[0].items, ["First", "Second", "Third"]);
+  const { blocks } = parseMarkdownDocument("1.   First\n    2. Second\n       - Child\n3. Third");
+  assert.deepEqual(blocks[0].items, ["First", "Second", "Third"]);
+  assert.deepEqual(blocks[0].children[1][0].items, ["Child"]);
+  assert.deepEqual(parseMarkdownDocument("- First\n - Second\n   - Child\n- Third").blocks[0].items, ["First", "Second", "Third"]);
+});
+
+test("tabs after list markers advance to the next tab stop", () => {
+  for (const source of ["-\tParent\n\t- Child", "1.\tParent\n\t- Child"]) {
+    const { blocks } = parseMarkdownDocument(source);
+    assert.equal(blocks.length, 1);
+    assert.deepEqual(blocks[0].items, ["Parent"]);
+    assert.deepEqual(blocks[0].children[0][0].items, ["Child"]);
+  }
+});
+
+test("lists preserve indentation, mixed children, and nested starts", () => {
+  const source = "- Install\n  - macOS\n  - Linux\n- Run\n\n3. Deploy\n   7. Stage\n      - [x] **Ready**\n        2. Confirm\n   8. Ship\n4. Done";
+  const { blocks } = parseMarkdownDocument(source);
+  assert.deepEqual(blocks[0].items, ["Install", "Run"]);
+  assert.deepEqual(blocks[0].children[0][0].items, ["macOS", "Linux"]);
+  assert.equal(blocks[1].start, 3);
+  const nested = blocks[1].children[0][0];
+  assert.equal(nested.start, 7);
+  assert.deepEqual(nested.items, ["Stage", "Ship"]);
+  const mixed = nested.children[0][0];
+  assert.equal(mixed.type, "unordered-list");
+  assert.equal(mixed.children[0][0].start, 2);
+  assert.deepEqual(parseMarkdownDocument(source), parseMarkdownDocument(source));
+});
+
 test("ordered lists retain a sanitized first-item start number", () => {
   for (const [marker, expected] of [["3", 3], ["003", 3], ["0", 0], ["1", 1], ["9".repeat(400), 1]]) {
     const { blocks } = parseMarkdownDocument(`${marker}. third step\n4. fourth step`);
