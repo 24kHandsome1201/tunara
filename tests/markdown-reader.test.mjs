@@ -10,6 +10,21 @@ import {
   splitGfmTableRow,
 } from "../src/modules/editor/markdown-reader.ts";
 
+test("lists preserve indentation, mixed children, and nested starts", () => {
+  const source = "- Install\n  - macOS\n  - Linux\n- Run\n\n3. Deploy\n   7. Stage\n      - [x] **Ready**\n        2. Confirm\n   8. Ship\n4. Done";
+  const { blocks } = parseMarkdownDocument(source);
+  assert.deepEqual(blocks[0].items, ["Install", "Run"]);
+  assert.deepEqual(blocks[0].children[0][0].items, ["macOS", "Linux"]);
+  assert.equal(blocks[1].start, 3);
+  const nested = blocks[1].children[0][0];
+  assert.equal(nested.start, 7);
+  assert.deepEqual(nested.items, ["Stage", "Ship"]);
+  const mixed = nested.children[0][0];
+  assert.equal(mixed.type, "unordered-list");
+  assert.equal(mixed.children[0][0].start, 2);
+  assert.deepEqual(parseMarkdownDocument(source), parseMarkdownDocument(source));
+});
+
 test("ordered lists retain a sanitized first-item start number", () => {
   for (const [marker, expected] of [["3", 3], ["003", 3], ["0", 0], ["1", 1], ["9".repeat(400), 1]]) {
     const { blocks } = parseMarkdownDocument(`${marker}. third step\n4. fourth step`);

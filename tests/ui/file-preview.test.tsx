@@ -241,6 +241,21 @@ describe("FilePreview editor behavior", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  test("renders nested and mixed lists inside their parent items", async () => {
+    mockIPC((command) => command === "fs_read_file" ? {
+      ...original, content: "- Install\n  - macOS\n  - Linux\n- Run\n\n3. Deploy\n   7. Stage\n      - **Ready**\n   8. Ship\n4. Done",
+    } : null);
+    renderLocal("nested.md");
+    await screen.findByRole("textbox", { name: "Edit nested.md" });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    const lists = screen.getAllByRole("list");
+    expect(lists[0].children).toHaveLength(2);
+    expect(lists[0].children[0].querySelector("ul")?.textContent).toBe("macOSLinux");
+    expect(lists[2].getAttribute("start")).toBe("3");
+    expect(lists[2].children[0].querySelector("ol")?.getAttribute("start")).toBe("7");
+    expect(lists[3].children[0].querySelector("ul strong")?.textContent).toBe("Ready");
+  });
+
   test("renders ordered lists with only non-default start attributes", async () => {
     const paddingLeft = vi.spyOn(CSSStyleDeclaration.prototype, "paddingLeft", "set");
     mockIPC((command) => command === "fs_read_file" ? {
