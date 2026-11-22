@@ -178,6 +178,51 @@ TUNARA_EOF
     return $ret
   }
 
+  _tunara_npx() {
+    local -a prefix=()
+    local arg package runtime ret skip=0
+    prefix+=("$1"); shift
+    while [ "$#" -gt 0 ]; do
+      arg="$1"; shift
+      prefix+=("$arg")
+      if [ "$skip" = 1 ]; then skip=0; continue; fi
+      case "$arg" in
+        --package|-p|--cache|-c|--call) skip=1; continue ;;
+        -*) continue ;;
+      esac
+      case "$arg" in
+        @*/*)
+          package="${arg#*/}"
+          case "$package" in *@?*) package="${arg%%/*}/${package%%@*}" ;; *) package="$arg" ;; esac
+          ;;
+        *@?*) package="${arg%%@*}" ;;
+        *) package="$arg" ;;
+      esac
+      case "$package" in
+        @anthropic-ai/claude-code|[cC][lL][aA][uU][dD][eE]|*/[cC][lL][aA][uU][dD][eE])
+          _tunara_agent_emit start CC
+          runtime="$(_tunara_agent_write_hooks "$TUNARA_SESSION_ID" CC "${TUNARA_AGENT_CONFIG_DIR:-}")" || runtime=""
+          if [ -n "$runtime" ]; then
+            "${prefix[@]}" --plugin-dir "$runtime" "$@"
+          else
+            "${prefix[@]}" "$@"
+          fi
+          ret=$?
+          _tunara_agent_emit exit CC "$ret"
+          [ -n "$runtime" ] && rm -rf "$runtime"
+          return $ret
+          ;;
+        *) break ;;
+      esac
+    done
+    "${prefix[@]}" "$@"
+  }
+  # Capture alias expansion before installing our own alias; keep user functions intact.
+  if ! typeset -f _tunara_npx_exec >/dev/null; then
+    _tunara_npx_exec() { npx "$@"; }
+  fi
+  alias npx='_tunara_npx _tunara_npx_exec'
+
   _tunara_agent_alias_tail() {
     local bin="$1" line value
     line="$(alias "$bin" 2>/dev/null)" || return 0
