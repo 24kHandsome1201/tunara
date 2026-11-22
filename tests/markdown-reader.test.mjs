@@ -10,6 +10,30 @@ import {
   splitGfmTableRow,
 } from "../src/modules/editor/markdown-reader.ts";
 
+test("indented code preserves literal text, inner blanks, and remaining indentation", () => {
+  const { blocks } = parseMarkdownDocument('Intro\n\n    <script>& **literal**\n      deeper\n\n\tlast\n    \n\nDone');
+  assert.deepEqual(blocks.map(({ type, text }) => [type, text]), [
+    ["paragraph", "Intro"],
+    ["code", "<script>& **literal**\n  deeper\n\nlast"],
+    ["paragraph", "Done"],
+  ]);
+  assert.equal(parseMarkdownDocument("\tcode").blocks[0].type, "code");
+  assert.deepEqual(parseMarkdownDocument("    \n\t\n").blocks, []);
+});
+
+test("indented code does not interrupt paragraphs or list content", () => {
+  assert.deepEqual(parseMarkdownDocument("Intro\n    continued\n\talso continued").blocks.map(({ type, text }) => [type, text]), [
+    ["paragraph", "Intro     continued \talso continued"],
+  ]);
+  const { blocks } = parseMarkdownDocument("- Parent\n    continuation\n\n    more\n    - Child\n\t- Other child\n\nDone\n\n    - literal marker\n    ```\n    literal fence");
+  assert.equal(blocks[0].type, "unordered-list");
+  assert.deepEqual(blocks[0].items, ["Parent\n  continuation\n\n  more"]);
+  assert.deepEqual(blocks[0].children[0][0].items, ["Child", "Other child"]);
+  assert.equal(blocks[1].text, "Done");
+  assert.equal(blocks[2].type, "code");
+  assert.equal(blocks[2].text, "- literal marker\n```\nliteral fence");
+});
+
 test("list items preserve Unicode line and paragraph separators", () => {
   for (const separator of ["\u2028", "\u2029"]) {
     const { blocks } = parseMarkdownDocument(`- First${separator}part\n  3. Nested${separator}part`);

@@ -272,6 +272,24 @@ describe("FilePreview editor behavior", () => {
     expect(lists[0].textContent).toBe("third stepfourth step");
   });
 
+  test("renders indented code as escaped preformatted text like fenced code", async () => {
+    const literal = '<script>alert("x")</script> & **literal**';
+    const content = `Paragraph\n\n    ${literal}\n\n\tsecond line\n\n- Parent\n    - Child\n\n\`\`\`\n${literal}\n\`\`\``;
+    mockIPC((command) => {
+      if (command === "fs_read_file") return { ...original, content };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    renderLocal("notes.md");
+    fireEvent.click(await screen.findByRole("tab", { name: "Preview" }));
+    const code = document.querySelectorAll("pre > code");
+    expect(code).toHaveLength(2);
+    expect(code[0].textContent).toBe(`${literal}\n\nsecond line`);
+    expect(code[1].textContent).toBe(literal);
+    expect(code[0].querySelector("script, strong")).toBeNull();
+    expect(code[0].innerHTML).toContain("&lt;script&gt;");
+    expect(document.querySelectorAll("li li")).toHaveLength(1);
+  });
+
   test("keeps the Markdown mode switch and save flow keyboard-complete", async () => {
     let writes = 0;
     mockIPC((command) => {

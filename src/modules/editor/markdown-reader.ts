@@ -132,6 +132,19 @@ function advanceColumn(column: number, whitespace: string): number {
   return column;
 }
 
+function indentation(line: string): number {
+  return advanceColumn(0, line.match(/^[ \t]*/)?.[0] ?? "");
+}
+
+function stripIndent(line: string, columns: number): string {
+  let column = 0;
+  let offset = 0;
+  while (offset < line.length && column < columns && /[ \t]/.test(line[offset])) {
+    column = advanceColumn(column, line[offset++]);
+  }
+  return " ".repeat(Math.max(0, column - columns)) + line.slice(offset);
+}
+
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
   // MDX constructs are only recognized when the caller marks the source .mdx.
@@ -154,7 +167,18 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
     let contentColumn = indent;
     while (index < lines.length) {
       const match = lines[index].match(LIST_ITEM);
-      if (!match) break;
+      if (!match) {
+        let next = index;
+        while (next < lines.length && lines[next].trim() === "") next++;
+        if (list.items.length === 0 || next === lines.length || indentation(lines[next]) < contentColumn) break;
+        if (next > index) {
+          list.items[list.items.length - 1] += "\n".repeat(next - index);
+          index = next;
+          continue;
+        }
+        list.items[list.items.length - 1] += `\n${stripIndent(lines[index++], contentColumn)}`;
+        continue;
+      }
       const depth = advanceColumn(0, match[1]);
       if (depth < indent) break;
       if (list.items.length > 0 && depth >= contentColumn) {
@@ -172,6 +196,21 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
 
   while (index < lines.length) {
     const line = lines[index];
+    if (line.trim() === "") {
+      index++;
+      continue;
+    }
+    if (indentation(line) >= 4) {
+      const body: string[] = [];
+      while (index < lines.length && (lines[index].trim() === "" || indentation(lines[index]) >= 4)) {
+        body.push(lines[index].trim() === "" ? "" : stripIndent(lines[index], 4));
+        index++;
+      }
+      while (body[body.length - 1] === "") body.pop();
+      const text = body.join("\n");
+      blocks.push({ type: "code", text, key: keys.make(`code-${compact(text) || "empty"}`) });
+      continue;
+    }
     const fence = line.match(/^\s*(`{3,}|~{3,})\s*([^\s`]*)?.*$/);
     if (fence) {
       const marker = fence[1][0];
@@ -248,15 +287,10 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       blocks.push(readList(listItem));
       continue;
     }
-    if (line.trim() === "") {
-      index++;
-      continue;
-    }
-
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() !== "" && !(mdx && mdxSourceKind(lines[index])) && !/^(#{1,6})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !QUOTE_MARKER.test(lines[index]) && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])) {
-      if (index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
+    while (index < lines.length && lines[index].trim() !== "" && (indentation(lines[index]) >= 4 || (!(mdx && mdxSourceKind(lines[index])) && !/^(#{1,6})\s/.test(lines[index]) && !/^\s*(`{3,}|~{3,})/.test(lines[index]) && !QUOTE_MARKER.test(lines[index]) && !/^\s*[-*]\s/.test(lines[index]) && !/^\s*\d+\.\s/.test(lines[index]) && !/^\s*(---+|\*\*\*+)\s*$/.test(lines[index])))) {
+      if (indentation(lines[index]) < 4 && index + 1 < lines.length && lines[index].includes("|") && tableAlignments(lines[index + 1])) break;
       paragraph.push(lines[index++]);
     }
     const text = paragraph.join(" ");
