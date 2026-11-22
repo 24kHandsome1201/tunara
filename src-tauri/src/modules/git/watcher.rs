@@ -55,16 +55,31 @@ struct GitChangedPayload<'a> {
     repo_path: &'a str,
 }
 
-fn is_noisy_path(path: &Path) -> bool {
-    let s = path.to_string_lossy();
-    s.contains("/.git/objects/")
-        || s.contains("/.git/lfs/")
-        || s.ends_with("/.git/index.lock")
-        || s.ends_with("/.git/HEAD.lock")
-        || s.contains("/node_modules/")
-        || s.contains("/target/")
-        || s.contains("/dist/")
-        || s.contains("/.DS_Store")
+fn is_noisy_path(path: &Path, worktree: &Path, common_git_dir: Option<&Path>) -> bool {
+    let (relative, mut previous_is_git_dir) = if let Ok(relative) = path.strip_prefix(worktree) {
+        (relative, false)
+    } else if let Some(relative) = common_git_dir.and_then(|dir| path.strip_prefix(dir).ok()) {
+        (relative, true)
+    } else {
+        return false;
+    };
+
+    let mut parts = relative.iter().peekable();
+    while let Some(part) = parts.next() {
+        let noisy = if parts.peek().is_some() {
+            part == "node_modules"
+                || part == "target"
+                || part == "dist"
+                || (previous_is_git_dir && (part == "objects" || part == "lfs"))
+        } else {
+            previous_is_git_dir && (part == "index.lock" || part == "HEAD.lock")
+        };
+        if noisy || part.to_string_lossy().starts_with(".DS_Store") {
+            return true;
+        }
+        previous_is_git_dir = part == ".git";
+    }
+    false
 }
 
 fn watch_target(expanded: &str) -> Result<PathBuf, String> {
@@ -99,6 +114,14 @@ pub fn git_watch(
         return Ok(());
     }
 
+    // Linked worktrees keep Git metadata outside the checkout. Watch and
+    // filter that tree separately so branch and worktree changes still refresh.
+    let common_git_dir = Repository::discover(&expanded)
+        .ok()
+        .and_then(|repo| super::workspace::common_git_dir(&repo).ok())
+        .filter(|dir| !dir.starts_with(&watch_target));
+    let filter_root = watch_target.clone();
+    let filter_git_dir = common_git_dir.clone();
     let app_handle = app.clone();
     let emit_path = repo_path.clone();
     let cache_app = app.clone();
@@ -113,7 +136,10 @@ pub fn git_watch(
                 Ok(events) => events,
                 Err(_) => return,
             };
-            if events.iter().all(|e| is_noisy_path(&e.path)) {
+            if events
+                .iter()
+                .all(|e| is_noisy_path(&e.path, &filter_root, filter_git_dir.as_deref()))
+            {
                 return;
             }
             // Invalidate the git_status cache for this repo so the next
@@ -141,20 +167,11 @@ pub fn git_watch(
         .watch(&watch_target, RecursiveMode::Recursive)
         .map_err(|e| format!("watch {}: {}", watch_target.display(), e))?;
 
-    // A linked worktree stores HEAD/index/worktree registration in the main
-    // repository's common Git directory, outside the checkout we just
-    // watched. Observe that directory too so adding/removing another worktree
-    // or switching this worktree's branch invalidates workspace context
-    // immediately. For a main checkout `.git` is already below watch_target.
-    if let Ok(repo) = Repository::discover(&expanded) {
-        if let Ok(common_dir) = super::workspace::common_git_dir(&repo) {
-            if !common_dir.starts_with(&watch_target) {
-                debouncer
-                    .watcher()
-                    .watch(&common_dir, RecursiveMode::Recursive)
-                    .map_err(|e| format!("watch {}: {}", common_dir.display(), e))?;
-            }
-        }
+    if let Some(dir) = common_git_dir {
+        debouncer
+            .watcher()
+            .watch(&dir, RecursiveMode::Recursive)
+            .map_err(|e| format!("watch {}: {}", dir.display(), e))?;
     }
 
     map.insert(
@@ -251,6 +268,7 @@ mod tests {
     #[test]
     fn is_noisy_path_flags_git_internal_and_build_dirs() {
         // High-churn paths that must NOT trigger a git-status refresh.
+        let root = Path::new("/repo");
         let noisy = [
             "/repo/.git/objects/ab/cdef",
             "/repo/.git/lfs/objects/00",
@@ -259,17 +277,22 @@ mod tests {
             "/repo/node_modules/pkg/index.js",
             "/repo/target/debug/build",
             "/repo/dist/bundle.js",
+            "/repo/packages/web/dist/bundle.js",
             "/repo/.DS_Store",
             "/repo/sub/.DS_Store",
         ];
         for p in noisy {
-            assert!(is_noisy_path(Path::new(p)), "{p} should be noisy");
+            assert!(
+                is_noisy_path(Path::new(p), root, None),
+                "{p} should be noisy"
+            );
         }
     }
 
     #[test]
     fn is_noisy_path_allows_real_source_changes() {
         // Real edits that SHOULD trigger a refresh.
+        let root = Path::new("/repo");
         let clean = [
             "/repo/src/main.rs",
             "/repo/README.md",
@@ -279,14 +302,62 @@ mod tests {
             "/repo/my-node_modules-notes.md",
         ];
         for p in clean {
-            assert!(!is_noisy_path(Path::new(p)), "{p} should be clean");
+            assert!(
+                !is_noisy_path(Path::new(p), root, None),
+                "{p} should be clean"
+            );
+        }
+    }
+
+    #[test]
+    fn is_noisy_path_allows_edits_below_noisy_named_ancestors() {
+        for dir in ["dist", "target", "node_modules"] {
+            let root = Path::new("/checkout").join(dir).join("repo");
+            let source = root.join("src/main.rs");
+            assert!(
+                !is_noisy_path(&source, &root, None),
+                "{source:?} should be clean"
+            );
+            let artifact = root.join(dir).join("artifact");
+            assert!(
+                is_noisy_path(&artifact, &root, None),
+                "{artifact:?} should be noisy"
+            );
         }
     }
 
     #[test]
     fn is_noisy_path_lock_match_is_anchored_to_the_git_dir() {
         // index.lock anywhere else (not under .git) is a normal file.
-        assert!(!is_noisy_path(Path::new("/repo/src/index.lock")));
-        assert!(is_noisy_path(Path::new("/repo/.git/index.lock")));
+        let root = Path::new("/repo");
+        assert!(!is_noisy_path(&root.join("src/index.lock"), root, None));
+        assert!(is_noisy_path(&root.join(".git/index.lock"), root, None));
+    }
+
+    #[test]
+    fn is_noisy_path_preserves_linked_worktree_metadata_refresh() {
+        let root = Path::new("/checkout/linked");
+        let common = Path::new("/checkout/target/main/.git");
+        for path in [
+            "objects/ab/cdef",
+            "lfs/objects/00",
+            "index.lock",
+            "HEAD.lock",
+        ] {
+            assert!(
+                is_noisy_path(&common.join(path), root, Some(common)),
+                "{path} should be noisy"
+            );
+        }
+        for path in [
+            "refs/heads/main",
+            "worktrees/linked/HEAD",
+            "worktrees/linked/index",
+        ] {
+            assert!(
+                !is_noisy_path(&common.join(path), root, Some(common)),
+                "{path} should be clean"
+            );
+        }
     }
 }
