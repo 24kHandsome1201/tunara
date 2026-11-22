@@ -145,6 +145,58 @@ if set -q TUNARA_SESSION_ID
     return $ret
   end
 
+  if not functions -q _tunara_npx_exec
+    if functions -q npx
+      functions -c npx _tunara_npx_exec
+    else
+      function _tunara_npx_exec
+        command npx $argv
+      end
+    end
+  end
+
+  function npx
+    set -l prefix
+    set -l skip 0
+    while set -q argv[1]
+      set -l arg $argv[1]
+      set -e argv[1]
+      set -a prefix "$arg"
+      if test $skip = 1
+        set skip 0
+        continue
+      end
+      switch "$arg"
+        case --package -p --cache -c --call
+          set skip 1
+          continue
+        case '-*'
+          continue
+      end
+      set -l package (string replace -r '(@[^/]+/[^@]+)@.+$' '$1' -- "$arg")
+      if not string match -q '@*' -- "$arg"
+        set package (string replace -r '@.+$' '' -- "$arg")
+      end
+      if test "$package" = @anthropic-ai/claude-code; or string match -riq '(^|/)claude$' -- "$package"
+        _tunara_agent_emit start CC
+        set -l runtime (_tunara_agent_write_hooks "$TUNARA_SESSION_ID" CC "$TUNARA_AGENT_CONFIG_DIR")
+        if test -n "$runtime"
+          _tunara_npx_exec $prefix --plugin-dir "$runtime" $argv
+        else
+          _tunara_npx_exec $prefix $argv
+        end
+        set -l ret $status
+        _tunara_agent_emit exit CC $ret
+        if test -n "$runtime"
+          rm -rf "$runtime"
+        end
+        return $ret
+      end
+      break
+    end
+    _tunara_npx_exec $prefix $argv
+  end
+
   function claude
     _tunara_agent_run claude CC $argv
   end
