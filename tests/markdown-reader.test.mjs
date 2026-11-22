@@ -18,6 +18,14 @@ test("list items preserve Unicode line and paragraph separators", () => {
   }
 });
 
+test("list nesting requires the previous item's content column", () => {
+  assert.deepEqual(parseMarkdownDocument("1. First\n 2. Second\n3. Third").blocks[0].items, ["First", "Second", "Third"]);
+  const { blocks } = parseMarkdownDocument("1.   First\n    2. Second\n       - Child\n3. Third");
+  assert.deepEqual(blocks[0].items, ["First", "Second", "Third"]);
+  assert.deepEqual(blocks[0].children[1][0].items, ["Child"]);
+  assert.deepEqual(parseMarkdownDocument("- First\n - Second\n   - Child\n- Third").blocks[0].items, ["First", "Second", "Third"]);
+});
+
 test("lists preserve indentation, mixed children, and nested starts", () => {
   const source = "- Install\n  - macOS\n  - Linux\n- Run\n\n3. Deploy\n   7. Stage\n      - [x] **Ready**\n        2. Confirm\n   8. Ship\n4. Done";
   const { blocks } = parseMarkdownDocument(source);

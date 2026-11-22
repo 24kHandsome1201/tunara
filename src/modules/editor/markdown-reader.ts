@@ -125,7 +125,7 @@ function tableAlignments(line: string): MarkdownAlignment[] | null {
 }
 
 const QUOTE_MARKER = /^>[ \t]?/;
-const LIST_ITEM = /^([ \t]*)([-*]|\d+\.)\s([\s\S]*)$/;
+const LIST_ITEM = /^([ \t]*)([-*]|\d+\.)(\s+)([\s\S]*)$/;
 
 export function parseMarkdownDocument(source: string, options?: { mdx?: boolean }): ParsedMarkdownDocument {
   // Plain .md files often contain inline HTML (e.g. `<p align="center">`);
@@ -144,19 +144,21 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
     const number = Number.parseInt(first[2], 10);
     const list: MarkdownList = {
       ...(ordered ? { type: "ordered-list", start: Number.isSafeInteger(number) ? number : 1 } as const : { type: "unordered-list" } as const),
-      items: [], key: keys.make(`${ordered ? "ol" : "ul"}-${compact(first[3])}`),
+      items: [], key: keys.make(`${ordered ? "ol" : "ul"}-${compact(first[4])}`),
     };
+    let contentColumn = indent;
     while (index < lines.length) {
       const match = lines[index].match(LIST_ITEM);
       if (!match) break;
       const depth = match[1].replace(/\t/g, "    ").length;
       if (depth < indent) break;
-      if (depth > indent) {
+      if (list.items.length > 0 && depth >= contentColumn) {
         const children = list.children ??= {};
         (children[list.items.length - 1] ??= []).push(readList(match));
       } else {
         if (match[2].endsWith(".") !== ordered) break;
-        list.items.push(match[3]);
+        list.items.push(match[4]);
+        contentColumn = depth + match[2].length + match[3].replace(/\t/g, "    ").length;
         index++;
       }
     }
