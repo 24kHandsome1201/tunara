@@ -167,18 +167,7 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
     let contentColumn = indent;
     while (index < lines.length) {
       const match = lines[index].match(LIST_ITEM);
-      if (!match) {
-        let next = index;
-        while (next < lines.length && lines[next].trim() === "") next++;
-        if (list.items.length === 0 || next === lines.length || indentation(lines[next]) < contentColumn) break;
-        if (next > index) {
-          list.items[list.items.length - 1] += "\n".repeat(next - index);
-          index = next;
-          continue;
-        }
-        list.items[list.items.length - 1] += `\n${stripIndent(lines[index++], contentColumn)}`;
-        continue;
-      }
+      if (!match) break;
       const depth = advanceColumn(0, match[1]);
       if (depth < indent) break;
       if (list.items.length > 0 && depth >= contentColumn) {
@@ -200,7 +189,9 @@ export function parseMarkdownDocument(source: string, options?: { mdx?: boolean 
       index++;
       continue;
     }
-    if (indentation(line) >= 4) {
+    const previousBlock = blocks[blocks.length - 1];
+    const followsList = previousBlock?.type === "unordered-list" || previousBlock?.type === "ordered-list";
+    if (indentation(line) >= 4 && !followsList) {
       const body: string[] = [];
       while (index < lines.length && (lines[index].trim() === "" || indentation(lines[index]) >= 4)) {
         body.push(lines[index].trim() === "" ? "" : stripIndent(lines[index], 4));
