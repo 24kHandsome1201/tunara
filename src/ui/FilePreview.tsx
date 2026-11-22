@@ -214,8 +214,19 @@ function focusMarkdownHref(href: string) {
   }
 }
 
+function markdownImageSrc(destination: string): string | null {
+  const url = destination.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+  // The desktop CSP permits HTTPS images; Markdown must not initiate filesystem reads.
+  if (!/^https:\/\//i.test(url)) return null;
+  try {
+    return new URL(url).href;
+  } catch {
+    return null;
+  }
+}
+
 function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQuery?: string; matchCursor?: MarkdownFindCursor }) {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/);
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|!\[[^\]]*\]\((?:\\\S|[^\\()\s]|\((?:\\\S|[^\\()\s])*\))*\)|\[[^\]]+\]\([^)]+\))/);
   const cursor = matchCursor ?? { current: 0, active: -1 };
   return (
     <>
@@ -233,6 +244,14 @@ function InlineText({ text, findQuery = "", matchCursor }: { text: string; findQ
         }
         if (part.startsWith("*") && part.endsWith("*")) {
           return <em key={key} style={{ color: "var(--c-text-4)" }}><HighlightedText text={part.slice(1, -1)} query={findQuery} cursor={cursor} /></em>;
+        }
+        if (index % 2 === 1 && part.startsWith("![")) {
+          const labelEnd = part.indexOf("](");
+          const alt = part.slice(2, labelEnd);
+          const src = markdownImageSrc(part.slice(labelEnd + 2, -1));
+          return src
+            ? <img key={key} src={src} alt={alt} referrerPolicy="no-referrer" loading="lazy" style={{ maxWidth: "100%", height: "auto" }} />
+            : <span key={key}><HighlightedText text={alt} query={findQuery} cursor={cursor} /></span>;
         }
         const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (linkMatch) {
