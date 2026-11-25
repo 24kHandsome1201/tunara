@@ -11,6 +11,11 @@ import { InspectorPanel } from "@/ui/InspectorPanel";
 import type { Session } from "@/ui/types";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 
+function openFileActions() {
+  fireEvent.click(screen.getByRole("button", { name: "More file actions" }));
+  return within(screen.getByRole("menu"));
+}
+
 describe("FileExplorer directory navigation", () => {
   test.each([false, true])("preserves the browsed directory across Inspector tabs (remote=%s)", async (remote) => {
     const session: Session = {
@@ -102,10 +107,10 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.getByRole("treeitem", { name: /^tmp/ })).toBeTruthy();
     expect(screen.queryByRole("treeitem", { name: "/" })).toBeNull();
     expect(screen.getByRole("navigation", { name: "Directory" }).textContent).toContain("/");
-    expect(screen.getByRole("button", { name: "Go to filesystem root" })).toBeTruthy();
+    expect(openFileActions().getByRole("menuitem", { name: "Go to filesystem root" })).toBeTruthy();
   });
 
-  test("SSH home and root chips jump without changing the listing root", async () => {
+  test("SSH home and root actions jump without changing the listing root", async () => {
     const readPaths: string[] = [];
     mockIPC((command, payload) => {
       if (command === "ssh_fs_home") return "/root";
@@ -119,10 +124,10 @@ describe("FileExplorer directory navigation", () => {
     render(<FileExplorer sessionId="remote" rootDir="/tmp" remotePtyId={40} />);
     await waitFor(() => expect(readPaths).toContain("/tmp"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Go to filesystem root" }));
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Go to filesystem root" }));
     await waitFor(() => expect(readPaths).toContain("/"));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Go to home directory" }));
+    fireEvent.click(await openFileActions().findByRole("menuitem", { name: "Go to home directory" }));
     await waitFor(() => expect(readPaths).toContain("/root"));
     expect(screen.getByRole("button", { name: "Go to parent" })).toBeTruthy();
   });
@@ -217,17 +222,16 @@ describe("FileExplorer directory navigation", () => {
 
     const view = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} />);
     await waitFor(() => expect(readPaths).toContain("/srv/app"));
-    const follow = screen.getByRole("button", { name: "Follow terminal directory" });
-    expect(follow.getAttribute("aria-pressed")).toBe("true");
+    expect(openFileActions().getByRole("menuitem", { name: "Stop following terminal CWD" })).toBeTruthy();
 
     view.rerender(<FileExplorer sessionId="remote" rootDir="/var/log" remotePtyId={40} />);
     await waitFor(() => expect(readPaths).toContain("/var/log"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Follow terminal directory" }));
-    expect(screen.getByRole("button", { name: "Follow terminal directory" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Stop following terminal CWD" }));
+    expect(useSessionsStore.getState().hostFilePrefs["deploy@example:22"]?.followTerminalCwd).toBe(false);
     const afterToggle = readPaths.length;
     view.rerender(<FileExplorer sessionId="remote" rootDir="/tmp" remotePtyId={40} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Follow terminal directory" }).getAttribute("aria-pressed")).toBe("false"));
+    expect(openFileActions().getByRole("menuitem", { name: "Follow terminal directory" })).toBeTruthy();
     expect(readPaths.slice(afterToggle)).not.toContain("/tmp");
   });
 
@@ -253,7 +257,7 @@ describe("FileExplorer directory navigation", () => {
 
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} />);
     await screen.findByText("Directory is empty");
-    fireEvent.click(screen.getByRole("button", { name: "Favorite this directory" }));
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Favorite this directory" }));
     expect(useSessionsStore.getState().hostFilePrefs["deploy@example:22"]?.favoritePaths).toEqual(["/srv/app"]);
   });
 
@@ -295,14 +299,16 @@ describe("FileExplorer directory navigation", () => {
     const tools = screen.getByRole("toolbar", { name: "Remote file tools" });
     expect(within(tools).getByRole("group", { name: "Remote locations" })).toBeTruthy();
     expect(within(tools).getByRole("group", { name: "File transfers" })).toBeTruthy();
-    expect(within(tools).getByRole("button", { name: "Follow terminal directory" })).toBeTruthy();
-    expect(within(tools).getByRole("button", { name: "Favorite this directory" })).toBeTruthy();
+    expect(within(tools).getByRole("button", { name: "Favorite and recent directories" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Upload file…" })).toBeTruthy();
     expect(within(tools).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
     expect(within(tools).queryByRole("button", { name: "Go to parent" })).toBeNull();
+    const menu = openFileActions();
+    expect(menu.getByRole("menuitem", { name: "Stop following terminal CWD" })).toBeTruthy();
+    expect(menu.getByRole("menuitem", { name: "Favorite this directory" })).toBeTruthy();
   });
 
-  test("uses the same four-track listing contract for an SSH header and row", async () => {
+  test("keeps SSH header and row tracks aligned in and out of download selection", async () => {
     mockIPC((command) => {
       if (command === "ssh_fs_home") return "/home/deploy";
       if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 7, mtime: 1_000 }];
@@ -316,6 +322,11 @@ describe("FileExplorer directory navigation", () => {
 
     expect(header?.classList.contains("explorer-listing-grid")).toBe(true);
     expect(row?.classList.contains("explorer-listing-grid")).toBe(true);
+    expect(header?.dataset.selectable).toBeUndefined();
+    expect(row?.dataset.selectable).toBeUndefined();
+    expect(header?.children).toHaveLength(3);
+    expect(row?.children).toHaveLength(3);
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
     expect(header?.dataset.selectable).toBe("true");
     expect(row?.dataset.selectable).toBe("true");
     expect(header?.children).toHaveLength(4);
@@ -494,7 +505,7 @@ describe("FileExplorer workspace files", () => {
       && (payload as { binding: { transportGeneration: string }; remotePath: string }).binding.transportGeneration === "backend-generation"
       && (payload as { remotePath: string }).remotePath === "/srv/app/report.txt")).toBe(true));
 
-    fireEvent.click(screen.getByRole("button", { name: "Upload folder…" }));
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Upload folder…" }));
     await waitFor(() => expect(calls.some(({ command, payload }) => command === "ssh_upload_preflight_v1"
       && (payload as { request: { localSources: string[] } }).request.localSources[0] === "/home/alice/project")).toBe(true));
     await waitFor(() => expect(calls.some(({ command, payload }) => command === "ssh_transfer_upload"
@@ -571,12 +582,12 @@ describe("FileExplorer workspace files", () => {
     });
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={53} transportGeneration="generation" />);
     await screen.findByText("Directory is empty");
-    fireEvent.click(screen.getByRole("button", { name: "Upload folder…" }));
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Upload folder…" }));
     await waitFor(() => expect(materializations).toEqual(["empty"]));
     expect(useTransferStore.getState().materializeItems()).toEqual([]);
 
     fail = true;
-    fireEvent.click(screen.getByRole("button", { name: "Upload folder…" }));
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Upload folder…" }));
     await waitFor(() => expect(materializations).toEqual(["empty", "broken"]));
     expect(useTransferStore.getState().materializeItems()).toEqual([]);
     expect(screen.queryByText(/Queued .*broken/i)).toBeNull();
@@ -670,6 +681,175 @@ describe("FileExplorer workspace files", () => {
     else expect(screen.getByText("Directory is empty")).toBeTruthy();
     if (openFolder) expect(screen.getByRole("treeitem", { name: /^guide\.txt/ })).toBeTruthy();
     expect(reads).toBe(initialReads + Number(refreshes));
+  });
+
+  test("refreshes only the target expanded subdirectory after a queued SSH upload", async () => {
+    useTransferStore.getState().replaceItemsForTest([]);
+    const readsByPath = new Map<string, number>();
+    let uploaded = false;
+    let finishUpload!: () => void;
+    const upload = new Promise((resolve) => {
+      finishUpload = () => {
+        uploaded = true;
+        resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
+      };
+    });
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") {
+        const path = (payload as { path: string }).path;
+        readsByPath.set(path, (readsByPath.get(path) ?? 0) + 1);
+        if (path === "/srv/app") {
+          return [
+            { name: "docs", kind: "dir", size: 0, mtime: 0 },
+            { name: "src", kind: "dir", size: 0, mtime: 0 },
+          ];
+        }
+        if (path === "/srv/app/docs") {
+          return [{ name: "guide.txt", kind: "file", size: 2, mtime: 0 }];
+        }
+        if (path === "/srv/app/src") {
+          return [
+            { name: "notes.md", kind: "file", size: 2, mtime: 0 },
+            ...(uploaded ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
+          ];
+        }
+        return [];
+      }
+      if (command === "ssh_transfer_upload") return upload;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    const docs = await screen.findByRole("treeitem", { name: /^docs$/ });
+    fireEvent.keyDown(docs, { key: "ArrowRight" });
+    await screen.findByRole("treeitem", { name: /^guide\.txt$/ });
+    const src = await screen.findByRole("treeitem", { name: /^src$/ });
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+
+    const beforeRoot = readsByPath.get("/srv/app") ?? 0;
+    const beforeDocs = readsByPath.get("/srv/app/docs") ?? 0;
+    const beforeSrc = readsByPath.get("/srv/app/src") ?? 0;
+
+    const transferId = useTransferStore.getState().enqueue({
+      binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: "current" },
+      direction: "upload",
+      source: "/home/alice/report.txt",
+      destination: "/srv/app/src/report.txt",
+      conflict: "rename",
+    });
+    const status = () => useTransferStore.getState().itemsById.get(transferId)?.status;
+    await waitFor(() => expect(status()).toBe("running"));
+
+    await act(async () => finishUpload());
+    expect(status()).toBe("completed");
+    expect(await screen.findByRole("treeitem", { name: /^report\.txt$/ })).toBeTruthy();
+    expect(screen.getByRole("treeitem", { name: /^guide\.txt$/ })).toBeTruthy();
+    expect(readsByPath.get("/srv/app/src")).toBe(beforeSrc + 1);
+    expect(readsByPath.get("/srv/app")).toBe(beforeRoot);
+    expect(readsByPath.get("/srv/app/docs")).toBe(beforeDocs);
+  });
+
+  test("invalidates a collapsed subdirectory cache on upload and fetches fresh entries when re-expanded", async () => {
+    useTransferStore.getState().replaceItemsForTest([]);
+    let srcReads = 0;
+    let uploaded = false;
+    let finishUpload!: () => void;
+    const upload = new Promise((resolve) => {
+      finishUpload = () => {
+        uploaded = true;
+        resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
+      };
+    });
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") {
+        const path = (payload as { path: string }).path;
+        if (path === "/srv/app") return [{ name: "src", kind: "dir", size: 0, mtime: 0 }];
+        if (path === "/srv/app/src") {
+          srcReads += 1;
+          return [
+            { name: "notes.md", kind: "file", size: 2, mtime: 0 },
+            ...(uploaded ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
+          ];
+        }
+        return [];
+      }
+      if (command === "ssh_transfer_upload") return upload;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    const src = await screen.findByRole("treeitem", { name: /^src$/ });
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+    fireEvent.keyDown(src, { key: "ArrowLeft" });
+    expect(screen.queryByRole("treeitem", { name: /^notes\.md$/ })).toBeNull();
+    expect(srcReads).toBe(1);
+
+    const transferId = useTransferStore.getState().enqueue({
+      binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: "current" },
+      direction: "upload",
+      source: "/home/alice/report.txt",
+      destination: "/srv/app/src/report.txt",
+      conflict: "rename",
+    });
+    await waitFor(() => expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("running"));
+    await act(async () => finishUpload());
+    expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("completed");
+    expect(srcReads).toBe(1);
+
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    expect(await screen.findByRole("treeitem", { name: /^report\.txt$/ })).toBeTruthy();
+    expect(srcReads).toBe(2);
+  });
+
+  test("shows an inline notice when hidden files are enabled during SSH search, and hides it otherwise", async () => {
+    const noticeText = "Hidden files appear in the tree, but not in SSH file-name or content search.";
+    mockIPC((command) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") return [{ name: "notes.md", kind: "file", size: 2, mtime: 0 }];
+      if (command === "ssh_fs_search") return [];
+      if (command === "ssh_fs_grep") return { hits: [], truncated: false, unreadable: 0 };
+      if (command === "fs_read_dir") return [{ name: "notes.md", kind: "file", size: 2, mtime: 0 }];
+      if (command === "fs_search") return { hits: [], unreadable: 0 };
+      if (command === "fs_cancel_search") return true;
+      return null;
+    });
+
+    const remoteView = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+
+    const searchInput = screen.getByPlaceholderText("Search this folder");
+    fireEvent.change(searchInput, { target: { value: ".env" } });
+    await screen.findByText("No matching files");
+    expect(screen.queryByText(noticeText)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show dotfiles" }));
+    expect(screen.getByText(noticeText)).toBeTruthy();
+
+    // Still shown in SSH content search mode when searching with hidden files enabled.
+    fireEvent.click(screen.getByRole("button", { name: "Switch to content search" }));
+    const contentInput = screen.getByPlaceholderText("Search in file contents");
+    fireEvent.change(contentInput, { target: { value: "SECRET" } });
+    await screen.findByText("No matching content");
+    expect(screen.getByText(noticeText)).toBeTruthy();
+
+    // Clearing the search query hides the notice even while Show dotfiles stays active.
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.queryByText(noticeText)).toBeNull();
+    // Restore module-scoped search mode for subsequent tests.
+    fireEvent.click(screen.getByRole("button", { name: "Switch to file-name search" }));
+    remoteView.unmount();
+
+    // Local explorer does not show the SSH-specific notice.
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+    fireEvent.click(screen.getByRole("button", { name: "Show dotfiles" }));
+    fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: ".env" } });
+    await screen.findByText("No matching files");
+    expect(screen.queryByText(noticeText)).toBeNull();
   });
 
   test("uploads every file selected by a legacy SSH session and continues after one fails", async () => {
@@ -1045,6 +1225,7 @@ describe("FileExplorer workspace files", () => {
       { name: "b.txt", kind: "file", size: 8, mtime: 0 },
     ] : undefined);
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={48} transportGeneration="limits" />);
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select a.txt for download" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select b.txt for download" }));
     expect((screen.getByRole("checkbox", { name: "Select b.txt for download" }) as HTMLInputElement).checked).toBe(false);
@@ -1075,13 +1256,15 @@ describe("FileExplorer workspace files", () => {
 
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />);
     await screen.findByRole("treeitem", { name: /^report\.txt/ });
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select all downloadable files" }));
 
     expect(screen.getByRole("checkbox", { name: "Select report.txt for download" }).getAttribute("aria-checked")).not.toBe("false");
     expect((screen.getByRole("checkbox", { name: "Select huge.bin for download" }) as HTMLInputElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Download selected files (2)" }));
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Download selected files (2)" }));
 
     await waitFor(() => expect(downloads).toHaveLength(2));
+    expect(screen.queryByRole("checkbox", { name: "Select all downloadable files" })).toBeNull();
     expect(downloads.map(({ remotePath, localPath, binding }) => [remotePath, localPath, binding.transportGeneration])).toEqual([
       ["/srv/app/notes.txt", "/home/alice/Downloads/notes.txt", "download-generation"],
       ["/srv/app/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
@@ -1623,5 +1806,31 @@ describe("FileExplorer workspace files", () => {
     expect(await screen.findByRole("button", { name: /^match\.txt/ })).toBeTruthy();
     expect(screen.getByPlaceholderText("Search this folder")).toHaveProperty("value", "match");
     expect(searchAttempts).toBe(2);
+  });
+
+  test("clears SSH download selection when searching and disables it in search results", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 8, mtime: 0 }];
+      if (command === "ssh_fs_search") return [{ path: "/srv/reports/report.txt", rel: "report.txt", name: "report.txt", isDir: false }];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/reports" remotePtyId={56} transportGeneration="search-selection" />);
+    await screen.findByRole("treeitem", { name: "report.txt" });
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select report.txt for download" }));
+
+    fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "report" } });
+    expect(await screen.findByRole("button", { name: "report.txt" })).toBeTruthy();
+    const searchActions = openFileActions();
+    expect(searchActions.getByRole("menuitem", { name: "Select files" }).getAttribute("aria-disabled")).toBe("true");
+    expect(searchActions.getByRole("menuitem", { name: "Download selected files (0)" }).getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(await screen.findByRole("treeitem", { name: "report.txt" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Select report.txt for download" })).toBeNull();
+    const listingActions = openFileActions();
+    expect(listingActions.getByRole("menuitem", { name: "Select files" }).getAttribute("aria-disabled")).toBeNull();
+    expect(listingActions.getByRole("menuitem", { name: "Download selected files (0)" }).getAttribute("aria-disabled")).toBe("true");
   });
 });
