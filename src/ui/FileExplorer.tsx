@@ -358,7 +358,7 @@ export function FileExplorer({
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
   );
-  const selectionMode = Boolean(binding) && (selectingDownloads || selectedDownloads.size > 0);
+  const selectionMode = Boolean(binding) && !isSearching && (selectingDownloads || selectedDownloads.size > 0);
   const mutationRequestIsCurrent = !mutationRequest || !!binding
     && mutationRequest.binding.logicalSessionId === binding.logicalSessionId
     && mutationRequest.binding.physicalPtyId === binding.physicalPtyId
@@ -1291,7 +1291,10 @@ export function FileExplorer({
         searchMode={searchMode}
         searchQuery={searchQuery}
         onToggleSearchMode={search.toggleSearchMode}
-        onQueryChange={search.setQuery}
+        onQueryChange={(query) => {
+          if (selectionMode && query.trim()) exitDownloadSelection();
+          search.setQuery(query);
+        }}
         onClearQuery={() => search.setQuery("")}
         includeHidden={includeHidden}
         onToggleHidden={() => setIncludeHidden((v) => !v)}
@@ -1335,6 +1338,7 @@ export function FileExplorer({
           showFolderTransfer={Boolean(binding)}
           onUploadFolder={() => { void uploadFolderToRemoteDirectory(currentPath); }}
           selectionMode={selectionMode}
+          downloadSelectionUnavailable={isSearching}
           onToggleSelectionMode={() => {
             if (selectionMode) exitDownloadSelection();
             else setSelectingDownloads(true);

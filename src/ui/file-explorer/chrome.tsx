@@ -189,6 +189,7 @@ export function ExplorerRemoteTools({
   showFolderTransfer,
   onUploadFolder,
   selectionMode,
+  downloadSelectionUnavailable,
   onToggleSelectionMode,
   selectedDownloadCount,
   batchDownloadPreparing,
@@ -214,6 +215,7 @@ export function ExplorerRemoteTools({
   showFolderTransfer: boolean;
   onUploadFolder: () => void;
   selectionMode: boolean;
+  downloadSelectionUnavailable: boolean;
   onToggleSelectionMode: () => void;
   selectedDownloadCount: number;
   batchDownloadPreparing: boolean;
@@ -260,12 +262,12 @@ export function ExplorerRemoteTools({
         id: "transfer:download-selected",
         label: t("explorer.download.batch_action", { count: selectedDownloadCount }),
         icon: "download",
-        disabled: remoteDisconnected || selectedDownloadCount === 0 || batchDownloadPreparing,
+        disabled: remoteDisconnected || downloadSelectionUnavailable || selectedDownloadCount === 0 || batchDownloadPreparing,
         action: onDownloadSelected,
       }, {
         id: "action:select",
         label: t(selectionMode ? "explorer.download.exit_selection" : "explorer.download.enter_selection"),
-        disabled: remoteDisconnected,
+        disabled: remoteDisconnected || downloadSelectionUnavailable,
         action: onToggleSelectionMode,
       });
     }

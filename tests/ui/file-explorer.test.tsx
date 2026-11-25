@@ -1600,4 +1600,30 @@ describe("FileExplorer workspace files", () => {
     expect(screen.getByPlaceholderText("Search this folder")).toHaveProperty("value", "match");
     expect(searchAttempts).toBe(2);
   });
+
+  test("clears SSH download selection when searching and disables it in search results", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir") return [{ name: "report.txt", kind: "file", size: 8, mtime: 0 }];
+      if (command === "ssh_fs_search") return [{ path: "/srv/reports/report.txt", rel: "report.txt", name: "report.txt", isDir: false }];
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/reports" remotePtyId={56} transportGeneration="search-selection" />);
+    await screen.findByRole("treeitem", { name: "report.txt" });
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select report.txt for download" }));
+
+    fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "report" } });
+    expect(await screen.findByRole("button", { name: "report.txt" })).toBeTruthy();
+    const searchActions = openFileActions();
+    expect(searchActions.getByRole("menuitem", { name: "Select files" }).getAttribute("aria-disabled")).toBe("true");
+    expect(searchActions.getByRole("menuitem", { name: "Download selected files (0)" }).getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(await screen.findByRole("treeitem", { name: "report.txt" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "Select report.txt for download" })).toBeNull();
+    const listingActions = openFileActions();
+    expect(listingActions.getByRole("menuitem", { name: "Select files" }).getAttribute("aria-disabled")).toBeNull();
+    expect(listingActions.getByRole("menuitem", { name: "Download selected files (0)" }).getAttribute("aria-disabled")).toBe("true");
+  });
 });
