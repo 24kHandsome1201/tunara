@@ -219,6 +219,8 @@ export function FileExplorer({
   const previousCwdFollow = useRef({ rootDir, followTerminalCwd });
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
+  const listingCacheKey = `${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`;
+  const hasCachedListing = cachedListingKey === listingCacheKey;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
@@ -295,7 +297,7 @@ export function FileExplorer({
     rowIndexByPath,
     expandDirectory,
     collapsePath,
-    hasListedFile,
+    isConfirmedMissingFile,
     refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
@@ -320,17 +322,17 @@ export function FileExplorer({
     selectionAnchorRef.current = null;
     setBatchDownloadPreparing(false);
   }, [treeRequestContext, remoteDisconnected]);
-  const hasListedFileRef = useRef(hasListedFile);
-  hasListedFileRef.current = hasListedFile;
+  const downloadListingRef = useRef<typeof isConfirmedMissingFile | null>(null);
+  downloadListingRef.current = hasCachedListing ? isConfirmedMissingFile : null;
   useEffect(() => {
-    if (remoteDisconnected) return;
-    if (selectionAnchorRef.current && !hasListedFile(selectionAnchorRef.current)) selectionAnchorRef.current = null;
+    if (remoteDisconnected || !hasCachedListing) return;
+    if (selectionAnchorRef.current && isConfirmedMissingFile(selectionAnchorRef.current)) selectionAnchorRef.current = null;
     setSelectedDownloads((current) => {
       if (current.size === 0) return current;
-      const listed = new Map([...current].filter(([path]) => hasListedFile(path)));
-      return listed.size === current.size ? current : listed;
+      const next = new Map([...current].filter(([path]) => !isConfirmedMissingFile(path)));
+      return next.size === current.size ? current : next;
     });
-  }, [hasListedFile, remoteDisconnected]);
+  }, [hasCachedListing, isConfirmedMissingFile, remoteDisconnected]);
   const closeTransientControls = useCallback(() => {
     setContextMenu(null);
     setProperties(null);
@@ -630,7 +632,7 @@ export function FileExplorer({
       .then((e) => {
         if (!cancelled && treeRequestContextRef.current === treeRequestContext) {
           setEntries(e);
-          setCachedListingKey(`${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`);
+          setCachedListingKey(listingCacheKey);
           if (reopened || reconnected) revalidateExpandedDirectories();
           else if (!backgroundRefresh) resetExpansion();
           loadedListingContext.current = listingContext;
@@ -651,7 +653,7 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, beginListingEpoch, resetExpansion, setCurrentPath]);
+  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, beginListingEpoch, resetExpansion, setCurrentPath]);
 
   const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();
@@ -664,7 +666,7 @@ export function FileExplorer({
     : [], [binding, visibleTreeNodes, downloadLimits]);
 
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
-  const hasCachedRemoteListing = remoteDisconnected && cachedListingKey === `remote\0${sessionId}\0${currentPath}`;
+  const hasCachedRemoteListing = remoteDisconnected && hasCachedListing;
   const listingNodeCount = visibleTreeNodes.length;
   const listingRowCount = visibleTreeRows.length;
   useLayoutEffect(() => {
@@ -1006,7 +1008,7 @@ export function FileExplorer({
   }
 
   async function downloadSelectedFiles() {
-    if (!binding || selectedDownloads.size === 0 || batchDownloadPreparing) return;
+    if (!binding || !hasCachedListing || selectedDownloads.size === 0 || batchDownloadPreparing) return;
     const requestContext = treeRequestContext;
     setBatchDownloadPreparing(true);
     try {
@@ -1022,8 +1024,9 @@ export function FileExplorer({
         useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => rememberHostDownloadDir(prefs, destinationRoot));
       }
       const existing = await fsReadDir(destinationRoot, true);
-      if (treeRequestContextRef.current !== requestContext) return;
-      const sources = [...selectedDownloads.values()].filter(({ path }) => hasListedFileRef.current(path));
+      const isMissing = downloadListingRef.current;
+      if (treeRequestContextRef.current !== requestContext || !isMissing) return;
+      const sources = [...selectedDownloads.values()].filter(({ path }) => !isMissing(path));
       if (sources.length === 0) return;
       const requests = planBatchDownloads({
         sources,
@@ -1380,7 +1383,7 @@ export function FileExplorer({
           onUploadFile={() => { void uploadToRemoteDirectory(currentPath); }}
           showFolderTransfer={Boolean(binding)}
           onUploadFolder={() => { void uploadFolderToRemoteDirectory(currentPath); }}
-          selectedDownloadCount={binding ? selectedDownloads.size : 0}
+          selectedDownloadCount={binding && hasCachedListing ? selectedDownloads.size : 0}
           batchDownloadPreparing={batchDownloadPreparing}
           onDownloadSelected={() => { void downloadSelectedFiles(); }}
           activeTransferNotice={activeTransferNotice}

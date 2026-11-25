@@ -1089,6 +1089,40 @@ describe("FileExplorer workspace files", () => {
     expect(screen.getByRole("button", { name: "Download selected files (1)" })).toBeTruthy();
   });
 
+  test.each(["refresh", "return"])("retains a download selection until its folder is read again (%s)", async (action) => {
+    let removed = false;
+    mockIPC((command, payload) => {
+      if (command !== "ssh_fs_read_dir") return "/home/dev";
+      const { path } = payload as { path: string };
+      if (path === "/srv/app") return [{ name: "docs", kind: "dir", size: 0, mtime: 0 }];
+      return [
+        { name: "keep.txt", kind: "file", size: 1, mtime: 0 },
+        ...(!removed ? [{ name: "removed.txt", kind: "file", size: 1, mtime: 0 }] : []),
+      ];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select keep.txt for download" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select removed.txt for download" }));
+    removed = true;
+    if (action === "refresh") {
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh file list" })));
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "Collapse docs" }));
+      rerender(explorer(false));
+      await act(async () => rerender(explorer(true)));
+    }
+    expect(screen.getByRole("button", { name: "Download selected files (2)" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Expand docs" }));
+    expect((await screen.findByRole("checkbox", { name: "Select keep.txt for download" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("button", { name: "Download selected files (1)" })).toBeTruthy();
+  });
+
   test("selects multiple remote files and queues safe typed downloads into one folder", async () => {
     useTransferStore.getState().replaceItemsForTest([]);
     const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];

@@ -48,7 +48,7 @@ export interface TreeListing {
   treeErrors: Record<string, TreeLoadError>;
   expandDirectory: (path: string) => void;
   collapsePath: (path: string) => void;
-  hasListedFile: (path: string) => boolean;
+  isConfirmedMissingFile: (path: string) => boolean;
   refreshExpandedDirectories: () => void;
   /** Invalidate in-flight child reads when the listing target changes. */
   beginListingEpoch: () => void;
@@ -229,18 +229,18 @@ export function useTreeListing({
     for (const path of paths) expandDirectory(path, true);
   }
 
-  const hasListedFile = useCallback((path: string) => {
+  const isConfirmedMissingFile = useCallback((path: string) => {
     const root = currentPath.replace(/\/+$/, "") || "/";
-    if (path === root || !path.startsWith(root === "/" ? root : root + "/")) return false;
+    if (path === root || !path.startsWith(root === "/" ? root : root + "/")) return true;
     let kind: DirEntry["kind"] = "file";
     while (path !== root) {
       const parent = parentPath(path);
       const siblings = parent === root ? entries : treeChildren[parent];
-      if (!siblings?.some((entry) => entry.kind === kind && joinPath(parent, entry.name) === path)) return false;
+      if (siblings && !siblings.some((entry) => entry.kind === kind && joinPath(parent, entry.name) === path)) return true;
       path = parent;
       kind = "dir";
     }
-    return true;
+    return false;
   }, [currentPath, entries, treeChildren]);
 
   return {
@@ -253,7 +253,7 @@ export function useTreeListing({
     treeErrors,
     expandDirectory,
     collapsePath,
-    hasListedFile,
+    isConfirmedMissingFile,
     refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
