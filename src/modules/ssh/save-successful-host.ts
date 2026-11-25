@@ -13,15 +13,17 @@ export function sshHostProfileFromSuccessfulConnect(
   remote: RemoteInfo,
   label: string,
   hosts: SshHostProfile[],
-  selectedSaved?: SshHostProfile,
-): SshHostProfile {
+  { selectedSaved, createOnly = false }: { selectedSaved?: SshHostProfile; createOnly?: boolean } = {},
+): SshHostProfile | undefined {
   const jumpId = remote.route?.profileId ?? "";
-  const existing = selectedSaved ?? hosts.find((candidate) =>
+  const matching = hosts.find((candidate) =>
     candidate.host === remote.host
     && candidate.port === remote.port
     && candidate.user === remote.user
     && (candidate.proxyJumpProfileId ?? "") === jumpId
   );
+  if (createOnly && matching) return undefined;
+  const existing = createOnly ? undefined : selectedSaved ?? matching;
   const identity = remote.authMethod === "key" || remote.authMethod === "auto" ? remote.identityFile ?? "" : "";
   return {
     id: existing?.id ?? makeHostId(),
