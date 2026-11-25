@@ -142,10 +142,21 @@ test("SSH command fragments and invalid explicit ports do not become literal tar
 
 test("SSH command jump matching honors profile aliases and explicit endpoints", () => {
   const jump = { id: "jump", label: "bastion", host: "::1", port: 2222, user: "ops", identityFile: "" };
-  assert.deepEqual(matchingSshJumpProfiles([jump], "bastion"), [jump]);
-  assert.deepEqual(matchingSshJumpProfiles([jump], "ops@[::1]:2222"), [jump]);
-  assert.deepEqual(matchingSshJumpProfiles([jump], "other@bastion"), []);
-  assert.deepEqual(matchingSshJumpProfiles([jump], "bastion,another-hop"), []);
+  const model = toProfilesPanelModel([jump], { imported: [], skipped: 0, diagnostics: [] });
+  assert.deepEqual(matchingSshJumpProfiles(model, "bastion"), [jump]);
+  assert.deepEqual(matchingSshJumpProfiles(model, "ops@[::1]:2222"), [jump]);
+  assert.deepEqual(matchingSshJumpProfiles(model, "other@bastion"), []);
+  assert.deepEqual(matchingSshJumpProfiles(model, "bastion,another-hop"), []);
+});
+
+test("jump matching prefers the saved copy without hiding distinct profiles sharing its alias", () => {
+  const saved = { id: "saved", label: "bastion", host: "jump.example", port: 22, user: "ops", identityFile: "" };
+  const imported = { ...saved, id: "imported" };
+  const distinct = { ...imported, port: 2222 };
+  const model = toProfilesPanelModel([saved], { imported: [imported], skipped: 0, diagnostics: [] });
+  assert.deepEqual(matchingSshJumpProfiles(model, "bastion"), [saved]);
+  assert.deepEqual(matchingSshJumpProfiles(model, "ops@jump.example:22"), [saved]);
+  assert.deepEqual(matchingSshJumpProfiles({ ...model, configProfiles: [distinct] }, "bastion"), [saved, distinct]);
 });
 
 test("IPv6 targets survive formatting and parsing without inventing a port", () => {

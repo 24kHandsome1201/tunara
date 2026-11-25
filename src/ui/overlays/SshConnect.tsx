@@ -401,7 +401,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const commandHasJump = commandJump !== undefined;
   const useCommandJump = commandHasJump && editedJumpProfileId === null;
   const commandJumpMatches = useCommandJump && commandJump.toLowerCase() !== "none"
-    ? matchingSshJumpProfiles(allProfiles, commandJump)
+    ? matchingSshJumpProfiles(panelModel, commandJump)
     : [];
   const commandJumpProfile = commandJumpMatches.length === 1 ? commandJumpMatches[0] : undefined;
   const commandJumpError = !useCommandJump || commandJump.toLowerCase() === "none" || commandJumpProfile

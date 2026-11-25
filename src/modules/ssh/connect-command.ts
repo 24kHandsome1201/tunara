@@ -1,6 +1,6 @@
 import { tokenizeShellWords } from "../terminal/lib/shell-command.ts";
 import { formatSshTarget, parseSshTarget, sshTargetHasInvalidPort, type ParsedSshTarget } from "./connect-target.ts";
-import { parseSshPort, type SshHostProfile } from "./hosts-model.ts";
+import { parseSshPort, sshProfileEntries, type SshHostProfile, type SshProfilesPanelModelV1 } from "./hosts-model.ts";
 
 interface SshCommand {
   destination: string;
@@ -79,12 +79,20 @@ export function sshCommandMatchTarget(command: SshCommand): string {
   return target ? formatSshTarget(target.user, target.host, target.port) : command.destination;
 }
 
-export function matchingSshJumpProfiles(profiles: SshHostProfile[], raw: string): SshHostProfile[] {
+export function matchingSshJumpProfiles(model: SshProfilesPanelModelV1, raw: string): SshHostProfile[] {
   const target = parseSshTarget(raw);
   if (!target || /[\s,]/.test(raw)) return [];
   const host = target.host.toLowerCase();
   const matchesOptions = (profile: SshHostProfile) => (!target.user || target.user === profile.user)
     && (target.port === undefined || target.port === profile.port);
-  const aliases = profiles.filter((profile) => host === profile.label.trim().toLowerCase() && matchesOptions(profile));
-  return aliases.length > 0 ? aliases : profiles.filter((profile) => host === profile.host.toLowerCase() && matchesOptions(profile));
+  const matchingEntries = (matchHost: (profile: SshHostProfile) => boolean) => {
+    const matches = (profile: SshHostProfile) => matchHost(profile) && matchesOptions(profile);
+    return sshProfileEntries({
+      ...model,
+      savedProfiles: model.savedProfiles.filter(matches),
+      configProfiles: model.configProfiles.filter(matches),
+    }).map(({ profile }) => profile);
+  };
+  const aliases = matchingEntries((profile) => host === profile.label.trim().toLowerCase());
+  return aliases.length > 0 ? aliases : matchingEntries((profile) => host === profile.host.toLowerCase());
 }
