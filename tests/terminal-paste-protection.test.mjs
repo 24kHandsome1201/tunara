@@ -358,12 +358,12 @@ test("context-menu paste delegates to the binding-aware safe-paste registry", ()
   assert.doesNotMatch(registry, /await navigator\.clipboard\.readText/);
   assert.match(registry, /requestProtectedTerminalPaste\([\s\S]*?\(\) => action\.isCurrent\(\)/);
   assert.match(registry, /if \(!protectedPaste && action\.isCurrent\(\)\) \{[\s\S]*?pasteWithCapturedBracketedMode\(registration\.terminal, text, bracketedPasteRequired\)/);
-  assert.match(clipboard, /import \{ readText \} from "@tauri-apps\/plugin-clipboard-manager"/);
+  assert.match(clipboard, /import \{ readText, writeText \} from "@tauri-apps\/plugin-clipboard-manager"/);
   assert.match(clipboard, /return await readText\(\)/);
   assert.doesNotMatch(clipboard, /navigator\.clipboard\.readText|invoke<.*clipboard/);
 });
 
-test("menu Safe Paste uses least-privilege Tauri clipboard-manager text reads", () => {
+test("the main window only has Tauri clipboard-manager plain-text permissions", () => {
   const packageJson = JSON.parse(readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8"));
   const cargo = readFileSync(join(import.meta.dirname, "..", "src-tauri/Cargo.toml"), "utf8");
   const lib = readFileSync(join(import.meta.dirname, "..", "src-tauri/src/lib.rs"), "utf8");
@@ -378,7 +378,6 @@ test("menu Safe Paste uses least-privilege Tauri clipboard-manager text reads", 
   assert.doesNotMatch(permission, /clipboard/);
   assert.deepEqual(capability.permissions.filter((value) => value.startsWith("clipboard-manager:")), [
     "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
   ]);
-  assert.equal(capability.permissions.includes("clipboard-manager:allow-write-text"), false);
-  assert.equal(capability.permissions.includes("clipboard-manager:default"), false);
 });
