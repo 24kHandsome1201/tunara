@@ -49,6 +49,7 @@ import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
 import { Modal, useModalBehavior } from "./overlays/Modal";
 import { FileIcon, FolderIcon, folderEmptyIcon, TreeChevron } from "./file-explorer/icons";
+import { ExplorerEntryName } from "./file-explorer/entry-name";
 import { fileKindTint } from "./file-explorer/file-kind";
 import {
   compactRelativePath,
@@ -1168,7 +1169,7 @@ export function FileExplorer({
           ) : (
             <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon tint={fileKindTint(node.entry.name)} /></span>
           )}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--c-text-2)", pointerEvents: "none" }}>{node.entry.name}</span>
+          <ExplorerEntryName name={node.entry.name} />
         </span>
         <span className="explorer-listing-modified">{formatModifiedTime(node.entry.mtime)}</span>
         <button

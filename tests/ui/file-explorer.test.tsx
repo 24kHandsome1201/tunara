@@ -326,6 +326,43 @@ describe("FileExplorer directory navigation", () => {
     expect(row?.querySelector("button.explorer-listing-action")).toBeTruthy();
   });
 
+  test("reveals a clipped entry name on row hover and keyboard focus only", async () => {
+    const longName = "terminal-renderer-configuration.ts";
+    mockIPC((command) => command === "fs_read_dir" ? [
+      { name: longName, kind: "file", size: 1, mtime: 0 },
+      { name: "index.ts", kind: "file", size: 1, mtime: 0 },
+    ] : (() => { throw new Error(`unexpected command: ${command}`); })());
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    const clippedRow = await screen.findByRole("treeitem", { name: longName });
+    const fittingRow = screen.getByRole("treeitem", { name: "index.ts" });
+    for (const [row, scrollWidth] of [[clippedRow, 240], [fittingRow, 60]] as const) {
+      const label = row.querySelector<HTMLElement>(".explorer-listing-label")!;
+      Object.defineProperty(label, "scrollWidth", { configurable: true, value: scrollWidth });
+      Object.defineProperty(label, "clientWidth", { configurable: true, value: 120 });
+    }
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseEnter(fittingRow);
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      fireEvent.mouseLeave(fittingRow);
+
+      fireEvent.mouseEnter(clippedRow);
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(screen.getByRole("tooltip").textContent).toBe(longName);
+      fireEvent.mouseLeave(clippedRow);
+      expect(screen.queryByRole("tooltip")).toBeNull();
+
+      act(() => clippedRow.focus());
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(screen.getByRole("tooltip").textContent).toBe(longName);
+      fireEvent.keyDown(clippedRow, { key: "Escape" });
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("shows active transfers as a compact icon and numeric badge", async () => {
     useTransferStore.getState().replaceItemsForTest([{
       transferId: "active-1",

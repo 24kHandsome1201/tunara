@@ -979,6 +979,13 @@ select.ui-control {
   align-items: center;
   gap: 6px;
 }
+.explorer-listing-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
+}
 .explorer-listing-modified { min-width: 0; }
 .explorer-listing-row .explorer-listing-modified {
   color: var(--c-text-5);
@@ -1007,8 +1014,8 @@ button.explorer-listing-action {
 @container file-explorer (max-width: 340px) {
   .explorer-place-secondary { display: none; }
 }
-@container file-explorer (max-width: 280px) {
-  .explorer-place-shortcut,
+/* Names outrank dates: the default 320px panel drops the Modified column. */
+@container file-explorer (max-width: 360px) {
   .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
     --explorer-listing-columns: minmax(0, 1fr) 28px;
@@ -1016,6 +1023,9 @@ button.explorer-listing-action {
   .explorer-listing-grid[data-selectable="true"] {
     --explorer-listing-columns: 20px minmax(0, 1fr) 28px;
   }
+}
+@container file-explorer (max-width: 280px) {
+  .explorer-place-shortcut { display: none; }
 }
 .explorer-tree-node {
   overflow: visible;
