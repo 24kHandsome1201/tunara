@@ -42,6 +42,32 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.queryByRole("treeitem", { name: /^before\.txt/ })).toBeNull();
   });
 
+  test("replaces the previous listing with a retryable error if the folder moved while Files was hidden", async () => {
+    let moved = false;
+    let reads = 0;
+    mockIPC((command) => {
+      if (command !== "fs_read_dir") return "/home/dev";
+      reads += 1;
+      if (moved) throw new Error("directory not found");
+      return [{ name: "report.txt", kind: "file", size: 1, mtime: 0 }];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+    rerender(explorer(false));
+    moved = true;
+    await act(async () => rerender(explorer(true)));
+    expect(reads).toBe(2);
+    expect(screen.queryByRole("treeitem", { name: /^report\.txt/ })).toBeNull();
+    moved = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+  });
+
   test.each([false, true])("preserves the browsed directory across Inspector tabs (remote=%s)", async (remote) => {
     const session: Session = {
       id: "transfer-navigation", title: "Navigation", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,

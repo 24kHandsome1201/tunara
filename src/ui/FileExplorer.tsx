@@ -622,11 +622,16 @@ export function FileExplorer({
           if (reopened || reconnected) revalidateExpandedDirectories();
           else if (!backgroundRefresh) resetExpansion();
           loadedListingContext.current = listingContext;
+          setError(false);
           setLoading(false);
         }
       })
       .catch(() => {
-        if (!cancelled && treeRequestContextRef.current === treeRequestContext && !backgroundRefresh) {
+        if (!cancelled && treeRequestContextRef.current === treeRequestContext && (!backgroundRefresh || reopened)) {
+          if (reopened) {
+            beginListingEpoch();
+            resetExpansion();
+          }
           setEntries([]);
           setCachedListingKey(null);
           setError(true);
