@@ -36,10 +36,6 @@ function ExplorerChipButton({
   );
 }
 
-function PlacesIcon() {
-  return <Icon icon={BookmarkSimple} size={14} />;
-}
-
 export function ExplorerNav({
   t,
   disabled,
@@ -68,7 +64,6 @@ export function ExplorerNav({
         disabled={disabled || !canGoUp}
         aria-disabled={disabled || !canGoUp}
         title={t("explorer.go_up")}
-        aria-label={t("explorer.go_up")}
       >
         <Icon icon={CaretLeft} size={14} />
       </PanelIconButton>
@@ -100,7 +95,6 @@ export function ExplorerNav({
         disabled={disabled}
         onClick={onRefresh}
         title={t("explorer.refresh")}
-        aria-label={t("explorer.refresh")}
       >
         <RefreshIcon />
       </PanelIconButton>
@@ -118,7 +112,6 @@ export function ExplorerSearchRow({
   searchQuery,
   onToggleSearchMode,
   onQueryChange,
-  onClearQuery,
   onInputKeyDown,
   includeHidden,
   onToggleHidden,
@@ -132,11 +125,14 @@ export function ExplorerSearchRow({
   searchQuery: string;
   onToggleSearchMode: () => void;
   onQueryChange: (query: string) => void;
-  onClearQuery: () => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   includeHidden: boolean;
   onToggleHidden: () => void;
 }) {
+  const contentSearch = searchMode === "content";
+  const modeLabel = t(contentSearch ? "explorer.search_mode.switch_to_name" : "explorer.search_mode.switch_to_content");
+  const queryLabel = t(contentSearch ? "explorer.search_placeholder_content" : "explorer.search_placeholder");
+  const clearLabel = t("explorer.clear_search");
   return (
     <div id={id} hidden={hidden} className="explorer-search-row" role="search" aria-label={t("explorer.chrome.search")}>
       <div className="explorer-search">
@@ -144,13 +140,13 @@ export function ExplorerSearchRow({
           type="button"
           disabled={disabled}
           onClick={onToggleSearchMode}
-          title={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-          aria-label={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-          aria-pressed={searchMode === "content"}
+          title={modeLabel}
+          aria-label={modeLabel}
+          aria-pressed={contentSearch}
           className="hover-bg explorer-search-mode"
-          data-active={searchMode === "content" ? "true" : "false"}
+          data-active={contentSearch}
         >
-          {searchMode === "content" ? <FileContentIcon /> : <FileNameIcon />}
+          {contentSearch ? <FileContentIcon /> : <FileNameIcon />}
         </button>
         <SearchIcon />
         <input
@@ -161,17 +157,17 @@ export function ExplorerSearchRow({
           value={searchQuery}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
-          aria-label={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
+          placeholder={queryLabel}
+          aria-label={queryLabel}
         />
         {searchQuery && (
           <button
             type="button"
             disabled={disabled}
-            onClick={onClearQuery}
+            onClick={() => onQueryChange("")}
             className="hover-bg explorer-search-clear"
-            title={t("explorer.clear_search")}
-            aria-label={t("explorer.clear_search")}
+            title={clearLabel}
+            aria-label={clearLabel}
           >
             <CloseIcon size={11} strokeWidth={2.4} />
           </button>
@@ -191,8 +187,7 @@ export function ExplorerSearchRow({
 
 export function ExplorerRemoteTools({
   t,
-  remoteHost,
-  remoteHostTitle,
+  hostBadge,
   searchToggle,
   active,
   bindingKey,
@@ -221,8 +216,7 @@ export function ExplorerRemoteTools({
   onOpenTransfers,
 }: {
   t: Translate;
-  remoteHost?: string;
-  remoteHostTitle?: string;
+  hostBadge?: ReactNode;
   searchToggle: ReactNode;
   active: boolean;
   bindingKey: string;
@@ -326,16 +320,15 @@ export function ExplorerRemoteTools({
 
   return (
     <div className="explorer-tools" role="toolbar" aria-label={t("explorer.chrome.tools")}>
-      {remoteHost && <span className="inspector-context-badge" title={remoteHostTitle ?? remoteHost}>{remoteHost}</span>}
+      {hostBadge}
       <div className="explorer-places" role="group" aria-label={t("explorer.chrome.places")}>
         <PanelIconButton
           title={t("explorer.paths")}
-          aria-label={t("explorer.paths")}
           aria-haspopup="menu"
           aria-expanded={menu?.kind === "places"}
           onClick={(event) => openMenu("places", event.currentTarget)}
         >
-          <PlacesIcon />
+          <Icon icon={BookmarkSimple} size={14} />
         </PanelIconButton>
       </div>
       <div className="explorer-transfers" role="group" aria-label={t("explorer.chrome.transfers")}>
@@ -343,15 +336,13 @@ export function ExplorerRemoteTools({
           onClick={onUploadFile}
           disabled={remoteDisconnected || uploadBusy}
           title={t("explorer.upload")}
-          aria-label={t("explorer.upload")}
         >
           <UploadIcon />
         </PanelIconButton>
         {activeTransferNotice > 0 && (
-          <button
-            type="button"
+          <PanelIconButton
             onClick={onOpenTransfers}
-            className="hover-bg explorer-transfer-entry"
+            className="explorer-transfer-entry"
             title={t("explorer.transfers_open")}
             aria-label={t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
           >
@@ -359,7 +350,7 @@ export function ExplorerRemoteTools({
             <span aria-hidden="true" className="explorer-transfer-count">
               {activeTransferNotice > 99 ? "99+" : activeTransferNotice}
             </span>
-          </button>
+          </PanelIconButton>
         )}
       </div>
       {searchToggle}

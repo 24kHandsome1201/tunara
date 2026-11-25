@@ -1140,40 +1140,24 @@ select.ui-control {
   color: var(--c-accent-text);
 }
 .explorer-tools { justify-content: space-between; flex-wrap: nowrap; }
+.explorer-tools > .inspector-context-badge {
+  padding-block: 0;
+  line-height: var(--h-titlebar-control);
+}
 .explorer-places,
 .explorer-transfers {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 2px;
-  min-width: 0;
-  padding: 1px 2px;
-  border: 1px solid var(--c-border-1);
-  border-radius: var(--r-input);
-  background: var(--c-bg-2);
+  gap: 4px;
 }
 .explorer-places { margin-inline-start: auto; }
 .explorer-transfer-entry {
   width: 48px;
-  height: var(--h-titlebar-control);
-  padding: 0 5px;
   gap: 4px;
-  border-radius: var(--r-btn);
-  border: 0;
-  background: var(--c-accent-bg-soft);
-  color: var(--c-accent-text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-meta);
-  font-weight: 650;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 .explorer-transfer-count {
   min-width: 16px;
-  max-width: 22px;
   height: 16px;
   padding: 0 3px;
   border-radius: var(--r-pill);

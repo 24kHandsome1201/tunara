@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
 /** Fixed semantic tree-row height shared by navigation, DnD and virtualization. */
@@ -252,14 +253,7 @@ export function FileExplorer({
   const searchRowId = useId();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
-  const focusSearchInputOnOpen = useRef(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  useLayoutEffect(() => {
-    if (searchOpen && focusSearchInputOnOpen.current) {
-      focusSearchInputOnOpen.current = false;
-      searchInputRef.current?.focus();
-    }
-  }, [searchOpen]);
   const closeSearch = () => {
     search.setQuery("");
     setSearchOpen(false);
@@ -1418,8 +1412,9 @@ export function FileExplorer({
       {isRemote && (
         <ExplorerRemoteTools
           t={t}
-          remoteHost={remoteHost}
-          remoteHostTitle={remoteHostTitle}
+          hostBadge={remoteHost && (
+            <span className="inspector-context-badge" title={remoteHostTitle ?? remoteHost}>{remoteHost}</span>
+          )}
           searchToggle={(
             <PanelIconButton
               ref={searchToggleRef}
@@ -1429,11 +1424,9 @@ export function FileExplorer({
               data-active={searchOpen ? "true" : undefined}
               disabled={remoteDisconnected && !searchOpen}
               onClick={() => {
-                if (searchOpen) closeSearch();
-                else {
-                  focusSearchInputOnOpen.current = true;
-                  setSearchOpen(true);
-                }
+                if (searchOpen) return closeSearch();
+                flushSync(() => setSearchOpen(true));
+                searchInputRef.current?.focus();
               }}
             >
               <SearchIcon />
@@ -1502,7 +1495,6 @@ export function FileExplorer({
           if (selectionMode && query.trim()) exitDownloadSelection();
           search.setQuery(query);
         }}
-        onClearQuery={() => search.setQuery("")}
         includeHidden={includeHidden}
         onToggleHidden={() => setIncludeHidden((v) => !v)}
         onInputKeyDown={(event) => {

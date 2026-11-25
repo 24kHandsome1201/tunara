@@ -717,7 +717,8 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   // not vanish into an empty catch.
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
   assert.doesNotMatch(explorer, /openInEditor\([^)]*\)\.catch\(\(\) => \{\}\)/);
-  assert.match(explorerChrome, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
+  assert.match(explorerChrome, /const queryLabel = t\(contentSearch \? "explorer\.search_placeholder_content" : "explorer\.search_placeholder"\)/);
+  assert.match(explorerChrome, /placeholder=\{queryLabel\}/);
   assert.match(explorerChrome, /aria-label=\{t\("explorer\.chrome\.nav"\)\}/);
   assert.match(explorerChrome, /role="search"/);
   assert.match(explorerChrome, /role="toolbar"/);
