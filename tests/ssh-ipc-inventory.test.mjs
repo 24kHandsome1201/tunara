@@ -23,7 +23,7 @@ const mapped = {
   "hosts/profile.rs": Object.fromEntries(["ssh_hosts_load", "ssh_hosts_save", "ssh_hosts_remove"].map((name) => [name, "Hosts"])),
   "hosts/import.rs": { ssh_hosts_import_config: "Hosts" },
   "known_hosts.rs": Object.fromEntries(["ssh_known_hosts_list_v1", "ssh_known_hosts_remove_v1", "ssh_known_hosts_refresh_v1"].map((name) => [name, "KnownHosts"])),
-  "sftp/browse.rs": { ssh_fs_read_dir: "SftpRead", ssh_fs_home: "SftpRead" },
+  "sftp/browse.rs": { ssh_fs_read_dir: "SftpRead", ssh_fs_home: "SftpRead", ssh_fs_canonical_path: "SftpRead" },
   "sftp/read.rs": { ssh_fs_read_file: "SftpRead" },
   "sftp/write.rs": { ssh_fs_write_text_file: "SftpWrite", ssh_fs_reconcile_text_write: "SftpWrite" },
   "transfer/legacy.rs": { ssh_fs_download: "Transfer", ssh_fs_upload: "Transfer" },
@@ -111,6 +111,16 @@ test("all 36 added SSH commands are registered, permitted, and present in genera
   const generated = acl["__app-acl__"].permissions["allow-main-commands"].commands.allow;
   for (const command of addedSshCommands) {
     assert.ok(registrations.includes(command), `${command} is not registered`);
+    assert.match(permission, new RegExp(`"${command}"`), `${command} is not permitted`);
+    assert.ok(generated.includes(command), `${command} is absent from generated ACL`);
+  }
+});
+
+test("Files path canonicalizers are permitted and present in the generated main-window ACL", async () => {
+  const permission = await readFile(new URL("src-tauri/permissions/main.toml", root), "utf8");
+  const acl = JSON.parse(await readFile(new URL("src-tauri/gen/schemas/acl-manifests.json", root), "utf8"));
+  const generated = acl["__app-acl__"].permissions["allow-main-commands"].commands.allow;
+  for (const command of ["fs_canonical_path", "ssh_fs_canonical_path"]) {
     assert.match(permission, new RegExp(`"${command}"`), `${command} is not permitted`);
     assert.ok(generated.includes(command), `${command} is absent from generated ACL`);
   }
