@@ -1,4 +1,5 @@
 import {
+  Activity,
   lazy,
   Suspense,
   useEffect,
@@ -12,6 +13,7 @@ import { type Session } from "./types";
 import { FileExplorer } from "./FileExplorer";
 import { PreviewPanel } from "./PreviewPanel";
 import { useUIStore } from "@/state/ui";
+import { useSessionsStore } from "@/state/sessions";
 import type { InspectorTab } from "@/state/ui";
 import { useT } from "@/modules/i18n";
 import {
@@ -79,11 +81,32 @@ function SwitcherButton({
   );
 }
 
+function useInspectorPaneCwd(session: Session) {
+  return useMultiplexerSummary(
+    !session.remote && statusMultiplexer(sessionTerminalMultiplexer(session)) ? session.id : null,
+  )?.focusedCwd ?? null;
+}
+
+function SessionFileExplorer({ session, active }: { session: Session; active: boolean }) {
+  const paneCwd = useInspectorPaneCwd(session);
+  const live = session.connection?.phase === "ready";
+  return (
+    <FileExplorer
+      key={paneCwd ?? "terminal-cwd"}
+      active={active}
+      sessionId={session.id}
+      rootDir={paneCwd ?? session.dir}
+      remotePtyId={session.remote && live ? session.ptyId : undefined}
+      transportGeneration={live ? session.transportGeneration : undefined}
+      remote={Boolean(session.remote)}
+      remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
+    />
+  );
+}
+
 export function InspectorPanel({ session: terminalSession, onClose, filesOnly = false }: InspectorPanelProps) {
   const t = useT();
-  const paneCwd = useMultiplexerSummary(
-    !terminalSession.remote && statusMultiplexer(sessionTerminalMultiplexer(terminalSession)) ? terminalSession.id : null,
-  )?.focusedCwd ?? null;
+  const paneCwd = useInspectorPaneCwd(terminalSession);
   const session = useMemo(
     () => (paneCwd ? { ...terminalSession, dir: paneCwd } : terminalSession),
     [terminalSession, paneCwd],
@@ -112,6 +135,17 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
     current: storeTab,
   });
   const tab = filesOnly ? "files" : navigation.all.includes(storeTab) ? storeTab : "files";
+  const sessions = useSessionsStore((s) => s.sessions);
+  const [visitedFiles, setVisitedFiles] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (tab === "files") {
+      setVisitedFiles((visited) => visited.has(session.id) ? visited : new Set([...visited, session.id]));
+    }
+  }, [tab, session.id]);
+  const fileSessions = [
+    ...sessions.filter((candidate) => candidate.id !== session.id && visitedFiles.has(candidate.id)),
+    ...(tab === "files" || visitedFiles.has(session.id) ? [terminalSession] : []),
+  ];
   const descriptor = INSPECTOR_TAB_DESCRIPTORS[tab];
   const inspectorScope = resolveInspectorScope(descriptor, session, binding);
   const scopeKey = inspectorScope.kind.replace("-", "_");
@@ -138,19 +172,6 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
   switch (tab) {
     case "changes":
       activePanel = <DiffPanel session={session} embedded />;
-      break;
-    case "files":
-      activePanel = (
-        <FileExplorer
-          key={paneCwd ?? "terminal-cwd"}
-          sessionId={session.id}
-          rootDir={session.dir}
-          remotePtyId={isRemote ? session.ptyId : undefined}
-          transportGeneration={session.transportGeneration}
-          remote={isRemote}
-          remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
-        />
-      );
       break;
     case "transfers":
       activePanel = <TransferCenter inspectorScope={inspectorScope} />;
@@ -359,7 +380,15 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
         aria-describedby={showContextBar ? "inspector-scope-description" : undefined}
         style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
       >
-        <div
+        {fileSessions.map((fileSession) => {
+          const active = tab === "files" && fileSession.id === session.id;
+          return (
+            <Activity key={fileSession.id} mode={active ? "visible" : "hidden"}>
+              <SessionFileExplorer session={fileSession} active={active} />
+            </Activity>
+          );
+        })}
+        {tab !== "files" && <div
           key={`${tab}:${inspectorScope.key}`}
           data-scope-key={inspectorScope.key}
           style={{
@@ -372,7 +401,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
           <Suspense fallback={<PanelLoadingState label={t("diff.mini.loading")} />}>
             {activePanel}
           </Suspense>
-        </div>
+        </div>}
       </div>
     </div>
   );

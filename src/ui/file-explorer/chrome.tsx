@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { CloseIcon, PanelIconButton, RefreshIcon, SearchIcon, UploadIcon } from "../shared";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { breadcrumbSegments } from "../lib/breadcrumbs";
@@ -9,11 +9,13 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 
 function ExplorerChipButton({
   pressed,
+  disabled,
   label,
   onClick,
   children,
 }: {
   pressed?: boolean;
+  disabled?: boolean;
   label: string;
   onClick: () => void;
   children: ReactNode;
@@ -23,6 +25,7 @@ function ExplorerChipButton({
       type="button"
       className="hover-bg explorer-chip-button"
       aria-pressed={pressed}
+      disabled={disabled}
       aria-label={label}
       title={label}
       data-active={pressed ? "true" : "false"}
@@ -39,6 +42,7 @@ function PlacesIcon() {
 
 export function ExplorerNav({
   t,
+  disabled,
   canGoUp,
   onGoUp,
   currentPath,
@@ -48,6 +52,7 @@ export function ExplorerNav({
   onRefresh,
 }: {
   t: Translate;
+  disabled: boolean;
   canGoUp: boolean;
   onGoUp: () => void;
   currentPath: string;
@@ -60,8 +65,8 @@ export function ExplorerNav({
     <nav className="explorer-nav" aria-label={t("explorer.chrome.nav")}>
       <PanelIconButton
         onClick={() => { if (canGoUp) onGoUp(); }}
-        disabled={!canGoUp}
-        aria-disabled={!canGoUp}
+        disabled={disabled || !canGoUp}
+        aria-disabled={disabled || !canGoUp}
         title={t("explorer.go_up")}
         aria-label={t("explorer.go_up")}
       >
@@ -79,7 +84,7 @@ export function ExplorerNav({
                   if (isCurrent) return;
                   onNavigate(seg.targetPath);
                 }}
-                disabled={isCurrent}
+                disabled={disabled || isCurrent}
                 aria-current={isCurrent ? "page" : undefined}
                 className={isCurrent ? "explorer-breadcrumb-current" : "hover-bg explorer-breadcrumb-link"}
                 title={seg.targetPath}
@@ -92,6 +97,7 @@ export function ExplorerNav({
         })}
       </div>
       <PanelIconButton
+        disabled={disabled}
         onClick={onRefresh}
         title={t("explorer.refresh")}
         aria-label={t("explorer.refresh")}
@@ -104,6 +110,7 @@ export function ExplorerNav({
 
 export function ExplorerSearchRow({
   t,
+  disabled,
   searchMode,
   searchQuery,
   onToggleSearchMode,
@@ -114,6 +121,7 @@ export function ExplorerSearchRow({
   onToggleHidden,
 }: {
   t: Translate;
+  disabled: boolean;
   searchMode: "name" | "content";
   searchQuery: string;
   onToggleSearchMode: () => void;
@@ -128,6 +136,7 @@ export function ExplorerSearchRow({
       <div className="explorer-search">
         <button
           type="button"
+          disabled={disabled}
           onClick={onToggleSearchMode}
           title={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
           aria-label={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
@@ -141,6 +150,7 @@ export function ExplorerSearchRow({
         <input
           className="ui-native-control"
           type="text"
+          disabled={disabled}
           value={searchQuery}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onInputKeyDown}
@@ -150,6 +160,7 @@ export function ExplorerSearchRow({
         {searchQuery && (
           <button
             type="button"
+            disabled={disabled}
             onClick={onClearQuery}
             className="hover-bg explorer-search-clear"
             title={t("explorer.clear_search")}
@@ -160,6 +171,7 @@ export function ExplorerSearchRow({
         )}
       </div>
       <ExplorerChipButton
+        disabled={disabled}
         pressed={includeHidden}
         label={includeHidden ? t("explorer.hide_dotfiles") : t("explorer.show_dotfiles")}
         onClick={onToggleHidden}
@@ -172,6 +184,7 @@ export function ExplorerSearchRow({
 
 export function ExplorerRemoteTools({
   t,
+  active,
   bindingKey,
   showPlaces,
   followTerminalCwd,
@@ -198,6 +211,7 @@ export function ExplorerRemoteTools({
   onOpenTransfers,
 }: {
   t: Translate;
+  active: boolean;
   bindingKey: string;
   showPlaces: boolean;
   followTerminalCwd: boolean;
@@ -229,14 +243,15 @@ export function ExplorerRemoteTools({
     trigger: HTMLElement;
     position: { x: number; y: number };
   } | null>(null);
+  useEffect(() => () => setMenu(null), []);
   const hasHome = Boolean(homeDir && homeDir !== listingRoot);
 
   function moreItems(): MenuEntry[] {
     const items: MenuEntry[] = [
-      { id: "loc:root", label: t("explorer.go_root"), icon: "folder", action: () => onJumpToPath(listingRoot) },
+      { id: "loc:root", label: t("explorer.go_root"), icon: "folder", disabled: remoteDisconnected, action: () => onJumpToPath(listingRoot) },
     ];
     if (hasHome && homeDir) {
-      items.push({ id: "loc:home", label: t("explorer.go_home"), icon: "folder", action: () => onJumpToPath(homeDir) });
+      items.push({ id: "loc:home", label: t("explorer.go_home"), icon: "folder", disabled: remoteDisconnected, action: () => onJumpToPath(homeDir) });
     }
     if (showPlaces) {
       items.push({
@@ -277,7 +292,7 @@ export function ExplorerRemoteTools({
   function favoriteItems(): MenuEntry[] {
     const items: MenuEntry[] = [{ type: "heading", label: t("explorer.paths_favorites") }];
     for (const path of favoritePaths) {
-      items.push({ id: `fav:${path}`, label: path, icon: "pin", action: () => onJumpToPath(path) });
+      items.push({ id: `fav:${path}`, label: path, icon: "pin", disabled: remoteDisconnected, action: () => onJumpToPath(path) });
     }
     if (favoritePaths.length === 0) {
       items.push({ id: "fav:empty", label: t("explorer.paths_no_favorites"), disabled: true, action: () => {} });
@@ -285,7 +300,7 @@ export function ExplorerRemoteTools({
     if (recentPaths.length > 0) {
       items.push({ type: "heading", label: t("explorer.paths_recent") });
       for (const path of recentPaths) {
-        items.push({ id: `recent:${path}`, label: path, icon: "folder", action: () => onJumpToPath(path) });
+        items.push({ id: `recent:${path}`, label: path, icon: "folder", disabled: remoteDisconnected, action: () => onJumpToPath(path) });
       }
     }
     return items;
@@ -342,7 +357,7 @@ export function ExplorerRemoteTools({
       >
         <Icon icon={DotsThree} size={16} weight="bold" />
       </PanelIconButton>
-      {menu && (
+      {active && menu && (
         <ContextMenu
           key={menu.kind}
           items={menu.kind === "places" ? favoriteItems() : moreItems()}

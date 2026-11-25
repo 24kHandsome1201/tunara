@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
 /** Fixed semantic tree-row height shared by navigation, DnD and virtualization. */
@@ -74,6 +74,7 @@ export { downloadFailureKey, parseUploadFailure, uploadFailureKey, type UploadFa
 export { sortExplorerEntries, formatModifiedTime } from "./file-explorer/helpers";
 
 interface FileExplorerProps {
+  active?: boolean;
   sessionId: string;
   rootDir: string;
   /**
@@ -100,6 +101,7 @@ function UnreadableNotice({ count }: { count: number }) {
 }
 
 export function FileExplorer({
+  active = true,
   sessionId,
   rootDir,
   remotePtyId,
@@ -172,11 +174,12 @@ export function FileExplorer({
         multiple: false,
       });
       const destinationParent = Array.isArray(selected) ? selected[0] : selected;
-      if (!destinationParent) return;
+      if (!destinationParent || treeRequestContextRef.current !== treeRequestContext) return;
       const manifest = await validateManifest(
         { kind: "remote", root: remotePath, binding },
         { maxEntries: downloadLimits.maxFiles, maxTotalBytes: downloadLimits.maxTotalBytes },
       );
+      if (treeRequestContextRef.current !== treeRequestContext) return;
       const plan = expandFolderTransfer({
         manifest,
         binding,
@@ -218,6 +221,8 @@ export function FileExplorer({
   const previousCwdFollow = useRef({ rootDir, followTerminalCwd });
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
+  const listingCacheKey = `${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`;
+  const hasCachedListing = cachedListingKey === listingCacheKey;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
@@ -272,7 +277,7 @@ export function FileExplorer({
   const [dropMessage, setDropMessage] = useState("");
   const [mutationPrepareError, setMutationPrepareError] = useState("");
   const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string; error?: string } | null>(null);
-  const [propertiesPath, setPropertiesPath] = useState<string | null>(null);
+  const [properties, setProperties] = useState<{ path: string; bindingKey: string } | null>(null);
   const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
   const treeRequestContext = JSON.stringify({
@@ -295,6 +300,8 @@ export function FileExplorer({
     expandDirectory,
     refreshDirectory,
     collapsePath,
+    isConfirmedMissingFile,
+    refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
   } = useTreeListing({
@@ -310,16 +317,44 @@ export function FileExplorer({
     treeRequestContext,
     treeRequestContextRef,
   });
+  const selectionContext = useRef(treeRequestContext);
   useEffect(() => {
-    setSelectedDownloads(new Map());
-    setSelectingDownloads(false);
+    if (selectionContext.current === treeRequestContext) return;
+    selectionContext.current = treeRequestContext;
+    if (!remoteDisconnected) {
+      setSelectedDownloads(new Map());
+      setSelectingDownloads(false);
+    }
     selectionAnchorRef.current = null;
     setBatchDownloadPreparing(false);
-  }, [treeRequestContext]);
+  }, [treeRequestContext, remoteDisconnected]);
+  const downloadListingRef = useRef<typeof isConfirmedMissingFile | null>(null);
+  downloadListingRef.current = hasCachedListing ? isConfirmedMissingFile : null;
+  useEffect(() => {
+    if (remoteDisconnected || !hasCachedListing) return;
+    if (selectionAnchorRef.current && isConfirmedMissingFile(selectionAnchorRef.current)) selectionAnchorRef.current = null;
+    setSelectedDownloads((current) => {
+      if (current.size === 0) return current;
+      const next = new Map([...current].filter(([path]) => !isConfirmedMissingFile(path)));
+      return next.size === current.size ? current : next;
+    });
+  }, [hasCachedListing, isConfirmedMissingFile, remoteDisconnected]);
+  const closeTransientControls = useCallback(() => {
+    setContextMenu(null);
+    setProperties(null);
+    setMutationComposer(null);
+    setMutationRequest(null);
+    setDropActive(false);
+    setDropHighlightPath(null);
+  }, []);
+  useEffect(() => closeTransientControls, [closeTransientControls]);
+  useEffect(() => {
+    if (remoteDisconnected) closeTransientControls();
+  }, [closeTransientControls, remoteDisconnected]);
   const mutationComposerRef = useRef<HTMLDivElement>(null);
   const menuReturnFocusRef = useRef<HTMLElement>(null);
   useModalBehavior(mutationComposerRef, {
-    active: mutationComposer !== null,
+    active: active && !remoteDisconnected && mutationComposer !== null,
     initialFocus: "input",
     bindingKey: mutationComposer?.bindingKey,
     currentBindingKey: treeRequestContext,
@@ -375,7 +410,7 @@ export function FileExplorer({
   }, [mutationRequest, mutationRequestIsCurrent]);
 
   const queueLocalPaths = useCallback(async (paths: string[], destinationRoot: string) => {
-    if (!binding || paths.length === 0) return false;
+    if (!binding || paths.length === 0 || treeRequestContextRef.current !== treeRequestContext) return false;
     const result = await queueLocalTransferPaths({ binding, remoteHost, paths, destinationRoot, t });
     if (result.status === "prepareFailed") {
       setDropMessage(t("explorer.mutation.prepare_failed"));
@@ -383,7 +418,7 @@ export function FileExplorer({
     }
     setDropMessage(t("explorer.drop.queued", { files: result.files, directories: result.directories }));
     return true;
-  }, [binding, remoteHost, t]);
+  }, [binding, remoteHost, t, treeRequestContext]);
 
   useEffect(() => {
     if (!binding) return;
@@ -490,9 +525,16 @@ export function FileExplorer({
 
   // Resolve the starting directory. Local: workspace rootDir. Remote: `/`
   // is the listing root; OSC 7 or SFTP home is only the first location.
+  const initializedDirectory = useRef<string | null>(null);
+  const homeResolvedForBinding = useRef<string | null>(null);
   useEffect(() => {
-    setNavDir(null);
-    search.resetSearch();
+    const directorySource = JSON.stringify([sessionId, isRemote, remotePtyId, transportGeneration]);
+    const sourceChanged = initializedDirectory.current !== directorySource;
+    if (sourceChanged) {
+      initializedDirectory.current = directorySource;
+      setNavDir(null);
+      search.resetSearch();
+    }
     if (isRemote) {
       const listingRoot = remoteExplorerListingRoot();
       setBaseDir(listingRoot);
@@ -503,13 +545,13 @@ export function FileExplorer({
         setLoading(false);
         return;
       }
-      if (remotePtyId === undefined) return;
-      setHomeDir(null);
+      if (remotePtyId === undefined || homeResolvedForBinding.current === directorySource) return;
       if (!knownStart) setLoading(true);
       let cancelled = false;
       sshHome(remotePtyId)
         .then((home) => {
           if (!cancelled) {
+            homeResolvedForBinding.current = directorySource;
             setHomeDir(home);
             setCurrentPath((current) => current || home);
           }
@@ -522,13 +564,14 @@ export function FileExplorer({
         });
       return () => { cancelled = true; };
     }
+    if (!sourceChanged) return;
     setHomeDir(null);
     setBaseDir(rootDir);
     setCurrentPath(useUIStore.getState().explorerPaths[sessionId] ?? rootDir);
     // Follow-cwd applies later OSC 7 updates. Including rootDir here would
     // clear search and reset local/remote explorers on every shell cd.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
-  }, [isRemote, remotePtyId, remoteDisconnected, sessionId]);
+  }, [isRemote, remotePtyId, remoteDisconnected, sessionId, transportGeneration]);
 
   useEffect(() => {
     // Initialization already chose the remembered directory. Only subsequent
@@ -536,22 +579,29 @@ export function FileExplorer({
     const previous = previousCwdFollow.current;
     previousCwdFollow.current = { rootDir, followTerminalCwd };
     if (previous.rootDir === rootDir && previous.followTerminalCwd === followTerminalCwd) return;
-    if (!isRemote || !followTerminalCwd) return;
+    if (!isRemote || !followTerminalCwd || remoteDisconnected) return;
     const knownStart = knownRemoteExplorerRoot(rootDir);
     if (!knownStart) return;
     setCurrentPath(knownStart);
-  }, [rootDir, isRemote, followTerminalCwd, setCurrentPath]);
+  }, [rootDir, isRemote, followTerminalCwd, remoteDisconnected, setCurrentPath]);
 
   useEffect(() => {
     if (!prefsKey || !currentPath.startsWith("/")) return;
     useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => pushHostRecentPath(prefs, currentPath));
   }, [prefsKey, currentPath]);
 
-  const listingContext = useMemo(() => ({ treeRequestContext, baseDir, reloadKey }), [treeRequestContext, baseDir, reloadKey]);
+  const browsingContext = useMemo(() => ({ baseDir, currentPath, includeHidden, reloadKey, sessionId, isRemote }), [baseDir, currentPath, includeHidden, reloadKey, sessionId, isRemote]);
+  const listingContext = useMemo(() => ({ treeRequestContext, browsingContext }), [treeRequestContext, browsingContext]);
   const loadedListingContext = useRef<typeof listingContext | null>(null);
+  const lastUploadReloadKey = useRef(uploadReloadKey);
+  const revalidateExpandedDirectories = useEffectEvent(refreshExpandedDirectories);
   useEffect(() => {
     // An upload only changes the root entries; keep unrelated expanded folders and reads.
     const backgroundRefresh = loadedListingContext.current === listingContext;
+    const reopened = backgroundRefresh && lastUploadReloadKey.current === uploadReloadKey;
+    lastUploadReloadKey.current = uploadReloadKey;
+    const reconnected = isRemote && !remoteDisconnected && !backgroundRefresh
+      && loadedListingContext.current?.browsingContext === browsingContext;
     if (!backgroundRefresh) beginListingEpoch();
     if (baseDir === null) return;
     if (!isRemote && !currentPath.startsWith("/")) {
@@ -582,7 +632,7 @@ export function FileExplorer({
       return;
     }
     let cancelled = false;
-    if (!backgroundRefresh) {
+    if (!backgroundRefresh && !reconnected) {
       setLoading(true);
       setError(false);
     }
@@ -592,16 +642,22 @@ export function FileExplorer({
         : fsReadDir(currentPath, includeHidden);
     read
       .then((e) => {
-        if (!cancelled) {
+        if (!cancelled && treeRequestContextRef.current === treeRequestContext) {
           setEntries(e);
-          setCachedListingKey(`${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`);
-          if (!backgroundRefresh) resetExpansion();
+          setCachedListingKey(listingCacheKey);
+          if (reopened || reconnected) revalidateExpandedDirectories();
+          else if (!backgroundRefresh) resetExpansion();
           loadedListingContext.current = listingContext;
+          setError(false);
           setLoading(false);
         }
       })
       .catch(() => {
-        if (!cancelled && !backgroundRefresh) {
+        if (!cancelled && treeRequestContextRef.current === treeRequestContext && (!backgroundRefresh || reopened)) {
+          if (reopened) {
+            beginListingEpoch();
+            resetExpansion();
+          }
           setEntries([]);
           setCachedListingKey(null);
           setError(true);
@@ -609,7 +665,7 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, listingContext, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, sessionId, beginListingEpoch, resetExpansion, setCurrentPath]);
+  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, beginListingEpoch, resetExpansion, setCurrentPath]);
 
   const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();
@@ -622,7 +678,7 @@ export function FileExplorer({
     : [], [binding, visibleTreeNodes, downloadLimits]);
 
   const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
-  const hasCachedRemoteListing = remoteDisconnected && cachedListingKey === `remote\0${sessionId}\0${currentPath}`;
+  const hasCachedRemoteListing = remoteDisconnected && hasCachedListing;
   const listingNodeCount = visibleTreeNodes.length;
   const listingRowCount = visibleTreeRows.length;
   useLayoutEffect(() => {
@@ -857,7 +913,7 @@ export function FileExplorer({
             { id: "dir:download", label: t("explorer.download_folder"), icon: "download", disabled: remoteDisconnected || !binding, action: () => { void downloadRemoteFolder(node.path, node.entry.name); } },
             { id: "dir:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext, error: undefined }); } },
             { id: "dir:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
-            { id: "dir:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
+            { id: "dir:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setProperties({ path: node.path, bindingKey: treeRequestContext }); } },
             { id: "dir:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
           ]
         : [
@@ -882,7 +938,7 @@ export function FileExplorer({
           } },
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext, error: undefined }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
-          { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setPropertiesPath(node.path); } },
+          { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setProperties({ path: node.path, bindingKey: treeRequestContext }); } },
           { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
           { id: "file:download", label: node.entry.size > downloadLimits.maxFileBytes ? t("explorer.download.too_large", { limit: formatSize(downloadLimits.maxFileBytes) }) : t("explorer.download"), icon: "download", disabled: node.entry.size > downloadLimits.maxFileBytes || !binding || !!downloadChooserPendingRef.current, action: () => { void downloadRemoteFile(node.path, node.entry.name); } },
           { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
@@ -964,7 +1020,7 @@ export function FileExplorer({
   }
 
   async function downloadSelectedFiles() {
-    if (!binding || selectedDownloads.size === 0 || batchDownloadPreparing) return;
+    if (!binding || !hasCachedListing || selectedDownloads.size === 0 || batchDownloadPreparing) return;
     const requestContext = treeRequestContext;
     setBatchDownloadPreparing(true);
     try {
@@ -980,9 +1036,12 @@ export function FileExplorer({
         useSessionsStore.getState().patchHostFilePrefs(prefsKey, (prefs) => rememberHostDownloadDir(prefs, destinationRoot));
       }
       const existing = await fsReadDir(destinationRoot, true);
-      if (treeRequestContextRef.current !== requestContext) return;
+      const isMissing = downloadListingRef.current;
+      if (treeRequestContextRef.current !== requestContext || !isMissing) return;
+      const sources = [...selectedDownloads.values()].filter(({ path }) => !isMissing(path));
+      if (sources.length === 0) return;
       const requests = planBatchDownloads({
-        sources: [...selectedDownloads.values()],
+        sources,
         destinationRoot,
         existingNames: existing.map(({ name }) => name),
         binding,
@@ -1018,6 +1077,7 @@ export function FileExplorer({
     const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
     const openMenu = (x: number, y: number, opener: HTMLElement) => {
+      if (remoteDisconnected) return;
       menuReturnPathRef.current = node.path;
       setMenuReturnPath(node.path);
       menuReturnFocusRef.current = opener;
@@ -1032,7 +1092,7 @@ export function FileExplorer({
         aria-expanded={isDir ? expanded : undefined}
         aria-setsize={node.setSize}
         aria-posinset={node.posInSet}
-        aria-selected={batchSelectable ? batchSelected : active}
+        aria-selected={batchSelectable ? batchSelected : batchSelected || active}
         data-explorer-item
         data-listing-index={listingIndex}
         data-tree-row-index={rowIndex}
@@ -1057,7 +1117,7 @@ export function FileExplorer({
           if (isDir) {
             // A second click in a double-click enters the folder; the first
             // click still expands so nested children stay visible in the tree.
-            if (event.detail > 1) {
+            if (event.detail > 1 && !remoteDisconnected) {
               setNavDir("in");
               setCurrentPath(node.path);
               return;
@@ -1080,6 +1140,7 @@ export function FileExplorer({
           }
           if (event.key === "Enter") {
             event.preventDefault(); event.stopPropagation();
+            if (remoteDisconnected) return;
             if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
             return;
           }
@@ -1186,7 +1247,7 @@ export function FileExplorer({
           <ExplorerEntryName name={node.entry.name} />
         </span>
         <span className="explorer-listing-modified">{formatModifiedTime(node.entry.mtime)}</span>
-        <button
+        {!remoteDisconnected && <button
           type="button"
           tabIndex={-1}
           className="hover-bg explorer-listing-action"
@@ -1200,7 +1261,7 @@ export function FileExplorer({
           }}
         >
           <Icon icon={DotsThree} size={14} weight="bold" />
-        </button>
+        </button>}
         </div>
       </div>
     );
@@ -1230,9 +1291,9 @@ export function FileExplorer({
         <span role="alert" style={{ color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
           {t("explorer.read_dir_failed")}
         </span>
-        <button type="button" tabIndex={-1} className="ui-button" onClick={() => expandDirectory(row.parentPath)}>
+        {!remoteDisconnected && <button type="button" tabIndex={-1} className="ui-button" onClick={() => expandDirectory(row.parentPath)}>
           {t("common.retry")}
-        </button>
+        </button>}
       </div>
     );
   }
@@ -1244,6 +1305,7 @@ export function FileExplorer({
   }
 
   function openFile(path: string, line?: number) {
+    if (remoteDisconnected) return;
     const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
     if (!owner) return;
     void openResource(resourceRefForSession(owner, path, line), "preview");
@@ -1276,15 +1338,9 @@ export function FileExplorer({
           {mutationPrepareError}
         </div>
       )}
-      {remoteDisconnected && hasCachedRemoteListing && (
-        // Status only: the inspector follows the active session, whose terminal
-        // pane recovery bar already owns the single Reconnect action.
-        <div role="status" aria-live="polite" title={t("explorer.remote_disconnected")} style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {t("explorer.remote_disconnected")}
-        </div>
-      )}
       <ExplorerNav
         t={t}
+        disabled={remoteDisconnected}
         canGoUp={canGoUp}
         onGoUp={goUp}
         currentPath={currentPath}
@@ -1295,6 +1351,7 @@ export function FileExplorer({
       />
       <ExplorerSearchRow
         t={t}
+        disabled={remoteDisconnected}
         searchMode={searchMode}
         searchQuery={searchQuery}
         onToggleSearchMode={search.toggleSearchMode}
@@ -1327,6 +1384,7 @@ export function FileExplorer({
       {isRemote && (
         <ExplorerRemoteTools
           t={t}
+          active={active}
           bindingKey={treeRequestContext}
           showPlaces={Boolean(prefsKey)}
           followTerminalCwd={followTerminalCwd}
@@ -1355,7 +1413,7 @@ export function FileExplorer({
             if (selectionMode) exitDownloadSelection();
             else setSelectingDownloads(true);
           }}
-          selectedDownloadCount={selectedDownloads.size}
+          selectedDownloadCount={binding && hasCachedListing ? selectedDownloads.size : 0}
           batchDownloadPreparing={batchDownloadPreparing}
           onDownloadSelected={() => { void downloadSelectedFiles(); }}
           activeTransferNotice={activeTransferNotice}
@@ -1364,6 +1422,11 @@ export function FileExplorer({
             useUIStore.getState().setInspectorTab("transfers", { sessionId });
           }}
         />
+      )}
+      {hasCachedRemoteListing && (
+        <div role="status" title={t("explorer.remote_disconnected")} style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t("explorer.remote_disconnected")}
+        </div>
       )}
 
       {upload && (
@@ -1504,9 +1567,9 @@ export function FileExplorer({
               compact={false}
             />
           </div>
-        ) : loading ? (
+        ) : loading && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell"><PanelLoadingState label={t("explorer.loading")} /></div>
-        ) : error ? (
+        ) : error && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell">
             <PanelState state={{
               kind: "error",
@@ -1575,22 +1638,22 @@ export function FileExplorer({
         )}
       </div>
 
-      {propertiesPath && binding && (
+      {active && properties?.bindingKey === treeRequestContext && binding && (
         <Modal
           labelledBy="remote-metadata-title"
-          onRequestClose={() => setPropertiesPath(null)}
-          bindingKey={treeRequestContext}
+          onRequestClose={() => setProperties(null)}
+          bindingKey={properties.bindingKey}
           currentBindingKey={treeRequestContext}
           style={{ width: 480 }}
         >
-          <RemoteMetadataPanel binding={binding} path={propertiesPath} host={remoteHost ?? sessionId} />
+          <RemoteMetadataPanel binding={binding} path={properties.path} host={remoteHost ?? sessionId} />
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px 12px" }}>
-            <button type="button" className="ui-button" onClick={() => setPropertiesPath(null)}>{t("common.close")}</button>
+            <button type="button" className="ui-button" onClick={() => setProperties(null)}>{t("common.close")}</button>
           </div>
         </Modal>
       )}
 
-      {mutationComposer && (
+      {active && mutationComposer && !remoteDisconnected && (
         <>
           <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
           <div
@@ -1627,7 +1690,7 @@ export function FileExplorer({
         </>
       )}
 
-      {mutationRequest && mutationRequestIsCurrent && (
+      {active && mutationRequest && mutationRequestIsCurrent && (
         <RemoteFsMutationDialog
           host={remoteHost ?? sessionId}
           request={mutationRequest}
@@ -1639,7 +1702,7 @@ export function FileExplorer({
         />
       )}
 
-      {contextMenu && (
+      {active && contextMenu && !remoteDisconnected && (
         <ContextMenu
           items={contextMenu.items}
           position={contextMenu.position}
