@@ -1485,7 +1485,7 @@ export function FileExplorer({
         ref={treeListRef}
         onScroll={measureTree}
         data-nav={navDir}
-        className="explorer-list-viewport no-scrollbar scroll-fade-y"
+        className="no-scrollbar scroll-fade-y"
       >
         {remoteDisconnected && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell">

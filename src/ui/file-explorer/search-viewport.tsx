@@ -64,7 +64,7 @@ export function SearchViewport<Row extends SearchViewportRow>({ ref, rows, rende
   return (
     <div
       ref={viewportRef}
-      className="explorer-list-viewport explorer-search-viewport no-scrollbar scroll-fade-y"
+      className="explorer-search-viewport no-scrollbar scroll-fade-y"
       style={{ overscrollBehavior: "contain" }}
       onScroll={measure}
       onKeyDown={(event) => {

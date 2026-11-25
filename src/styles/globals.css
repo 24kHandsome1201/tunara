@@ -841,13 +841,13 @@ select.ui-control {
   flex-shrink: 0;
 }
 .explorer-search-row { padding: 6px var(--sp-2); }
-.explorer-list-viewport {
+.file-explorer > .scroll-fade-y {
   flex: 1;
   overflow-y: auto;
   padding: 6px var(--sp-2);
 }
-.explorer-list-viewport[data-nav="in"] { animation: slideInRight var(--dur-base) var(--ease-out); }
-.explorer-list-viewport[data-nav="out"] { animation: slideInLeft var(--dur-base) var(--ease-out); }
+.file-explorer > [data-nav="in"] { animation: slideInRight var(--dur-base) var(--ease-out); }
+.file-explorer > [data-nav="out"] { animation: slideInLeft var(--dur-base) var(--ease-out); }
 .explorer-search-viewport {
   min-height: 0;
   position: relative;
