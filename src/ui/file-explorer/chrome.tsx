@@ -1,34 +1,30 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
-import { CloseIcon, DownloadIcon, PanelIconButton, RefreshIcon, SearchIcon, UploadFolderIcon, UploadIcon } from "../shared";
+import { CloseIcon, PanelIconButton, RefreshIcon, SearchIcon, UploadIcon } from "../shared";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { breadcrumbSegments } from "../lib/breadcrumbs";
 import { FileContentIcon, FileNameIcon } from "./icons";
-import { ArrowsDownUp, BookmarkSimple, CaretLeft, Icon, Star } from "@/ui/icons";
+import { ArrowsDownUp, BookmarkSimple, CaretLeft, DotsThree, Icon } from "@/ui/icons";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 function ExplorerChipButton({
   pressed,
   label,
-  title,
   onClick,
-  className,
   children,
 }: {
   pressed?: boolean;
   label: string;
-  title?: string;
   onClick: () => void;
-  className?: string;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
-      className={["hover-bg", "explorer-chip-button", className].filter(Boolean).join(" ")}
+      className="hover-bg explorer-chip-button"
       aria-pressed={pressed}
       aria-label={label}
-      title={title ?? label}
+      title={label}
       data-active={pressed ? "true" : "false"}
       onClick={onClick}
     >
@@ -184,7 +180,6 @@ export function ExplorerRemoteTools({
   onToggleFavorite,
   listingRoot,
   homeDir,
-  currentPath,
   favoritePaths,
   recentPaths,
   onJumpToPath,
@@ -193,6 +188,9 @@ export function ExplorerRemoteTools({
   onUploadFile,
   showFolderTransfer,
   onUploadFolder,
+  selectionMode,
+  downloadSelectionUnavailable,
+  onToggleSelectionMode,
   selectedDownloadCount,
   batchDownloadPreparing,
   onDownloadSelected,
@@ -208,7 +206,6 @@ export function ExplorerRemoteTools({
   onToggleFavorite: () => void;
   listingRoot: string;
   homeDir: string | null;
-  currentPath: string;
   favoritePaths: readonly string[];
   recentPaths: readonly string[];
   onJumpToPath: (path: string) => void;
@@ -217,24 +214,31 @@ export function ExplorerRemoteTools({
   onUploadFile: () => void;
   showFolderTransfer: boolean;
   onUploadFolder: () => void;
+  selectionMode: boolean;
+  downloadSelectionUnavailable: boolean;
+  onToggleSelectionMode: () => void;
   selectedDownloadCount: number;
   batchDownloadPreparing: boolean;
   onDownloadSelected: () => void;
   activeTransferNotice: number;
   onOpenTransfers: () => void;
 }) {
-  const [placesMenu, setPlacesMenu] = useState<{ items: MenuEntry[]; position: { x: number; y: number } } | null>(null);
+  const [menu, setMenu] = useState<{
+    kind: "places" | "more";
+    bindingKey: string;
+    trigger: HTMLElement;
+    position: { x: number; y: number };
+  } | null>(null);
   const hasHome = Boolean(homeDir && homeDir !== listingRoot);
 
-  const openPlaces = (event: { currentTarget: HTMLElement }) => {
-    const items: MenuEntry[] = [];
-    items.push({ type: "heading", label: t("explorer.paths_locations") });
-    items.push({ id: "loc:root", label: t("explorer.go_root"), icon: "folder", action: () => onJumpToPath(listingRoot) });
+  function moreItems(): MenuEntry[] {
+    const items: MenuEntry[] = [
+      { id: "loc:root", label: t("explorer.go_root"), icon: "folder", action: () => onJumpToPath(listingRoot) },
+    ];
     if (hasHome && homeDir) {
       items.push({ id: "loc:home", label: t("explorer.go_home"), icon: "folder", action: () => onJumpToPath(homeDir) });
     }
     if (showPlaces) {
-      items.push(null);
       items.push({
         id: "action:follow-cwd",
         label: t(followTerminalCwd ? "explorer.follow_cwd_disable" : "explorer.follow_cwd"),
@@ -247,11 +251,36 @@ export function ExplorerRemoteTools({
         action: onToggleFavorite,
       });
     }
-    if (favoritePaths.length > 0) {
-      items.push({ type: "heading", label: t("explorer.paths_favorites") });
-      for (const path of favoritePaths) {
-        items.push({ id: `fav:${path}`, label: path, icon: "pin", action: () => onJumpToPath(path) });
-      }
+    if (showFolderTransfer) {
+      items.push(null, {
+        id: "transfer:upload-folder",
+        label: t("explorer.upload_folder"),
+        icon: "upload-folder",
+        disabled: remoteDisconnected,
+        action: onUploadFolder,
+      }, {
+        id: "transfer:download-selected",
+        label: t("explorer.download.batch_action", { count: selectedDownloadCount }),
+        icon: "download",
+        disabled: remoteDisconnected || downloadSelectionUnavailable || selectedDownloadCount === 0 || batchDownloadPreparing,
+        action: onDownloadSelected,
+      }, {
+        id: "action:select",
+        label: t(selectionMode ? "explorer.download.exit_selection" : "explorer.download.enter_selection"),
+        disabled: remoteDisconnected || downloadSelectionUnavailable,
+        action: onToggleSelectionMode,
+      });
+    }
+    return items;
+  }
+
+  function favoriteItems(): MenuEntry[] {
+    const items: MenuEntry[] = [{ type: "heading", label: t("explorer.paths_favorites") }];
+    for (const path of favoritePaths) {
+      items.push({ id: `fav:${path}`, label: path, icon: "pin", action: () => onJumpToPath(path) });
+    }
+    if (favoritePaths.length === 0) {
+      items.push({ id: "fav:empty", label: t("explorer.paths_no_favorites"), disabled: true, action: () => {} });
     }
     if (recentPaths.length > 0) {
       items.push({ type: "heading", label: t("explorer.paths_recent") });
@@ -259,60 +288,23 @@ export function ExplorerRemoteTools({
         items.push({ id: `recent:${path}`, label: path, icon: "folder", action: () => onJumpToPath(path) });
       }
     }
-    const rect = event.currentTarget.getBoundingClientRect();
-    setPlacesMenu({ items, position: { x: rect.left, y: rect.bottom + 4 } });
-  };
+    return items;
+  }
+
+  function openMenu(kind: "places" | "more", trigger: HTMLElement) {
+    const rect = trigger.getBoundingClientRect();
+    setMenu({ kind, bindingKey, trigger, position: { x: rect.left, y: rect.bottom + 4 } });
+  }
 
   return (
     <div className="explorer-tools" role="toolbar" aria-label={t("explorer.chrome.tools")}>
       <div className="explorer-places" role="group" aria-label={t("explorer.chrome.places")}>
-        <ExplorerChipButton
-          pressed={currentPath === listingRoot}
-          label={t("explorer.go_root")}
-          onClick={() => onJumpToPath(listingRoot)}
-          className="explorer-place-shortcut"
-        >
-          /
-        </ExplorerChipButton>
-        {hasHome && homeDir && (
-          <ExplorerChipButton
-            pressed={currentPath === homeDir}
-            label={t("explorer.go_home")}
-            onClick={() => onJumpToPath(homeDir)}
-            className="explorer-place-shortcut"
-          >
-            ~
-          </ExplorerChipButton>
-        )}
-        {showPlaces && (
-          <>
-            <ExplorerChipButton
-              pressed={followTerminalCwd}
-              label={t("explorer.follow_cwd")}
-              title={t(followTerminalCwd ? "explorer.follow_cwd_on" : "explorer.follow_cwd")}
-              onClick={onToggleFollowCwd}
-              className="explorer-place-secondary"
-            >
-              cwd
-            </ExplorerChipButton>
-            <PanelIconButton
-              title={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
-              aria-label={isFavorite ? t("explorer.favorite_remove") : t("explorer.favorite_add")}
-              data-active={isFavorite ? "true" : "false"}
-              onClick={onToggleFavorite}
-              className="explorer-place-secondary"
-              style={isFavorite ? { color: "var(--c-accent)" } : undefined}
-            >
-              <Icon icon={Star} size={13} weight={isFavorite ? "fill" : "regular"} />
-            </PanelIconButton>
-          </>
-        )}
         <PanelIconButton
           title={t("explorer.paths")}
           aria-label={t("explorer.paths")}
           aria-haspopup="menu"
-          aria-expanded={placesMenu !== null}
-          onClick={(event) => openPlaces(event)}
+          aria-expanded={menu?.kind === "places"}
+          onClick={(event) => openMenu("places", event.currentTarget)}
         >
           <PlacesIcon />
         </PanelIconButton>
@@ -326,31 +318,6 @@ export function ExplorerRemoteTools({
         >
           <UploadIcon />
         </PanelIconButton>
-        {showFolderTransfer && (
-          <>
-            <PanelIconButton
-              onClick={onUploadFolder}
-              disabled={remoteDisconnected}
-              title={t("explorer.upload_folder")}
-              aria-label={t("explorer.upload_folder")}
-            >
-              <UploadFolderIcon />
-            </PanelIconButton>
-            <PanelIconButton
-              onClick={onDownloadSelected}
-              disabled={remoteDisconnected || selectedDownloadCount === 0 || batchDownloadPreparing}
-              title={t("explorer.download.batch_action", { count: selectedDownloadCount })}
-              aria-label={t("explorer.download.batch_action", { count: selectedDownloadCount })}
-              data-active={selectedDownloadCount > 0 ? "true" : "false"}
-              className={selectedDownloadCount > 0 ? "explorer-download-armed" : undefined}
-            >
-              <DownloadIcon />
-              {selectedDownloadCount > 0 && (
-                <span aria-hidden="true" className="explorer-download-count">{selectedDownloadCount}</span>
-              )}
-            </PanelIconButton>
-          </>
-        )}
         {activeTransferNotice > 0 && (
           <button
             type="button"
@@ -366,13 +333,24 @@ export function ExplorerRemoteTools({
           </button>
         )}
       </div>
-      {placesMenu && (
+      <PanelIconButton
+        title={t("explorer.more_actions")}
+        aria-haspopup="menu"
+        aria-expanded={menu?.kind === "more"}
+        data-active={selectionMode ? "true" : undefined}
+        onClick={(event) => openMenu("more", event.currentTarget)}
+      >
+        <Icon icon={DotsThree} size={16} weight="bold" />
+      </PanelIconButton>
+      {menu && (
         <ContextMenu
-          items={placesMenu.items}
-          position={placesMenu.position}
-          bindingKey={bindingKey}
+          key={menu.kind}
+          items={menu.kind === "places" ? favoriteItems() : moreItems()}
+          position={menu.position}
+          bindingKey={menu.bindingKey}
           currentBindingKey={bindingKey}
-          onClose={() => setPlacesMenu(null)}
+          returnFocusToken={menu.trigger}
+          onClose={() => setMenu(null)}
         />
       )}
     </div>

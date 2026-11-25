@@ -120,6 +120,7 @@ export function FileExplorer({
   const { upload, transferAnnouncement } = directUpload;
   const downloadChooserPendingRef = useRef<object | null>(null);
   const [selectedDownloads, setSelectedDownloads] = useState<Map<string, BatchDownloadSource>>(() => new Map());
+  const [selectingDownloads, setSelectingDownloads] = useState(false);
   const [batchDownloadPreparing, setBatchDownloadPreparing] = useState(false);
   const selectionAnchorRef = useRef<string | null>(null);
   const copyPathWithFeedback = async (path: string) => {
@@ -310,6 +311,7 @@ export function FileExplorer({
   });
   useEffect(() => {
     setSelectedDownloads(new Map());
+    setSelectingDownloads(false);
     selectionAnchorRef.current = null;
     setBatchDownloadPreparing(false);
   }, [treeRequestContext]);
@@ -362,6 +364,7 @@ export function FileExplorer({
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
   );
+  const selectionMode = Boolean(binding) && !isSearching && (selectingDownloads || selectedDownloads.size > 0);
   const mutationRequestIsCurrent = !mutationRequest || !!binding
     && mutationRequest.binding.logicalSessionId === binding.logicalSessionId
     && mutationRequest.binding.physicalPtyId === binding.physicalPtyId
@@ -985,8 +988,7 @@ export function FileExplorer({
         limits: downloadLimits,
       });
       useTransferStore.getState().enqueueBatch(requests);
-      setSelectedDownloads(new Map());
-      selectionAnchorRef.current = null;
+      exitDownloadSelection();
     } catch {
       if (treeRequestContextRef.current === requestContext) {
         useUIStore.getState().addToast(errorToast({
@@ -998,6 +1000,12 @@ export function FileExplorer({
     } finally {
       if (treeRequestContextRef.current === requestContext) setBatchDownloadPreparing(false);
     }
+  }
+
+  function exitDownloadSelection() {
+    setSelectingDownloads(false);
+    setSelectedDownloads(new Map());
+    selectionAnchorRef.current = null;
   }
 
   function renderTreeNode(row: Extract<ExplorerTreeRow, { kind: "node" }>, rowIndex: number) {
@@ -1133,14 +1141,14 @@ export function FileExplorer({
       >
         <div
           className="hover-bg explorer-listing-grid explorer-listing-row"
-          data-selectable={binding ? "true" : undefined}
+          data-selectable={selectionMode ? "true" : undefined}
           style={{
             padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`,
             border: dropHighlightPath === node.path ? "1px dashed var(--c-accent)" : "none",
             background: dropHighlightPath === node.path ? "color-mix(in srgb, var(--c-accent) 12%, transparent)" : batchSelected || active ? "var(--c-accent-bg-light)" : "transparent",
           }}
         >
-        {binding && (
+        {selectionMode && (
           <input
             type="checkbox"
             tabIndex={-1}
@@ -1289,7 +1297,10 @@ export function FileExplorer({
         searchMode={searchMode}
         searchQuery={searchQuery}
         onToggleSearchMode={search.toggleSearchMode}
-        onQueryChange={search.setQuery}
+        onQueryChange={(query) => {
+          if (selectionMode && query.trim()) exitDownloadSelection();
+          search.setQuery(query);
+        }}
         onClearQuery={() => search.setQuery("")}
         includeHidden={includeHidden}
         onToggleHidden={() => setIncludeHidden((v) => !v)}
@@ -1329,7 +1340,6 @@ export function FileExplorer({
           }}
           listingRoot={remoteExplorerListingRoot()}
           homeDir={homeDir}
-          currentPath={currentPath}
           favoritePaths={hostPrefs.favoritePaths}
           recentPaths={hostPrefs.recentPaths}
           onJumpToPath={(path) => { setNavDir("in"); setCurrentPath(path); }}
@@ -1338,6 +1348,12 @@ export function FileExplorer({
           onUploadFile={() => { void uploadToRemoteDirectory(currentPath); }}
           showFolderTransfer={Boolean(binding)}
           onUploadFolder={() => { void uploadFolderToRemoteDirectory(currentPath); }}
+          selectionMode={selectionMode}
+          downloadSelectionUnavailable={isSearching}
+          onToggleSelectionMode={() => {
+            if (selectionMode) exitDownloadSelection();
+            else setSelectingDownloads(true);
+          }}
           selectedDownloadCount={selectedDownloads.size}
           batchDownloadPreparing={batchDownloadPreparing}
           onDownloadSelected={() => { void downloadSelectedFiles(); }}
@@ -1507,9 +1523,9 @@ export function FileExplorer({
           <>
             <div
               className="explorer-listing-grid explorer-listing-header"
-              data-selectable={binding ? "true" : undefined}
+              data-selectable={selectionMode ? "true" : undefined}
             >
-              {binding && (
+              {selectionMode && (
                 <input
                   type="checkbox"
                   className="ui-choice"
