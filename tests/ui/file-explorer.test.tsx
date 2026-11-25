@@ -1633,4 +1633,47 @@ describe("FileExplorer workspace files", () => {
       clientHeight.mockRestore();
     }
   });
+
+  test("keeps Tab and Shift+Tab in result order across unmounted rows without trapping focus", async () => {
+    const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(96);
+    mockIPC((command) => {
+      if (command === "fs_resolve_dir") return "/repo";
+      if (command === "fs_search") return {
+        hits: Array.from({ length: 80 }, (_, index) => {
+          const name = `match-${index}.txt`;
+          return { path: `/repo/${name}`, rel: name, name, isDir: false };
+        }),
+        unreadable: 0,
+      };
+      return [];
+    });
+    try {
+      render(<FileExplorer sessionId="tab-search" rootDir="/repo" />);
+      const input = screen.getByPlaceholderText("Search this folder");
+      fireEvent.change(input, { target: { value: "match" } });
+      const first = await screen.findByRole("button", { name: "match-0.txt" });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(fireEvent.keyDown(first, { key: "Tab", shiftKey: true })).toBe(true);
+      const scroller = first.closest<HTMLElement>(".scroll-fade-y")!;
+      const scrollTo = (top: number) => {
+        scroller.scrollTop = top;
+        fireEvent.scroll(scroller);
+      };
+      scrollTo(2_500);
+      expect(screen.queryByRole("button", { name: "match-1.txt" })).toBeNull();
+      expect(fireEvent.keyDown(first, { key: "Tab" })).toBe(false);
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "match-1.txt" }));
+
+      scrollTo(2_500);
+      const last = screen.getByRole("button", { name: "match-79.txt" });
+      act(() => last.focus());
+      expect(fireEvent.keyDown(last, { key: "Tab" })).toBe(true);
+      scrollTo(0);
+      expect(screen.queryByRole("button", { name: "match-78.txt" })).toBeNull();
+      expect(fireEvent.keyDown(last, { key: "Tab", shiftKey: true })).toBe(false);
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "match-78.txt" }));
+    } finally {
+      clientHeight.mockRestore();
+    }
+  });
 });

@@ -117,12 +117,16 @@ export function SearchViewport<Row extends SearchViewportRow>({ ref, rows, rende
         if (!event.currentTarget.contains(event.relatedTarget)) setFocusedKey(null);
       }}
       onKeyDown={(event) => {
-        const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+        const tab = event.key === "Tab";
+        const step = tab ? (event.shiftKey ? -1 : 1) : event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
         if (!step || focusedIndex === undefined) return;
-        event.preventDefault();
         for (let index = focusedIndex + step; index >= 0 && index < rows.length; index += step) {
-          if (focusRow(index)) return;
+          if (focusRow(index)) {
+            event.preventDefault();
+            return;
+          }
         }
+        if (!tab) event.preventDefault();
       }}
     >
       <div ref={headerRef}>{header}</div>
