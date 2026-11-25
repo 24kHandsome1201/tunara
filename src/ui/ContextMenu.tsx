@@ -7,7 +7,7 @@ import {
   ArrowUp,
   ClipboardText,
   CopySimple,
-  DownloadSimple,
+  DownloadIcon,
   FolderSimple,
   Icon,
   MagnifyingGlass,
@@ -17,9 +17,10 @@ import {
   Terminal,
   TerminalWindow,
   TrashSimple,
+  UploadFolderIcon,
 } from "@/ui/icons";
 
-export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "arrow-up" | "arrow-down";
+export type MenuIconName = "terminal" | "ssh" | "editor" | "copy" | "paste" | "download" | "rename" | "search" | "close" | "folder" | "pin" | "arrow-up" | "arrow-down" | "upload-folder";
 
 export interface MenuItem {
   id?: string;
@@ -60,6 +61,8 @@ interface ContextMenuProps {
 const MENU_VIEWPORT_MARGIN = 8;
 
 function MenuIcon({ name }: { name: MenuIconName }) {
+  if (name === "download") return <DownloadIcon />;
+  if (name === "upload-folder") return <UploadFolderIcon />;
   const glyph = {
     terminal: Terminal,
     ssh: TerminalWindow,
@@ -67,7 +70,6 @@ function MenuIcon({ name }: { name: MenuIconName }) {
     editor: PencilSimple,
     copy: CopySimple,
     paste: ClipboardText,
-    download: DownloadSimple,
     rename: NotePencil,
     search: MagnifyingGlass,
     pin: PushPin,
