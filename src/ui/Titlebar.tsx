@@ -5,6 +5,7 @@ import { formatShortcut } from "./formatShortcut";
 import { platform } from "@tauri-apps/plugin-os";
 import { useT } from "@/modules/i18n";
 import { tryGetCurrentWindow } from "@/ui/lib/current-window";
+import { handleBorderlessTitlebarMouseDown } from "@/ui/lib/titlebar-drag";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
 import { DotsThree, Icon, Minus, Plus, SidebarSimple, Square, X } from "@/ui/icons";
@@ -218,6 +219,7 @@ function TitlebarImpl({
     });
   };
 
+  const borderlessChrome = document.documentElement.dataset.chrome === "borderless";
   const titlebarControlTransform = _isMac ? `translateY(${MAC_TITLEBAR_CONTROL_Y_OFFSET}px)` : undefined;
   const deviceConnectionLabel = deviceCaption?.connectionPhase
     ? t(`connection.phase.${deviceCaption.connectionPhase}`)
@@ -252,7 +254,8 @@ function TitlebarImpl({
   return (
     <div
       className="tunara-titlebar"
-      data-tauri-drag-region="deep"
+      data-tauri-drag-region={borderlessChrome ? undefined : "deep"}
+      onMouseDown={borderlessChrome ? handleBorderlessTitlebarMouseDown : undefined}
       style={{
         height: "var(--h-titlebar)",
         background: "var(--c-bg-1)",
