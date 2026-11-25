@@ -107,16 +107,25 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.getAllByRole("treeitem")[0]).toBe(pinned);
   });
 
-  test("pins the listed filename for case-insensitive jumps and requires an exact match when ambiguous", async () => {
+  test.each([false, true])("pins an unambiguous case-insensitive match only if the typed path exists (remote=%s)", async (remote) => {
+    let caseInsensitive = false;
     mockIPC((command, payload) => {
-      if (command === "fs_resolve_dir") return "/home/dev";
-      if (command === "fs_canonical_path") return "/srv/app";
+      if (command === "fs_resolve_dir" || command === "ssh_fs_home") return "/home/dev";
+      if (command === "fs_canonical_path" || command === "ssh_fs_canonical_path" || command === "ssh_fs_stat_v1") {
+        const { path } = payload as { path: string };
+        if (path === "/srv/app") return path;
+        if (path === "/srv/app/README.md" && caseInsensitive) {
+          return command === "ssh_fs_stat_v1" ? { path, kind: "file" } : "/srv/app/Readme.md";
+        }
+        throw new Error("not found");
+      }
       if (command === "fs_search") return { hits: [], unreadable: 0 };
-      if (command !== "fs_read_dir") return null;
+      if (command === "ssh_fs_search") return [];
+      if (command !== "fs_read_dir" && command !== "ssh_fs_read_dir") return null;
       if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
       return ["Readme.md", "Title.ts", "title.ts"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 }));
     });
-    render(<FileExplorer sessionId="case-file-jump" rootDir="/srv/app" />);
+    render(<FileExplorer sessionId="case-file-jump" rootDir="/srv/app" remotePtyId={remote ? 40 : undefined} transportGeneration={remote ? "g1" : undefined} />);
     await screen.findByRole("treeitem", { name: "Readme.md" });
     const search = screen.getByRole("textbox", { name: "Search this folder" });
     const submit = async (name: string) => {
@@ -124,6 +133,9 @@ describe("FileExplorer directory navigation", () => {
       await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
     };
 
+    await submit("README.md");
+    expect(search).toHaveProperty("value", "/srv/app/README.md");
+    caseInsensitive = true;
     await submit("README.md");
     const pinned = await screen.findByRole("treeitem", { name: "Readme.md" });
     expect(pinned.getAttribute("data-pinned")).toBe("true");

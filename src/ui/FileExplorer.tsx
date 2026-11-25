@@ -1343,6 +1343,13 @@ export function FileExplorer({
       const directory = await canonicalPath(parent);
       if (request !== pathJumpRequest.current) return;
       const targetName = target.name;
+      if (targetName !== name) {
+        const typedPath = joinPath(directory, name);
+        const exists = isRemote
+          ? binding && await sshStatV1(binding, typedPath)
+          : await fsCanonicalPath(typedPath);
+        if (!exists || request !== pathJumpRequest.current) return;
+      }
       setPinnedFile({ directory, name: targetName });
       if (directory === currentPath && !entries.some((entry) => entry.name === targetName && entry.kind !== "dir")) refresh();
       openSearchDir(directory);
