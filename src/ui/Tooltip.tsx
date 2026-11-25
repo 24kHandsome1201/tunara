@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatShortcut } from "./formatShortcut";
 import { motionDurationMs } from "./lib/motion";
@@ -15,11 +15,14 @@ import { motionDurationMs } from "./lib/motion";
  * cannot re-anchor position:fixed, then a layout effect measures the real
  * bubble size and clamps it inside the viewport (flipping above the
  * trigger when it would overflow the bottom edge).
+ * Pass `open` when visibility follows state outside the trigger (e.g. a
+ * focused ancestor row); the trigger's own hover and focus are then ignored.
  */
 export function Tooltip({
   label,
   shortcut,
   style,
+  open,
   children,
 }: {
   label: ReactNode;
@@ -27,6 +30,8 @@ export function Tooltip({
   shortcut?: string;
   /** Extra styles for the wrapper span (e.g. flex: 1 for row-filling triggers). */
   style?: CSSProperties;
+  /** Controlled visibility, still shown after --delay-tooltip. */
+  open?: boolean;
   children: ReactElement;
 }) {
   const tipId = useId();
@@ -36,11 +41,11 @@ export function Tooltip({
   const [anchor, setAnchor] = useState<{ cx: number; top: number; triggerTop: number } | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
-  const cancelTimer = () => {
+  const cancelTimer = useCallback(() => {
     clearTimeout(timerRef.current);
     timerRef.current = undefined;
-  };
-  const show = () => {
+  }, []);
+  const show = useCallback(() => {
     if (timerRef.current) return;
     timerRef.current = setTimeout(() => {
       timerRef.current = undefined;
@@ -50,12 +55,19 @@ export function Tooltip({
       setPos(null);
       setAnchor({ cx: rect.left + rect.width / 2, top: rect.bottom + 6, triggerTop: rect.top });
     }, motionDurationMs("--delay-tooltip", 400));
-  };
-  const hide = () => {
+  }, []);
+  const hide = useCallback(() => {
     cancelTimer();
     setAnchor(null);
     setPos(null);
-  };
+  }, [cancelTimer]);
+
+  useEffect(() => {
+    if (open === undefined) return;
+    if (open) show();
+    else hide();
+    return cancelTimer;
+  }, [open, show, hide, cancelTimer]);
 
   // Measure the real bubble after mount and clamp it inside the viewport —
   // estimating half-width from the trigger breaks for narrow right-edge
@@ -86,10 +98,10 @@ export function Tooltip({
     <span
       ref={wrapRef}
       style={{ display: "inline-flex", ...style }}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
+      onMouseEnter={open === undefined ? show : undefined}
+      onMouseLeave={open === undefined ? hide : undefined}
+      onFocus={open === undefined ? show : undefined}
+      onBlur={open === undefined ? hide : undefined}
       onClick={hide}
       onPointerDown={hide}
       onContextMenu={hide}
@@ -103,28 +115,11 @@ export function Tooltip({
           ref={tipRef}
           role="tooltip"
           id={tipId}
+          className="ui-tooltip"
           style={{
-            position: "fixed",
             left: pos ? pos.x : 0,
             top: pos ? pos.y : 0,
-            transform: "translateX(-50%)",
             visibility: pos ? "visible" : "hidden",
-            zIndex: "var(--z-menu)",
-            padding: "4px 8px",
-            borderRadius: "var(--r-badge)",
-            border: "1px solid var(--c-border-1)",
-            background: "var(--c-bg-white)",
-            boxShadow: "var(--shadow-card)",
-            color: "var(--c-text-primary)",
-            fontSize: "var(--fs-meta)",
-            fontFamily: "var(--font-ui)",
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            pointerEvents: "none",
-            animation: "fadeIn var(--dur-fast) var(--ease-out)",
           }}
         >
           <span>{label}</span>

@@ -778,6 +778,107 @@ select.ui-control {
   .ssh-endpoint-grid > div { width: 100%; min-width: 0 !important; }
 }
 
+.ui-tooltip {
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: var(--z-menu);
+  padding: 4px 8px;
+  border-radius: var(--r-badge);
+  border: 1px solid var(--c-border-1);
+  background: var(--c-bg-white);
+  box-shadow: var(--shadow-card);
+  color: var(--c-text-primary);
+  font-size: var(--fs-meta);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  animation: fadeIn var(--dur-fast) var(--ease-out);
+}
+
+.inspector-toolbar,
+#inspector-context-bar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--c-bg-1);
+  border-bottom: 1px solid var(--c-border-1);
+}
+.inspector-toolbar {
+  min-height: var(--h-titlebar);
+  padding-left: 8px;
+  gap: 4px;
+}
+.inspector-tab-list,
+.inspector-files-tab {
+  display: flex;
+  align-items: center;
+}
+.inspector-tab-list {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+.inspector-files-tab { flex-shrink: 0; }
+.inspector-toolbar .inspector-tab {
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--c-text-4);
+  font-size: var(--fs-secondary);
+  font-weight: 400;
+  cursor: pointer;
+}
+.inspector-toolbar .inspector-tab[data-active="true"] {
+  background: var(--c-bg-3);
+  color: var(--c-text-primary);
+  font-weight: 600;
+}
+.inspector-toolbar .inspector-tab > span { margin-left: 4px; }
+#inspector-context-bar {
+  min-height: 28px;
+  min-width: 0;
+  padding: 3px 9px 3px 10px;
+  gap: 7px;
+  overflow: hidden;
+  position: relative;
+}
+.inspector-context-badge,
+.inspector-source-branch {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-5);
+  font-size: var(--fs-meta);
+  font-family: var(--font-mono);
+}
+.inspector-context-badge {
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-bg-3);
+}
+.inspector-context-spacer { flex: 1; min-width: 0; }
+.inspector-source-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+.inspector-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* Files chrome is three stacked bands: where you are, what to find, then
    remote places/transfers. Navigation never shares a wrapping row with
    filters or SSH actions, so the path stays readable in a 320px inspector. */
@@ -792,6 +893,29 @@ select.ui-control {
   outline-offset: -3px;
 }
 .file-explorer[data-drop-active="true"] { outline: 2px dashed var(--c-accent); }
+.explorer-drop-notice {
+  flex-shrink: 0;
+  padding: 7px var(--sp-2);
+  border-bottom: 1px dashed var(--c-accent);
+  font-weight: 600;
+  text-align: center;
+}
+.explorer-error-notice,
+.explorer-disconnected {
+  flex-shrink: 0;
+  padding: 5px var(--sp-2);
+  font-size: var(--fs-meta);
+}
+.explorer-error-notice { color: var(--c-error); }
+.explorer-disconnected {
+  color: var(--c-warning);
+  background: color-mix(in srgb, var(--c-warning) 8%, transparent);
+  border-bottom: 1px solid var(--c-border-1);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .explorer-nav,
 .explorer-search-row,
 .explorer-tools {
@@ -1079,13 +1203,29 @@ select.ui-control {
 .explorer-listing-row {
   min-height: 30px;
   border-radius: var(--r-btn);
+  padding-right: var(--sp-1);
 }
+.explorer-listing-row.hover-bg { border: none; background: transparent; }
+.explorer-listing-row[data-active="true"] { background: var(--c-accent-bg-light); }
+.explorer-tree-node[data-drop-target] > .explorer-listing-row {
+  border: 1px dashed var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+}
+.explorer-listing-grid > input.ui-choice { margin: 0; }
+.explorer-entry-icon { display: flex; pointer-events: none; }
 .explorer-listing-name {
   min-width: 0;
   height: 30px;
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.explorer-listing-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
 }
 .explorer-listing-modified { min-width: 0; }
 .explorer-listing-row .explorer-listing-modified {
@@ -1112,17 +1252,44 @@ button.explorer-listing-action {
   place-items: center;
 }
 .explorer-state-shell .panel-state { width: min(100%, 280px); }
-@container file-explorer (max-width: 280px) {
-  .explorer-listing-modified { display: none; }
+/* Names outrank dates: the default 320px panel drops the Modified column from
+   rows, while the header keeps its sort button over the action column. */
+@container file-explorer (max-width: 360px) {
+  .explorer-listing-row .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
     --explorer-listing-columns: minmax(0, 1fr) 28px;
   }
   .explorer-listing-grid[data-selectable="true"] {
     --explorer-listing-columns: 20px minmax(0, 1fr) 28px;
   }
+  .explorer-listing-header {
+    --explorer-listing-columns: minmax(0, 1fr) auto;
+  }
+  .explorer-listing-header[data-selectable="true"] {
+    --explorer-listing-columns: 20px minmax(0, 1fr) auto;
+  }
+  .explorer-listing-header > .explorer-listing-action { display: none; }
 }
 .explorer-tree-node {
   overflow: visible;
+  width: 100%;
+  cursor: pointer;
+}
+.file-explorer [role="tree"][data-virtual="true"] { position: relative; }
+.file-explorer [data-virtual="true"] > [data-tree-row-index] {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.file-explorer [data-virtual="true"] > .explorer-tree-error { right: 0; }
+.explorer-tree-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.explorer-tree-error > [role="alert"] {
+  color: var(--c-error);
+  font-size: var(--fs-meta);
 }
 .explorer-tree-toggle {
   display: inline-flex;
@@ -1155,6 +1322,65 @@ button.explorer-listing-action {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.explorer-transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.explorer-transfer-row > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.explorer-transfer-row > button.hover-bg {
+  border: none;
+  background: transparent;
+  color: var(--c-text-4);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: var(--r-btn);
+  font-size: var(--fs-meta);
+}
+.explorer-transfer-row > button:disabled { cursor: default; }
+.explorer-transfer-status > progress.ui-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 5px;
+}
+.explorer-metadata-footer,
+.explorer-mutation-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.explorer-metadata-footer { padding: 0 12px 12px; }
+.explorer-mutation-footer { gap: 8px; }
+.explorer-mutation-backdrop,
+.explorer-mutation-dialog {
+  position: fixed;
+  z-index: var(--z-overlay);
+}
+.explorer-mutation-backdrop { inset: 0; background: var(--backdrop-color); }
+.explorer-mutation-dialog {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  padding: 18px;
+  background: var(--c-bg-white);
+  border-radius: var(--r-overlay);
+  box-shadow: var(--shadow-overlay);
+  display: grid;
+  gap: 12px;
+}
+.explorer-mutation-dialog > p[role="alert"] {
+  margin: 0;
+  color: var(--c-error);
+  font-size: var(--fs-meta);
 }
 
 /* Transfer cards expose the file and state first, then transport details. */

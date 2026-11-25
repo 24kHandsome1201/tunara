@@ -892,7 +892,7 @@
   "settings.cli.reset_overrides.confirm": "Reset all CLI custom path overrides?",
   "settings.appearance.font_family.suggest": "Common: JetBrains Mono · Menlo · SF Mono · Monaco · Courier New",
   "sidebar.search.no_drag": "Drag-to-reorder is disabled while searching",
-  "explorer.remote_disconnected": "SSH disconnected · showing a read-only cached tree",
+  "explorer.remote_disconnected": "SSH disconnected · Read-only snapshot",
   "explorer.remote_unavailable": "Remote files are unavailable",
   "explorer.remote_unavailable_hint": "Reconnect SSH to load this directory.",
   "sidebar.session.move_up": "Move up",

@@ -1,6 +1,7 @@
 import { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { Activity } from "react";
 import { describe, expect, test, vi } from "vitest";
 import { downloadFailureKey, FileExplorer, parseUploadFailure, sortExplorerEntries, uploadFailureKey } from "@/ui/FileExplorer";
 import { useUIStore } from "@/state/ui";
@@ -17,6 +18,90 @@ function openFileActions() {
 }
 
 describe("FileExplorer directory navigation", () => {
+  test("revalidates children on return to Files without collapsing expanded folders", async () => {
+    let filename = "before.txt";
+    const reads: string[] = [];
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") return "/home/dev";
+      const { path } = payload as { path: string };
+      reads.push(path);
+      return path === "/srv/app"
+        ? [{ name: "docs", kind: "dir", size: 0, mtime: 0 }]
+        : [{ name: filename, kind: "file", size: 1, mtime: 0 }];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    await screen.findByRole("treeitem", { name: /^before\.txt/ });
+    rerender(explorer(false));
+    reads.length = 0;
+    filename = "after.txt";
+    await act(async () => rerender(explorer(true)));
+    expect(reads).toEqual(["/srv/app", "/srv/app/docs"]);
+    expect(screen.getByRole("treeitem", { name: /^docs/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("treeitem", { name: /^after\.txt/ })).toBeTruthy();
+    expect(screen.queryByRole("treeitem", { name: /^before\.txt/ })).toBeNull();
+  });
+
+  test("can reopen nested folders whose listing was discarded under a collapsed parent", async () => {
+    let filename = "before.txt";
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") return "/home/dev";
+      const { path } = payload as { path: string };
+      if (path === "/srv/app") return [{ name: "docs", kind: "dir", size: 0, mtime: 0 }];
+      if (path === "/srv/app/docs") return [{ name: "drafts", kind: "dir", size: 0, mtime: 0 }];
+      return [{ name: filename, kind: "file", size: 1, mtime: 0 }];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand drafts" }));
+    await screen.findByRole("treeitem", { name: /^before\.txt/ });
+    fireEvent.click(screen.getByRole("button", { name: "Collapse docs" }));
+    rerender(explorer(false));
+    filename = "after.txt";
+    await act(async () => rerender(explorer(true)));
+    fireEvent.click(screen.getByRole("button", { name: "Expand docs" }));
+    const drafts = await screen.findByRole("treeitem", { name: /^drafts/ });
+    expect(drafts.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Expand drafts" }));
+    await screen.findByRole("treeitem", { name: /^after\.txt/ });
+  });
+
+  test("replaces the previous listing with a retryable error if the folder moved while Files was hidden", async () => {
+    let moved = false;
+    let reads = 0;
+    mockIPC((command) => {
+      if (command !== "fs_read_dir") return "/home/dev";
+      reads += 1;
+      if (moved) throw new Error("directory not found");
+      return [{ name: "report.txt", kind: "file", size: 1, mtime: 0 }];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+    rerender(explorer(false));
+    moved = true;
+    await act(async () => rerender(explorer(true)));
+    expect(reads).toBe(2);
+    expect(screen.queryByRole("treeitem", { name: /^report\.txt/ })).toBeNull();
+    moved = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+  });
+
   test.each([false, true])("preserves the browsed directory across Inspector tabs (remote=%s)", async (remote) => {
     const session: Session = {
       id: "transfer-navigation", title: "Navigation", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
@@ -335,6 +420,44 @@ describe("FileExplorer directory navigation", () => {
     expect(row?.querySelector(".explorer-listing-modified")).toBeTruthy();
     expect(header?.querySelector(".explorer-listing-action")).toBeTruthy();
     expect(row?.querySelector("button.explorer-listing-action")).toBeTruthy();
+  });
+
+  test("reveals a clipped entry name on row hover and keyboard focus only", async () => {
+    const longName = "terminal-renderer-configuration.ts";
+    mockIPC((command) => command === "fs_read_dir" ? [
+      { name: longName, kind: "file", size: 1, mtime: 0 },
+      { name: "index.ts", kind: "file", size: 1, mtime: 0 },
+    ] : (() => { throw new Error(`unexpected command: ${command}`); })());
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    const clippedRow = await screen.findByRole("treeitem", { name: longName });
+    const fittingRow = screen.getByRole("treeitem", { name: "index.ts" });
+    for (const [row, scrollWidth] of [[clippedRow, 240], [fittingRow, 60]] as const) {
+      const label = row.querySelector<HTMLElement>(".explorer-listing-label")!;
+      Object.defineProperty(label, "scrollWidth", { configurable: true, value: scrollWidth });
+      Object.defineProperty(label, "clientWidth", { configurable: true, value: 120 });
+    }
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseEnter(fittingRow);
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      fireEvent.mouseLeave(fittingRow);
+
+      fireEvent.mouseEnter(clippedRow);
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(screen.getByRole("tooltip").textContent).toBe(longName);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      fireEvent.mouseLeave(clippedRow);
+
+      act(() => clippedRow.focus());
+      await act(() => vi.advanceTimersByTimeAsync(500));
+      expect(screen.getByRole("tooltip").textContent).toBe(longName);
+      fireEvent.keyDown(clippedRow, { key: "Escape" });
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("shows active transfers as a compact icon and numeric badge", async () => {
@@ -1195,6 +1318,67 @@ describe("FileExplorer workspace files", () => {
     useUIStore.setState({ downloadMaxFiles: previous.downloadMaxFiles, downloadMaxTotalBytes: previous.downloadMaxTotalBytes });
   });
 
+  test("drops missing files from batch download selection after refreshing", async () => {
+    let removed = false;
+    mockIPC((command) => {
+      if (command !== "ssh_fs_read_dir") return "/home/dev";
+      return [
+        { name: "keep.txt", kind: "file", size: 1, mtime: removed ? 1 : 0 },
+        ...(!removed ? [{ name: "removed.txt", kind: "file", size: 1, mtime: 0 }] : []),
+      ];
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />);
+    await screen.findByRole("treeitem", { name: /^keep\.txt/ });
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select all downloadable files" }));
+    const download = openFileActions().getByRole("menuitem", { name: "Download selected files (2)" });
+    expect(download).toBeTruthy();
+    fireEvent.keyDown(download, { key: "Escape" });
+    removed = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh file list" })));
+    expect(screen.queryByRole("checkbox", { name: "Select removed.txt for download" })).toBeNull();
+    expect((screen.getByRole("checkbox", { name: "Select keep.txt for download" }) as HTMLInputElement).checked).toBe(true);
+    expect(openFileActions().getByRole("menuitem", { name: "Download selected files (1)" })).toBeTruthy();
+  });
+
+  test.each(["refresh", "return"])("retains a download selection until its folder is read again (%s)", async (action) => {
+    let removed = false;
+    mockIPC((command, payload) => {
+      if (command !== "ssh_fs_read_dir") return "/home/dev";
+      const { path } = payload as { path: string };
+      if (path === "/srv/app") return [{ name: "docs", kind: "dir", size: 0, mtime: 0 }];
+      return [
+        { name: "keep.txt", kind: "file", size: 1, mtime: 0 },
+        ...(!removed ? [{ name: "removed.txt", kind: "file", size: 1, mtime: 0 }] : []),
+      ];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    await screen.findByRole("treeitem", { name: /^keep\.txt/ });
+    fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select keep.txt for download" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select removed.txt for download" }));
+    removed = true;
+    if (action === "refresh") {
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh file list" })));
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "Collapse docs" }));
+      rerender(explorer(false));
+      await act(async () => rerender(explorer(true)));
+    }
+    const actions = openFileActions();
+    expect(actions.getByRole("menuitem", { name: "Download selected files (2)" })).toBeTruthy();
+    fireEvent.keyDown(actions.getByRole("menuitem", { name: "Download selected files (2)" }), { key: "Escape" });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Expand docs" })));
+    expect((await screen.findByRole("checkbox", { name: "Select keep.txt for download" }) as HTMLInputElement).checked).toBe(true);
+    expect(openFileActions().getByRole("menuitem", { name: "Download selected files (1)" })).toBeTruthy();
+  });
+
   test("selects multiple remote files and queues safe typed downloads into one folder", async () => {
     useTransferStore.getState().replaceItemsForTest([]);
     const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];
@@ -1347,7 +1531,7 @@ describe("FileExplorer workspace files", () => {
     await screen.findByRole("treeitem", { name: /^cached\.txt/ });
     view.rerender(<FileExplorer sessionId="remote" rootDir="/srv/app" remote />);
 
-    expect(await screen.findByText("SSH disconnected · showing a read-only cached tree")).toBeTruthy();
+    expect(await screen.findByText("SSH disconnected · Read-only snapshot")).toBeTruthy();
     expect(screen.getByRole("treeitem", { name: /^cached\.txt/ })).toBeTruthy();
     expect(calls).not.toContain("fs_read_dir");
   });

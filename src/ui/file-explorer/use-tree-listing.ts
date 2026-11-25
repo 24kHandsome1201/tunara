@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
 import { sshReadDir } from "@/modules/ssh/remote-fs-bridge";
-import { joinPath, sortExplorerEntries, usableExplorerEntries, type SortDirection, type SortKey } from "./helpers";
+import { joinPath, parentPath, sortExplorerEntries, usableExplorerEntries, type SortDirection, type SortKey } from "./helpers";
 
 export interface ExplorerTreeNode {
   entry: DirEntry;
@@ -50,6 +50,8 @@ export interface TreeListing {
   /** Re-read an expanded directory in place, or drop stale cache if collapsed. */
   refreshDirectory: (path: string) => void;
   collapsePath: (path: string) => void;
+  isConfirmedMissingFile: (path: string) => boolean;
+  refreshExpandedDirectories: () => void;
   /** Invalidate in-flight child reads when the listing target changes. */
   beginListingEpoch: () => void;
   /** Drop expansion state after the root listing reloaded. */
@@ -121,7 +123,7 @@ export function useTreeListing({
     });
   }, []);
 
-  const readDirectoryChildren = useCallback((path: string, background: boolean) => {
+  const readDirectoryChildren = useCallback((path: string, background: boolean, discardOnFailure = false) => {
     if (remoteDisconnected) return;
     if (!background) {
       setTreeErrors((current) => {
@@ -162,6 +164,13 @@ export function useTreeListing({
     })
       .catch(() => {
         if (!background && currentRequest()) {
+          if (discardOnFailure) {
+            setTreeChildren((current) => {
+              const next = { ...current };
+              delete next[path];
+              return next;
+            });
+          }
           setTreeErrors((current) => ({ ...current, [path]: { kind: "readFailed" } }));
         }
       })
@@ -175,8 +184,9 @@ export function useTreeListing({
   }, [includeHidden, isRemote, remoteDisconnected, remotePtyId, sessionId, transportGeneration, treeRequestContext, treeRequestContextRef]);
 
   function expandDirectory(path: string) {
+    if (remoteDisconnected && !treeChildren[path]) return;
     setExpandedPaths((current) => new Set(current).add(path));
-    if (treeChildren[path] || treeLoading.has(path) || remoteDisconnected) return;
+    if (treeChildren[path] || treeLoading.has(path)) return;
     readDirectoryChildren(path, false);
   }
 
@@ -247,6 +257,28 @@ export function useTreeListing({
     return result;
   }, [visibleTreeRows]);
 
+  function refreshExpandedDirectories() {
+    const paths = visibleTreeRows.flatMap((row) => row.kind === "node" && row.expanded ? [row.path] : []);
+    beginListingEpoch();
+    setExpandedPaths(new Set(paths));
+    setTreeChildren((current) => Object.fromEntries(paths.filter((path) => path in current).map((path) => [path, current[path]])));
+    for (const path of paths) readDirectoryChildren(path, false, true);
+  }
+
+  const isConfirmedMissingFile = useCallback((path: string) => {
+    const root = currentPath.replace(/\/+$/, "") || "/";
+    if (path === root || !path.startsWith(root === "/" ? root : root + "/")) return true;
+    let kind: DirEntry["kind"] = "file";
+    while (path !== root) {
+      const parent = parentPath(path);
+      const siblings = parent === root ? entries : treeChildren[parent];
+      if (siblings && !siblings.some((entry) => entry.kind === kind && joinPath(parent, entry.name) === path)) return true;
+      path = parent;
+      kind = "dir";
+    }
+    return false;
+  }, [currentPath, entries, treeChildren]);
+
   return {
     visibleTreeNodes,
     visibleTreeRows,
@@ -258,6 +290,8 @@ export function useTreeListing({
     expandDirectory,
     refreshDirectory,
     collapsePath,
+    isConfirmedMissingFile,
+    refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
   };
