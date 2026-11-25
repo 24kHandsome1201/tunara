@@ -174,8 +174,9 @@ describe("SSH connection sheet", () => {
     fireEvent.click(connect);
     expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({
       host: "lab.example", port: 2222, user: "qa",
-      route: { profileId: "jump", jump: { host: "jump.example", port: 2201, user: "ops", authMethod: "key", identityFile: "/keys/jump" } },
+      route: { profileId: "jump", jump: { host: "jump.example", port: 2201, user: "ops", authMethod: "auto" } },
     });
+    expect(useSessionsStore.getState().sessions[0].remote?.route?.jump.identityFile).toBeUndefined();
   });
 
   test("a pasted -J none does not overwrite a routed saved alias", async () => {
