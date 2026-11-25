@@ -223,6 +223,11 @@ export function FileExplorer({
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
   const listingCacheKey = `${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`;
   const hasCachedListing = cachedListingKey === listingCacheKey;
+  useEffect(() => {
+    if (active && !isRemote && hasCachedListing) {
+      useUIStore.getState().rememberExplorerStart(sessionId, currentPath);
+    }
+  }, [active, isRemote, hasCachedListing, sessionId, currentPath]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);

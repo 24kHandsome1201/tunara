@@ -17,16 +17,22 @@ function openFileActions() {
 }
 
 describe("FileExplorer directory navigation", () => {
-  test("tracks the local terminal directory until Files navigates away from it", async () => {
+  test("follows the local terminal directory and remembers it when a terminal link opens another folder", async () => {
+    const session: Session = { id: "local", title: "Local", dir: "/tmp/next", branch: "", runState: "idle", updatedAt: 1 };
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
     mockIPC((command, payload) => {
-      if (command === "fs_resolve_dir") return "/home/dev";
-      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
       const { path } = payload as { path: string };
-      return [{ name: path === "/tmp/first" ? "first.txt" : "next.txt", kind: "file", size: 0, mtime: 0 }];
+      if (command === "fs_resolve_dir") return path === "~" ? "/home/dev" : path;
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      return [{ name: `${path.split("/").pop()}.txt`, kind: "file", size: 0, mtime: 0 }];
     });
     const { rerender } = render(<FileExplorer sessionId="local" rootDir="/tmp/first" />);
     await screen.findByRole("treeitem", { name: "first.txt" });
     rerender(<FileExplorer sessionId="local" rootDir="/tmp/next" />);
+    await screen.findByRole("treeitem", { name: "next.txt" });
+    await act(async () => { await openResource(resourceRefForSession(session, "/tmp/linked"), "directory"); });
+    await screen.findByRole("treeitem", { name: "linked.txt" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(await screen.findByRole("treeitem", { name: "next.txt" })).toBeTruthy();
   });
 

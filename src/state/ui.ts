@@ -339,6 +339,7 @@ interface UIState extends AppearanceSettings {
   explorerPaths: Record<string, string>;
   explorerHistory: Record<string, { paths: string[]; index: number }>;
 
+  rememberExplorerStart: (sessionId: string, path: string) => void;
   setExplorerPath: (sessionId: string, next: string | ((current: string) => string), initial?: string) => void;
   stepExplorerHistory: (sessionId: string, offset: -1 | 1) => void;
   showTerminal: () => void;
@@ -445,11 +446,15 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     explorerHistory: {},
     ...DEFAULT_SETTINGS,
 
-    setExplorerPath: (sessionId, next, initial = "") => set((s) => {
-      const current = s.explorerPaths[sessionId] ?? initial;
+    rememberExplorerStart: (sessionId, path) => set((s) => {
+      if (s.explorerPaths[sessionId] || s.explorerHistory[sessionId]?.paths[0] === path) return s;
+      return { explorerHistory: { ...s.explorerHistory, [sessionId]: { paths: [path], index: 0 } } };
+    }),
+    setExplorerPath: (sessionId, next, initial) => set((s) => {
+      const history = s.explorerHistory[sessionId];
+      const current = s.explorerPaths[sessionId] ?? initial ?? history?.paths[history.index] ?? "";
       const path = typeof next === "function" ? next(current) : next;
       if (path === current) return s;
-      const history = s.explorerHistory[sessionId];
       const paths = history?.paths[history.index] === current
         ? history.paths.slice(0, history.index + 1)
         : current.startsWith("/") ? [current] : [];
