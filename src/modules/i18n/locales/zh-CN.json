@@ -424,6 +424,7 @@
   "explorer.refresh": "刷新文件列表",
   "explorer.hide_dotfiles": "不显示隐藏文件",
   "explorer.show_dotfiles": "显示隐藏文件",
+  "explorer.remote_hidden_search_notice": "隐藏文件会在目录树中显示，但不会包含在 SSH 文件名或内容搜索中。",
   "explorer.clear_search": "清空搜索",
   "explorer.loading": "正在加载…",
   "explorer.searching": "正在搜索…",

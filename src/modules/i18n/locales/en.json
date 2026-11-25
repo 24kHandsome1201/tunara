@@ -422,6 +422,7 @@
   "explorer.refresh": "Refresh file list",
   "explorer.hide_dotfiles": "Hide dotfiles",
   "explorer.show_dotfiles": "Show dotfiles",
+  "explorer.remote_hidden_search_notice": "Hidden files appear in the tree, but not in SSH file-name or content search.",
   "explorer.clear_search": "Clear search",
   "explorer.loading": "Loading…",
   "explorer.searching": "Searching…",
