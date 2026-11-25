@@ -1586,4 +1586,51 @@ describe("FileExplorer workspace files", () => {
     expect(screen.getByPlaceholderText("Search this folder")).toHaveProperty("value", "match");
     expect(searchAttempts).toBe(2);
   });
+
+  test.each(["name", "content"] as const)("virtualizes %s search and focuses results outside the mounted window", async (mode) => {
+    const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("scroll-fade-y") ? 96 : 0;
+    });
+    const matches = Array.from({ length: 80 }, (_, index) => {
+      const name = `match-${index}.txt`;
+      return { path: `/repo/${name}`, rel: name, name, isDir: false, line: index + 1, text: `match line ${index}` };
+    });
+    mockIPC((command) => {
+      if (command === "fs_resolve_dir") return "/repo";
+      if (command === "fs_search" || command === "fs_grep") return { hits: matches, truncated: false, unreadable: 0 };
+      return [];
+    });
+    const { container } = render(<FileExplorer sessionId="virtual-search" rootDir="/repo" />);
+    const runContentSearch = mode === "content";
+    if (runContentSearch) fireEvent.click(screen.getByRole("button", { name: "Switch to content search" }));
+    try {
+      const input = screen.getByPlaceholderText(runContentSearch ? "Search in file contents" : "Search this folder");
+      fireEvent.change(input, { target: { value: "match" } });
+      const result = (index: number) => ({ name: runContentSearch ? new RegExp(`match line ${index}$`) : `match-${index}.txt` });
+      const first = await screen.findByRole("button", result(0));
+      const scroller = first.closest<HTMLElement>(".scroll-fade-y")!;
+      const mounted = () => scroller.querySelectorAll("[data-explorer-item]").length;
+      expect(mounted()).toBeLessThan(20);
+      expect(scroller.style.overscrollBehavior).toBe("contain");
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(first);
+
+      scroller.scrollTop = runContentSearch ? 2_200 : 1_350;
+      fireEvent.scroll(scroller);
+      expect(screen.getByRole("button", result(40))).toBeTruthy();
+      expect(mounted()).toBeLessThan(20);
+      expect(document.activeElement).toBe(first);
+      expect(screen.queryByRole("button", result(1))).toBeNull();
+      expect(container.querySelector(".file-explorer")?.scrollTop).toBe(0);
+
+      fireEvent.keyDown(first, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(screen.getByRole("button", result(1)));
+      expect(scroller.scrollTop).toBeLessThan(100);
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(first);
+    } finally {
+      if (runContentSearch) fireEvent.click(screen.getByRole("button", { name: "Switch to file-name search" }));
+      clientHeight.mockRestore();
+    }
+  });
 });

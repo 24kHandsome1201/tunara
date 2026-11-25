@@ -7,7 +7,8 @@ const LISTING_ROW_HEIGHT = 32;
 const LISTING_TOP_INSET = 33;
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { fsReadDir, fsResolveDir, type DirEntry } from "@/modules/fs/fs-bridge";
+import { fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
+import type { GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import {
   invalidateRemoteSearchCache,
   sshHome,
@@ -66,11 +67,21 @@ import { useTreeListing, type ExplorerTreeNode, type ExplorerTreeRow } from "./f
 import { mountedTreeRowIndexes } from "./file-explorer/tree-virtual";
 import { useDirectUpload } from "./file-explorer/use-direct-upload";
 import { SearchLimitControl, SearchRetryButton } from "./file-explorer/search-controls";
+import { SearchViewport, type SearchViewportHandle } from "./file-explorer/search-viewport";
 import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 // Re-exported for existing importers/tests; implementations moved to ./file-explorer/.
 export { downloadFailureKey, parseUploadFailure, uploadFailureKey, type UploadFailure } from "./file-explorer/transfer-failures";
 export { sortExplorerEntries, formatModifiedTime } from "./file-explorer/helpers";
+
+const GREP_HEADER_HEIGHT = 24;
+const GREP_LINE_HEIGHT = 22;
+
+type SearchRow = { key: string; height: number; focusable: boolean } & (
+  | { kind: "name"; hit: SearchHit }
+  | { kind: "group"; group: GrepFileGroup }
+  | { kind: "line"; group: GrepFileGroup; ln: GrepFileGroup["lines"][number] }
+);
 
 interface FileExplorerProps {
   sessionId: string;
@@ -239,6 +250,19 @@ export function FileExplorer({
     searchMaxLimit,
     isSearching,
   } = search;
+  const searchRows = useMemo<SearchRow[]>(() => {
+    if (!isSearching) return [];
+    if (searchMode === "name") {
+      return searchHits.map((hit) => ({ kind: "name", key: hit.path, height: LISTING_ROW_HEIGHT, focusable: true, hit }));
+    }
+    return grepHits.flatMap((group): SearchRow[] => [
+      { kind: "group", key: group.path, height: GREP_HEADER_HEIGHT, focusable: false, group },
+      ...group.lines.map((ln, index): SearchRow => ({
+        kind: "line", key: JSON.stringify([group.path, ln.line]), height: GREP_LINE_HEIGHT + (index === group.lines.length - 1 ? 6 : 0),
+        focusable: true, group, ln,
+      })),
+    ]);
+  }, [grepHits, isSearching, searchHits, searchMode]);
   const [contextMenu, setContextMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -259,7 +283,8 @@ export function FileExplorer({
   const activeFilePath = useUIStore((s) =>
     s.readers[sessionId]?.current?.filePath,
   );
-  const resultsListRef = useRef<HTMLDivElement>(null);
+  const treeListRef = useRef<HTMLDivElement>(null);
+  const searchViewportRef = useRef<SearchViewportHandle>(null);
   const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
   const [listingFocusIndex, setListingFocusIndex] = useState(0);
@@ -387,7 +412,7 @@ export function FileExplorer({
         return;
       }
       const rect = explorerRef.current?.getBoundingClientRect();
-      const listRect = resultsListRef.current?.getBoundingClientRect();
+      const listRect = treeListRef.current?.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
       const x = event.payload.position.x / scale;
       const y = event.payload.position.y / scale;
@@ -398,7 +423,7 @@ export function FileExplorer({
         ? dropDestinationFromListing({
           clientY: y,
           listTop: listRect.top,
-          scrollTop: resultsListRef.current?.scrollTop ?? 0,
+          scrollTop: treeListRef.current?.scrollTop ?? 0,
           inset: LISTING_TOP_INSET,
           rowHeight: LISTING_ROW_HEIGHT,
           nodes: listing.nodes,
@@ -611,12 +636,12 @@ export function FileExplorer({
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
     : [], [binding, visibleTreeNodes, downloadLimits]);
 
-  const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
+  const contentKey = isSearching ? `search:${searchMode}:${searchQuery}` : currentPath;
   const hasCachedRemoteListing = remoteDisconnected && cachedListingKey === `remote\0${sessionId}\0${currentPath}`;
   const listingNodeCount = visibleTreeNodes.length;
   const listingRowCount = visibleTreeRows.length;
   useLayoutEffect(() => {
-    const element = resultsListRef.current;
+    const element = treeListRef.current;
     if (!element) return;
     const update = () => setListScroll({ top: element.scrollTop, height: element.clientHeight });
     update();
@@ -686,7 +711,7 @@ export function FileExplorer({
 
   useLayoutEffect(() => {
     if (pendingListingFocus === null) return;
-    const target = resultsListRef.current?.querySelector<HTMLElement>(
+    const target = treeListRef.current?.querySelector<HTMLElement>(
       `[data-listing-index="${pendingListingFocus}"]`,
     );
     if (!target) return;
@@ -716,7 +741,7 @@ export function FileExplorer({
     if (!node) return;
     focusedPathRef.current = node.path;
     setListingFocusIndex(target);
-    const list = resultsListRef.current;
+    const list = treeListRef.current;
     const mounted = list?.querySelector<HTMLElement>(`[data-listing-index="${target}"]`);
     if (mounted) {
       mounted.focus();
@@ -1240,6 +1265,75 @@ export function FileExplorer({
       : { key, direction: key === "modified" ? "desc" : "asc" });
   }
 
+  function renderSearchRow(row: SearchRow) {
+    if (row.kind === "name") {
+      const { hit } = row;
+      const active = activeFilePath === hit.path;
+      return (
+        <button
+          data-explorer-item
+          onClick={() => hit.isDir ? openSearchDir(hit.path) : openFile(hit.path)}
+          className="hover-bg"
+          style={{
+            width: "100%", height: LISTING_ROW_HEIGHT - 2, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
+            background: active ? "var(--c-accent-bg-light)" : "transparent",
+            cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left",
+          }}
+        >
+          {hit.isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(hit.name)} />}
+          <span style={{ fontSize: "var(--fs-secondary)", color: active ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
+          {hit.isDir && <TreeChevron />}
+        </button>
+      );
+    }
+    if (row.kind === "group") {
+      const { group } = row;
+      return (
+        <div style={{ height: GREP_HEADER_HEIGHT, padding: "0 var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
+          <FileIcon tint={fileKindTint(group.rel)} />
+          <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
+        </div>
+      );
+    }
+    const { group, ln } = row;
+    return (
+      <button
+        data-explorer-item
+        onClick={() => openFile(group.path, ln.line)}
+        title={group.rel}
+        className="hover-bg"
+        style={{ width: "100%", height: GREP_LINE_HEIGHT - 1, padding: "0 var(--sp-2) 0 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}
+      >
+        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{ln.line}</span>
+        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
+      </button>
+    );
+  }
+
+  const resultCount = searchMode === "content" ? grepHits.length : searchHits.length;
+  const resultsTruncated = searchMode === "content" ? grepTruncated : searchTruncated;
+  const searchHeader = searchLoading && resultCount === 0 ? (
+    <PanelLoadingState label={t("explorer.searching")} />
+  ) : searchError ? (
+    <>
+      <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+      <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
+    </>
+  ) : (
+    <>
+      {resultCount === 0 ? (
+        <PanelEmptyState label={t(searchMode === "content" ? "explorer.content_no_match" : "explorer.no_match")} sublabel={searchQuery.trim()} />
+      ) : (
+        <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
+          <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{resultCount}</span>
+        </div>
+      )}
+      <UnreadableNotice count={searchUnreadable} />
+    </>
+  );
+
   return (
     <div
       ref={explorerRef}
@@ -1295,7 +1389,11 @@ export function FileExplorer({
             return;
           }
           if (event.key !== "ArrowDown") return;
-          const first = resultsListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
+          if (isSearching) {
+            if (searchViewportRef.current?.focusFirst()) event.preventDefault();
+            return;
+          }
+          const first = treeListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
           if (!first) return;
           event.preventDefault();
           first.focus();
@@ -1352,123 +1450,25 @@ export function FileExplorer({
       <div aria-live="polite" aria-atomic="true" className="sr-only" data-transfer-announcement>
         {transferAnnouncement}
       </div>
-      <div
+      {isSearching && (
+        <SearchViewport
+          key={contentKey}
+          ref={searchViewportRef}
+          rows={searchError ? [] : searchRows}
+          renderRow={renderSearchRow}
+          header={searchHeader}
+          footer={resultCount > 0 && !searchError && (resultsTruncated || searchLoading)
+            ? <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />
+            : undefined}
+        />
+      )}
+      {!isSearching && <div
         key={contentKey}
-        ref={resultsListRef}
-        onKeyDown={(e) => {
-          // 结果/树列表方向键漫游：↑↓ 在列表内按钮间移动焦点
-          if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-          if (!isSearching) return;
-          const list = e.currentTarget as HTMLElement;
-          const active = document.activeElement as HTMLElement | null;
-          const items = Array.from(list.querySelectorAll<HTMLElement>("[data-explorer-item]"));
-          if (items.length === 0) return;
-          e.preventDefault();
-          const idx = items.indexOf(active as HTMLElement);
-          if (idx === -1) return;
-          const next = e.key === "ArrowDown"
-            ? items[Math.min(idx + 1, items.length - 1)]
-            : items[Math.max(idx - 1, 0)];
-          next?.focus();
-        }}
-        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--dur-base) var(--ease-out)` : undefined }}
+        ref={treeListRef}
+        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--dur-base) var(--ease-out)` : undefined }}
         className="no-scrollbar scroll-fade-y"
       >
-        {isSearching ? (
-          searchMode === "content" ? (
-            searchLoading && grepHits.length === 0 ? (
-              <PanelLoadingState label={t("explorer.searching")} />
-            ) : searchError ? (
-              <>
-                <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-                <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
-              </>
-            ) : grepHits.length === 0 ? (
-              <>
-                <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
-                <UnreadableNotice count={searchUnreadable} />
-              </>
-            ) : (
-              <>
-                <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
-                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{grepHits.length}</span>
-                </div>
-                <UnreadableNotice count={searchUnreadable} />
-                {grepHits.map((group) => (
-                  <div key={group.path} style={{ marginBottom: 6 }}>
-                    <div style={{ padding: "3px var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <FileIcon tint={fileKindTint(group.rel)} />
-                      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
-                      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
-                    </div>
-                    {group.lines.map((ln) => (
-                      <button
-                        key={ln.line}
-                        data-explorer-item
-                        // Content hits open the owning file tab. Keeping local
-                        // and SSH results on the same workspace surface avoids
-                        // sending remote paths to a local external editor.
-                        onClick={() => openFile(group.path, ln.line)}
-                        title={group.rel}
-                        className="hover-bg"
-                        style={{ width: "100%", padding: "2px var(--sp-2) 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
-                      >
-                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{ln.line}</span>
-                        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-                {(grepTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />}
-              </>
-            )
-          ) : (
-          searchLoading && searchHits.length === 0 ? (
-            <PanelLoadingState label={t("explorer.searching")} />
-          ) : searchError ? (
-            <>
-              <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-              <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
-            </>
-          ) : searchHits.length === 0 ? (
-            <>
-              <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
-              <UnreadableNotice count={searchUnreadable} />
-            </>
-          ) : (
-            <>
-              <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
-                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{searchHits.length}</span>
-              </div>
-              <UnreadableNotice count={searchUnreadable} />
-              {searchHits.map((hit) => {
-                const isExpanded = activeFilePath === hit.path;
-                return (
-                  <div key={hit.path}>
-                    <button
-                      data-explorer-item
-                      onClick={() => hit.isDir ? openSearchDir(hit.path) : openFile(hit.path)}
-                      className="hover-bg"
-                      style={{
-                        width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
-                        background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
-                        cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
-                      }}
-                    >
-                      {hit.isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(hit.name)} />}
-                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
-                      {hit.isDir && <TreeChevron />}
-                    </button>
-                  </div>
-                );
-              })}
-              {(searchTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />}
-            </>
-          )
-          )
-        ) : remoteDisconnected && !hasCachedRemoteListing ? (
+        {remoteDisconnected && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell">
             <PanelEmptyState
               label={t("explorer.remote_unavailable")}
@@ -1545,7 +1545,7 @@ export function FileExplorer({
             </div>
           </>
         )}
-      </div>
+      </div>}
 
       {propertiesPath && binding && (
         <Modal
