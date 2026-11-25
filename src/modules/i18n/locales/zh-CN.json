@@ -383,7 +383,6 @@
   "diff.empty.remote_unavailable_hint": "请重新连接 SSH 后读取 Git 状态。",
   "diff.loading": "正在读取 Git 状态…",
   "diff.empty.clean": "没有改动",
-  "diff.status.incomplete": "Git 状态输出超出大小限制，部分改动未显示。",
   "diff.section.staged": "已暂存",
   "diff.section.unstaged": "未暂存",
   "diff.section.untracked": "未追踪",

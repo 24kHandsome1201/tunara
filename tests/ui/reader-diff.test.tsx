@@ -24,16 +24,16 @@ beforeEach(() => {
 });
 
 test("Changes warns about incomplete SSH status without hiding available changes", () => {
-  const remote: Session = { ...session, remote: { user: "deploy", host: "example.test", port: 22 }, ptyId: 42, gitStatusIncomplete: true };
+  const remote: Session = { ...session, remote: { user: "deploy", host: "example.test", port: 22 }, ptyId: 42, gitTruncated: true };
   const view = render(<DiffPanel session={remote} embedded />);
-  expect(screen.getByRole("status").textContent).toContain("Git status output exceeded the size limit");
+  expect(screen.getByRole("status").textContent).toContain("truncated");
   expect(screen.getByRole("button", { name: "app.ts" })).toBeTruthy();
 
   view.rerender(<DiffPanel session={{ ...remote, changes: { files: [] } }} embedded />);
-  expect(screen.getByRole("status").textContent).toContain("Git status output exceeded the size limit");
+  expect(screen.getByRole("status").textContent).toContain("truncated");
   expect(screen.queryByText("Working tree clean")).toBeNull();
 
-  view.rerender(<DiffPanel session={{ ...remote, changes: { files: [] }, gitStatusIncomplete: false }} embedded />);
+  view.rerender(<DiffPanel session={{ ...remote, changes: { files: [] }, gitTruncated: false }} embedded />);
   expect(screen.getByText("Working tree clean")).toBeTruthy();
 });
 
