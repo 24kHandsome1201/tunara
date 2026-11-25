@@ -1328,9 +1328,17 @@ export function FileExplorer({
       const directory = parentPath(path);
       const name = path.slice(path.lastIndexOf("/") + 1);
       const siblings = await readDir(directory, name.startsWith("."));
-      if (request !== pathJumpRequest.current || !siblings.some((entry) => entry.name === name && entry.kind !== "dir")) return;
-      setPinnedFile({ directory, name });
-      if (directory === currentPath && !entries.some((entry) => entry.name === name && entry.kind !== "dir")) refresh();
+      if (request !== pathJumpRequest.current) return;
+      let target = siblings.find((entry) => entry.name === name);
+      if (!target) {
+        const folded = name.toLowerCase();
+        const matches = siblings.filter((entry) => entry.name.toLowerCase() === folded);
+        if (matches.length === 1) target = matches[0];
+      }
+      if (!target || target.kind === "dir") return;
+      const targetName = target.name;
+      setPinnedFile({ directory, name: targetName });
+      if (directory === currentPath && !entries.some((entry) => entry.name === targetName && entry.kind !== "dir")) refresh();
       openSearchDir(directory);
     } catch {
       // Keep the query and its normal search results when a path cannot be resolved.

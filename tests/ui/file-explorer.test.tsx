@@ -92,6 +92,33 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.getAllByRole("treeitem")[0]).toBe(pinned);
   });
 
+  test("pins the listed filename for case-insensitive jumps and requires an exact match when ambiguous", async () => {
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_search") return { hits: [], unreadable: 0 };
+      if (command !== "fs_read_dir") return null;
+      if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
+      return ["Readme.md", "Title.ts", "title.ts"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 }));
+    });
+    render(<FileExplorer sessionId="case-file-jump" rootDir="/srv/app" />);
+    await screen.findByRole("treeitem", { name: "Readme.md" });
+    const search = screen.getByRole("textbox", { name: "Search this folder" });
+    const submit = async (name: string) => {
+      fireEvent.change(search, { target: { value: `/srv/app/${name}` } });
+      await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+    };
+
+    await submit("README.md");
+    const pinned = await screen.findByRole("treeitem", { name: "Readme.md" });
+    expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(pinned.getAttribute("data-tree-path")).toBe("/srv/app/Readme.md");
+
+    await submit("TITLE.ts");
+    expect(search).toHaveProperty("value", "/srv/app/TITLE.ts");
+    await submit("Title.ts");
+    expect((await screen.findByRole("treeitem", { name: "Title.ts" })).getAttribute("data-pinned")).toBe("true");
+  });
+
   test("revalidates children on return to Files without collapsing expanded folders", async () => {
     let filename = "before.txt";
     const reads: string[] = [];
