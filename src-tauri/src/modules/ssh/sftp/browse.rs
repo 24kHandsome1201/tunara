@@ -3,6 +3,7 @@ use std::time::Duration;
 use super::{remote_mtime_millis, EntryKind, RemoteDirEntry, SFTP_CONTROL_TIMEOUT};
 use crate::modules::pty::{PtyState, Session};
 use crate::modules::ssh::connection::await_stage;
+use crate::modules::ssh::remote_fs::commands::validate_remote_path;
 const MAX_REMOTE_DIR_ENTRIES: usize = 10_000;
 
 const MAX_REMOTE_DIR_NAME_BYTES: usize = 4 * 1024 * 1024;
@@ -78,6 +79,36 @@ pub async fn ssh_fs_read_dir(
             (rank, e.name.to_lowercase())
         });
         Ok(out)
+    })
+    .await
+    .map_err(|error: String| {
+        crate::modules::ssh::safe_ipc_error(crate::modules::ssh::SshIpcErrorKind::SftpRead, error)
+    })
+}
+
+#[tauri::command]
+pub async fn ssh_fs_canonical_path(
+    state: tauri::State<'_, PtyState>,
+    id: u32,
+    path: String,
+) -> Result<String, String> {
+    (async {
+        if path.len() > 16 * 1024 || !path.starts_with('/') || path.contains('\0') {
+            return Err("remote path must be a bounded absolute POSIX path".into());
+        }
+        let session = state.get(id).ok_or_else(|| "no session".to_string())?;
+        let Session::Ssh(ssh) = session.as_ref() else {
+            return Err("not a remote session".into());
+        };
+        let sftp = ssh.sftp().await?;
+        let canonical = await_stage(
+            "resolve remote path",
+            SFTP_CONTROL_TIMEOUT,
+            sftp.canonicalize(path),
+        )
+        .await?;
+        validate_remote_path(&canonical)?;
+        Ok(canonical)
     })
     .await
     .map_err(|error: String| {

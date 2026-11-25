@@ -61,7 +61,7 @@ export function resolveTerminalFileLinkPath(rawPath: string, cwd: string | undef
   return normalizePosixPath(`${base.replace(/\/+$/, "")}/${rawPath}`);
 }
 
-export function normalizePosixPath(path: string): string {
+function normalizePosixPath(path: string): string {
   const root = path.startsWith("/") ? "/" : path.startsWith("~/") ? "~/" : "";
   const parts = path.slice(root.length).split("/");
   const stack: string[] = [];

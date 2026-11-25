@@ -7,10 +7,11 @@ const LISTING_ROW_HEIGHT = 32;
 const LISTING_TOP_INSET = 33;
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
+import { fsCanonicalPath, fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
 import type { GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import {
   invalidateRemoteSearchCache,
+  sshCanonicalPath,
   sshHome,
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
@@ -45,7 +46,6 @@ import {
 import { validateManifest } from "@/modules/ssh/transfer-bridge";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
-import { normalizePosixPath } from "@/modules/terminal/lib/terminal-file-link-parser";
 import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutationDialog";
 import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
@@ -1309,25 +1309,29 @@ export function FileExplorer({
     const readDir = remotePtyId !== undefined
       ? (path: string, hidden: boolean) => sshReadDir(remotePtyId, path, hidden)
       : fsReadDir;
+    const canonicalPath = remotePtyId !== undefined
+      ? (path: string) => sshCanonicalPath(remotePtyId, path)
+      : fsCanonicalPath;
     try {
       const homeRelative = !query.startsWith("/");
       const home = homeRelative
         ? remotePtyId !== undefined ? await sshHome(remotePtyId) : await fsResolveDir("~")
         : "";
       if (request !== pathJumpRequest.current || (homeRelative && !home.startsWith("/"))) return;
-      const absolute = homeRelative ? home + query.slice(1) : query;
-      const path = normalizePosixPath(absolute);
+      const path = homeRelative ? home + query.slice(1) : query;
       const isDirectory = await readDir(path, false).then(() => true, () => false);
       if (request !== pathJumpRequest.current) return;
       if (isDirectory) {
+        const directory = await canonicalPath(path);
+        if (request !== pathJumpRequest.current) return;
         setPinnedFile(null);
-        openSearchDir(path);
+        openSearchDir(directory);
         return;
       }
-      if (/\/(?:\.\.?)?$/.test(absolute)) return;
-      const directory = parentPath(path);
+      if (/\/(?:\.\.?)?$/.test(path)) return;
+      const parent = parentPath(path);
       const name = path.slice(path.lastIndexOf("/") + 1);
-      const siblings = await readDir(directory, name.startsWith("."));
+      const siblings = await readDir(parent, name.startsWith("."));
       if (request !== pathJumpRequest.current) return;
       let target = siblings.find((entry) => entry.name === name);
       if (!target) {
@@ -1336,6 +1340,8 @@ export function FileExplorer({
         if (matches.length === 1) target = matches[0];
       }
       if (!target || target.kind === "dir") return;
+      const directory = await canonicalPath(parent);
+      if (request !== pathJumpRequest.current) return;
       const targetName = target.name;
       setPinnedFile({ directory, name: targetName });
       if (directory === currentPath && !entries.some((entry) => entry.name === targetName && entry.kind !== "dir")) refresh();

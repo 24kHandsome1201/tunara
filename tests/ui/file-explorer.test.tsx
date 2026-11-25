@@ -21,10 +21,17 @@ describe("FileExplorer directory navigation", () => {
   test.each([false, true])("jumps to absolute directories and pins files without opening them (remote=%s)", async (remote) => {
     mockIPC((command, payload) => {
       if (command === "ssh_fs_home" || command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_canonical_path" || command === "ssh_fs_canonical_path") {
+        const { path } = payload as { path: string };
+        if (path === "/home/dev/link/..") return "/other";
+        if (["/home/dev/docs", "/home//dev/../dev/./docs/", "/home/dev/./docs//archive/.."].includes(path)) return "/home/dev/docs";
+        throw new Error("not found");
+      }
       if (command === "fs_read_dir" || command === "ssh_fs_read_dir") {
         const { path, includeHidden } = payload as { path: string; includeHidden: boolean };
         if (path === "/srv/app") return [];
-        if (path === "/home/dev/docs") return [
+        if (path === "/home/dev/link/.." || path === "/other") return [{ name: "symlink-target-parent.txt", kind: "file", size: 1, mtime: 0 }];
+        if (["/home/dev/docs", "/home//dev/../dev/./docs/", "/home/dev/./docs//archive/.."].includes(path)) return [
           { name: "archive", kind: "dir", size: 0, mtime: 0 },
           { name: "readme.md", kind: "file", size: 1, mtime: 0 },
           ...(includeHidden ? [".notes.md", ".other"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 })) : []),
@@ -67,12 +74,20 @@ describe("FileExplorer directory navigation", () => {
     await submit("/home/dev/docs");
     await screen.findByRole("treeitem", { name: "archive" });
     expect(screen.queryByRole("treeitem", { name: ".notes.md" })).toBeNull();
+
+    await submit("/home/dev/link/..");
+    await screen.findByRole("treeitem", { name: "symlink-target-parent.txt" });
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/other");
+    await submit("/home/dev/missing/../docs");
+    expect(search).toHaveProperty("value", "/home/dev/missing/../docs");
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/other");
   });
 
   test("refreshes the current directory when a path jump finds a file absent from the listing", async () => {
     let created = false;
     mockIPC((command, payload) => {
       if (command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_canonical_path") return "/srv/app";
       if (command === "fs_search") return { hits: [], unreadable: 0 };
       if (command !== "fs_read_dir") return null;
       if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
@@ -95,6 +110,7 @@ describe("FileExplorer directory navigation", () => {
   test("pins the listed filename for case-insensitive jumps and requires an exact match when ambiguous", async () => {
     mockIPC((command, payload) => {
       if (command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_canonical_path") return "/srv/app";
       if (command === "fs_search") return { hits: [], unreadable: 0 };
       if (command !== "fs_read_dir") return null;
       if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");

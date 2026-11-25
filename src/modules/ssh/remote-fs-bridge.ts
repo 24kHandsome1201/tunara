@@ -24,6 +24,10 @@ export function sshReadDir(id: number, path: string, includeHidden = false): Pro
   return invoke<DirEntry[]>("ssh_fs_read_dir", { id, path, includeHidden });
 }
 
+export function sshCanonicalPath(id: number, path: string): Promise<string> {
+  return invoke<string>("ssh_fs_canonical_path", { id, path });
+}
+
 export function sshReadFile(id: number, path: string): Promise<ReadResult> {
   return invoke<ReadResult>("ssh_fs_read_file", { id, path });
 }

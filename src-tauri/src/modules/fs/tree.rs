@@ -98,6 +98,19 @@ pub fn fs_resolve_dir(path: String) -> Result<String, String> {
     resolve_dir_with(&path, super::expand_tilde)
 }
 
+#[tauri::command]
+pub fn fs_canonical_path(path: String) -> Result<String, String> {
+    let path = std::path::Path::new(&path);
+    if !path.is_absolute() {
+        return Err("expected an absolute path".into());
+    }
+    path.canonicalize()
+        .map_err(|error| error.to_string())?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| "canonical path is not UTF-8".into())
+}
+
 fn resolve_dir_with(path: &str, expand: impl Fn(&str) -> PathBuf) -> Result<String, String> {
     let resolved = expand(path.trim());
     if !resolved.is_absolute() {
@@ -111,6 +124,25 @@ mod tests {
     use super::resolve_dir_with;
     use crate::modules::util::expand_tilde_with;
     use std::path::Path;
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_path_resolves_parent_in_filesystem_order() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        let root =
+            std::env::temp_dir().join(format!("tunara-canonical-path-{}", std::process::id()));
+        fs::create_dir_all(root.join("source")).unwrap();
+        fs::create_dir_all(root.join("target/child")).unwrap();
+        symlink(root.join("target/child"), root.join("source/link")).unwrap();
+        let result = super::fs_canonical_path(root.join("source/link/..").to_str().unwrap().into());
+        let missing =
+            super::fs_canonical_path(root.join("missing/../target").to_str().unwrap().into());
+        let target = root.join("target").canonicalize().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(result.unwrap(), target.to_str().unwrap());
+        assert!(missing.is_err());
+    }
 
     #[test]
     fn resolve_dir_expands_tilde_against_home() {
