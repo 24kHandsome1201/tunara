@@ -66,8 +66,8 @@ import { useExplorerSearch } from "./file-explorer/use-explorer-search";
 import { useTreeListing, type ExplorerTreeNode, type ExplorerTreeRow } from "./file-explorer/use-tree-listing";
 import { mountedTreeRowIndexes } from "./file-explorer/tree-virtual";
 import { useDirectUpload } from "./file-explorer/use-direct-upload";
-import { SearchLimitControl, SearchRetryButton } from "./file-explorer/search-controls";
-import { SearchViewport, type SearchViewportHandle } from "./file-explorer/search-viewport";
+import { SearchViewport } from "./file-explorer/search-viewport";
+import { useExplorerViewport } from "./file-explorer/use-explorer-viewport";
 import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 // Re-exported for existing importers/tests; implementations moved to ./file-explorer/.
@@ -97,16 +97,6 @@ interface FileExplorerProps {
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
   remoteHost?: string;
-}
-
-function UnreadableNotice({ count }: { count: number }) {
-  const t = useT();
-  if (count === 0) return null;
-  return (
-    <div role="status" style={{ padding: "0 6px 8px", fontSize: "var(--fs-meta)", lineHeight: "18px", color: "var(--c-text-5)" }}>
-      {t(count === 1 ? "explorer.search_unreadable_one" : "explorer.search_unreadable_other", { count })}
-    </div>
-  );
 }
 
 export function FileExplorer({
@@ -258,7 +248,7 @@ export function FileExplorer({
     return grepHits.flatMap((group): SearchRow[] => [
       { kind: "group", key: group.path, height: GREP_HEADER_HEIGHT, focusable: false, group },
       ...group.lines.map((ln, index): SearchRow => ({
-        kind: "line", key: JSON.stringify([group.path, ln.line]), height: GREP_LINE_HEIGHT + (index === group.lines.length - 1 ? 6 : 0),
+        kind: "line", key: `${ln.line}:${group.path}`, height: GREP_LINE_HEIGHT + (index === group.lines.length - 1 ? 6 : 0),
         focusable: true, group, ln,
       })),
     ]);
@@ -284,8 +274,7 @@ export function FileExplorer({
     s.readers[sessionId]?.current?.filePath,
   );
   const treeListRef = useRef<HTMLDivElement>(null);
-  const searchViewportRef = useRef<SearchViewportHandle>(null);
-  const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
+  const focusFirstSearchResultRef = useRef<() => boolean>(null);
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
   const [listingFocusIndex, setListingFocusIndex] = useState(0);
   const explorerRef = useRef<HTMLDivElement>(null);
@@ -640,19 +629,7 @@ export function FileExplorer({
   const hasCachedRemoteListing = remoteDisconnected && cachedListingKey === `remote\0${sessionId}\0${currentPath}`;
   const listingNodeCount = visibleTreeNodes.length;
   const listingRowCount = visibleTreeRows.length;
-  useLayoutEffect(() => {
-    const element = treeListRef.current;
-    if (!element) return;
-    const update = () => setListScroll({ top: element.scrollTop, height: element.clientHeight });
-    update();
-    element.addEventListener("scroll", update, { passive: true });
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
-    observer?.observe(element);
-    return () => {
-      element.removeEventListener("scroll", update);
-      observer?.disconnect();
-    };
-  }, [contentKey]);
+  const { view: listScroll, measure: measureTree } = useExplorerViewport(treeListRef, contentKey);
   const virtualizeListing = !isSearching && listingRowCount > 100;
   const listingSlice = virtualizeListing
     ? computeVirtualSlice(
@@ -751,7 +728,7 @@ export function FileExplorer({
     if (!list || rowIndex === undefined) return;
     const rowTop = LISTING_TOP_INSET + rowIndex * LISTING_ROW_HEIGHT;
     list.scrollTop = Math.max(0, rowTop - Math.max(0, list.clientHeight - LISTING_ROW_HEIGHT));
-    setListScroll({ top: list.scrollTop, height: list.clientHeight });
+    measureTree();
     setPendingListingFocus(target);
   }
 
@@ -1266,47 +1243,47 @@ export function FileExplorer({
   }
 
   function renderSearchRow(row: SearchRow) {
-    if (row.kind === "name") {
-      const { hit } = row;
-      const active = activeFilePath === hit.path;
+    if (row.kind === "line") {
+      const { group, ln } = row;
       return (
         <button
           data-explorer-item
-          onClick={() => hit.isDir ? openSearchDir(hit.path) : openFile(hit.path)}
-          className="hover-bg"
-          style={{
-            width: "100%", height: LISTING_ROW_HEIGHT - 2, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
-            background: active ? "var(--c-accent-bg-light)" : "transparent",
-            cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left",
-          }}
+          onClick={() => openFile(group.path, ln.line)}
+          title={group.rel}
+          className="hover-bg explorer-search-hit explorer-search-line"
+          style={{ height: GREP_LINE_HEIGHT - 1 }}
         >
-          {hit.isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(hit.name)} />}
-          <span style={{ fontSize: "var(--fs-secondary)", color: active ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
-          {hit.isDir && <TreeChevron />}
+          <span className="explorer-search-line-number">{ln.line}</span>
+          <span className="explorer-search-line-text">{ln.text}</span>
         </button>
       );
     }
+    const file = row.kind === "name" ? row.hit : row.group;
+    const isDir = row.kind === "name" && row.hit.isDir;
+    const pathLabel = (
+      <>
+        {isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(row.kind === "name" ? row.hit.name : file.rel)} />}
+        <span className="explorer-search-path" title={file.rel}>{compactRelativePath(file.rel)}</span>
+      </>
+    );
     if (row.kind === "group") {
-      const { group } = row;
       return (
-        <div style={{ height: GREP_HEADER_HEIGHT, padding: "0 var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
-          <FileIcon tint={fileKindTint(group.rel)} />
-          <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
+        <div className="explorer-search-group" style={{ height: GREP_HEADER_HEIGHT }}>
+          {pathLabel}
+          <span className="explorer-search-count">{row.group.lines.length}</span>
         </div>
       );
     }
-    const { group, ln } = row;
     return (
       <button
         data-explorer-item
-        onClick={() => openFile(group.path, ln.line)}
-        title={group.rel}
-        className="hover-bg"
-        style={{ width: "100%", height: GREP_LINE_HEIGHT - 1, padding: "0 var(--sp-2) 0 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}
+        data-active={activeFilePath === file.path}
+        onClick={() => isDir ? openSearchDir(file.path) : openFile(file.path)}
+        className="hover-bg explorer-search-hit"
+        style={{ height: LISTING_ROW_HEIGHT - 2 }}
       >
-        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{ln.line}</span>
-        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
+        {pathLabel}
+        {isDir && <TreeChevron />}
       </button>
     );
   }
@@ -1318,19 +1295,25 @@ export function FileExplorer({
   ) : searchError ? (
     <>
       <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-      <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
+      <div className="explorer-search-retry">
+        <button className="hover-bg" onClick={search.retrySearch}>{t("common.retry")}</button>
+      </div>
     </>
   ) : (
     <>
       {resultCount === 0 ? (
         <PanelEmptyState label={t(searchMode === "content" ? "explorer.content_no_match" : "explorer.no_match")} sublabel={searchQuery.trim()} />
       ) : (
-        <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
-          <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{resultCount}</span>
+        <div className="explorer-search-summary">
+          <span>{t("explorer.results")}</span>
+          <span className="explorer-search-count">{resultCount}</span>
         </div>
       )}
-      <UnreadableNotice count={searchUnreadable} />
+      {searchUnreadable !== 0 && (
+        <div role="status" className="explorer-search-unreadable">
+          {t(searchUnreadable === 1 ? "explorer.search_unreadable_one" : "explorer.search_unreadable_other", { count: searchUnreadable })}
+        </div>
+      )}
     </>
   );
 
@@ -1342,7 +1325,7 @@ export function FileExplorer({
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false); }}
       onDrop={(event) => { event.preventDefault(); setDropActive(false); }}
-      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden", outline: dropActive ? "2px dashed var(--c-accent)" : undefined, outlineOffset: -3 }}
+      data-drop-active={dropActive}
     >
       {dropActive && (
         <div role="status" style={{ flexShrink: 0, padding: "7px var(--sp-2)", borderBottom: "1px dashed var(--c-accent)", fontWeight: 600, textAlign: "center" }}>
@@ -1390,7 +1373,7 @@ export function FileExplorer({
           }
           if (event.key !== "ArrowDown") return;
           if (isSearching) {
-            if (searchViewportRef.current?.focusFirst()) event.preventDefault();
+            if (focusFirstSearchResultRef.current?.()) event.preventDefault();
             return;
           }
           const first = treeListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
@@ -1453,20 +1436,29 @@ export function FileExplorer({
       {isSearching && (
         <SearchViewport
           key={contentKey}
-          ref={searchViewportRef}
+          ref={focusFirstSearchResultRef}
           rows={searchError ? [] : searchRows}
           renderRow={renderSearchRow}
           header={searchHeader}
-          footer={resultCount > 0 && !searchError && (resultsTruncated || searchLoading)
-            ? <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />
-            : undefined}
+          footer={resultCount > 0 && !searchError && (resultsTruncated || searchLoading) && (
+            searchLoading || searchLimit >= searchMaxLimit ? (
+              <div className="explorer-search-limit" aria-live={searchLoading ? "polite" : undefined}>
+                {t(searchLoading ? "explorer.searching" : "explorer.results_limit_reached")}
+              </div>
+            ) : (
+              <button type="button" className="hover-bg explorer-search-more" onClick={search.loadMoreSearchResults}>
+                {t("explorer.load_more")}
+              </button>
+            )
+          )}
         />
       )}
       {!isSearching && <div
         key={contentKey}
         ref={treeListRef}
-        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--dur-base) var(--ease-out)` : undefined }}
-        className="no-scrollbar scroll-fade-y"
+        onScroll={measureTree}
+        data-nav={navDir}
+        className="explorer-list-viewport no-scrollbar scroll-fade-y"
       >
         {remoteDisconnected && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell">
