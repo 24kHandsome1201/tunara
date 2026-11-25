@@ -86,6 +86,19 @@ describe("borderless titlebar window dragging", () => {
     expect(win.startDragging).not.toHaveBeenCalled();
   });
 
+  test("a press after clicking a control is not a titlebar double-click", () => {
+    const titlebar = renderTitlebar();
+    const newMenu = screen.getByRole("button", { name: "New…" });
+
+    fireEvent.mouseDown(titlebar, { button: 0, detail: 1 });
+    fireEvent.mouseUp(window, { button: 0 });
+    fireEvent.mouseDown(newMenu, { button: 0, detail: 1 });
+    fireEvent.mouseUp(window, { button: 0 });
+    fireEvent.mouseDown(titlebar, { button: 0, detail: 2 });
+
+    expect(win.toggleMaximize).not.toHaveBeenCalled();
+  });
+
   test("titlebar controls keep their own clicks", () => {
     renderTitlebar();
     const newMenu = screen.getByRole("button", { name: "New…" });

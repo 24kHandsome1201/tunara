@@ -18,6 +18,27 @@ const INTERACTIVE_SELECTOR = [
   "[role='tab']",
 ].join(",");
 
+let doubleClickSurface: HTMLElement | null = null;
+
+function isSurfacePress(surface: HTMLElement, event: MouseEvent | ReactMouseEvent<HTMLElement>) {
+  const target = event.target;
+  return (
+    event.button === 0
+    && target instanceof Element
+    && surface.contains(target)
+    && !target.closest(INTERACTIVE_SELECTOR)
+  );
+}
+
+/** Only a press right after a press on the same drag surface may count as its double-click. */
+function armDoubleClick(surface: HTMLElement) {
+  doubleClickSurface = surface;
+  const disarmUnlessSurfacePress = (next: MouseEvent) => {
+    if (!isSurfacePress(surface, next)) doubleClickSurface = null;
+  };
+  window.addEventListener("mousedown", disarmUnlessSurfacePress, { capture: true, once: true });
+}
+
 /**
  * Titlebar drag and double-click maximize for borderless (Linux) chrome.
  *
@@ -27,24 +48,20 @@ const INTERACTIVE_SELECTOR = [
  * clicks inside the webview, where they count up to a double-click.
  */
 export function handleBorderlessTitlebarMouseDown(event: ReactMouseEvent<HTMLElement>) {
-  const target = event.target;
-  if (
-    event.button !== 0
-    || !(target instanceof Element)
-    || !event.currentTarget.contains(target)
-    || target.closest(INTERACTIVE_SELECTOR)
-  ) {
-    return;
-  }
+  const surface = event.currentTarget;
+  if (!isSurfacePress(surface, event)) return;
   const win = tryGetCurrentWindow();
   if (!win) return;
   event.preventDefault();
 
   if (event.detail === 2) {
+    if (doubleClickSurface !== surface) return;
+    doubleClickSurface = null;
     void win.toggleMaximize();
     return;
   }
   if (event.detail !== 1) return;
+  armDoubleClick(surface);
 
   const { screenX: startX, screenY: startY } = event;
   const stop = () => {
