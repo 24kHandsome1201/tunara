@@ -43,23 +43,29 @@ export function splitShellCommandSegments(commandLine: string): string[] {
   return segments;
 }
 
-export function tokenizeShellWords(segment: string): string[] {
+export function tokenizeShellWords(segment: string): string[];
+export function tokenizeShellWords(segment: string, strict: true): string[] | null;
+export function tokenizeShellWords(segment: string, strict = false): string[] | null {
   const words: string[] = [];
   let current = "";
   let quote: "'" | '"' | null = null;
   let escaped = false;
+  let started = false;
   const push = () => {
-    if (current) words.push(current);
+    if (current || (strict && started)) words.push(current);
     current = "";
+    started = false;
   };
   for (const char of segment) {
     if (escaped) {
+      if (strict && quote === '"' && !'$"`\\'.includes(char)) current += "\\";
       current += char;
       escaped = false;
       continue;
     }
     if (char === "\\" && quote !== "'") {
       escaped = true;
+      started = true;
       continue;
     }
     if (quote) {
@@ -69,11 +75,13 @@ export function tokenizeShellWords(segment: string): string[] {
     }
     if (char === "'" || char === '"') {
       quote = char;
+      started = true;
       continue;
     }
     if (/\s/.test(char)) push();
     else current += char;
   }
+  if (strict && (quote || escaped)) return null;
   push();
   return words;
 }

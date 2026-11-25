@@ -201,6 +201,7 @@ export function installMockBackend(): TunaraE2EHandle {
       return state.sshHosts;
     },
     ssh_hosts_import_config: () => ({ imported: [], skipped: 0, diagnostics: [] }),
+    ssh_local_account: () => "e2e",
     ssh_known_hosts_list_v1: () => [],
     fs_read_dir: () => [],
     fs_search: () => ({ hits: [], unreadable: 0 }),

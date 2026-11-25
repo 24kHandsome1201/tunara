@@ -74,6 +74,7 @@ commands.allow = [
   "ssh_hosts_save",
   "ssh_hosts_remove",
   "ssh_hosts_import_config",
+  "ssh_local_account",
   "ssh_known_hosts_list_v1",
   "ssh_known_hosts_remove_v1",
   "ssh_known_hosts_refresh_v1",

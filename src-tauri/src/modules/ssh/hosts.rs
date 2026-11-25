@@ -29,6 +29,11 @@ pub(crate) use profile::{
     __tauri_command_name_ssh_hosts_save,
 };
 
+#[tauri::command]
+pub fn ssh_local_account() -> Option<String> {
+    effective::local_account_name()
+}
+
 #[cfg(test)]
 fn temp_path(name: &str) -> std::path::PathBuf {
     let unique = std::time::SystemTime::now()

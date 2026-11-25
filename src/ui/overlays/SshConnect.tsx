@@ -11,6 +11,7 @@ import {
   normalizeSshPort,
   parseSshPort,
   importSshConfig,
+  loadSshLocalAccount,
   loadSshProfilesPanel,
   toProfilesPanelModel,
   resolveSshProfileRoute,
@@ -28,6 +29,7 @@ import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successf
 import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { normalizePostConnectCommand } from "@/modules/ssh/hosts-model";
 import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort, withSshTargetPort } from "@/modules/ssh/connect-target";
+import { isSshCommandInput, matchingSshJumpProfiles, parseSshCommand, sshCommandMatchTarget } from "@/modules/ssh/connect-command";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
 import { applySshInPlaceReconnect } from "@/modules/ssh/manual-reconnect";
@@ -202,12 +204,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
   // Starts true: the mount effect loads profiles, and until it settles an empty
   // list is "not loaded yet", not "no match" (Reconnect used to flash that).
   const [loadingConfig, setLoadingConfig] = useState(true);
-  const [jumpProfileId, setJumpProfileId] = useState(prefill?.route?.profileId ?? "");
+  const [editedJumpProfileId, setJumpProfileId] = useState<string | null>(prefill?.route?.profileId ?? null);
   const [selectedProfile, setSelectedProfile] = useState<{ id: string; source: SshProfileSourceV1 } | null>(null);
   const [routeResolution, setRouteResolution] = useState<SshProfileRouteResolutionV1 | null>(null);
-  const [jumpAuthMethod, setJumpAuthMethod] = useState<SshAuthMethod>(prefill?.route?.jump.authMethod ?? "auto");
-  const [jumpIdentityFile, setJumpIdentityFile] = useState(prefill?.route?.jump.identityFile ?? "");
-  const [jumpCertificateFile, setJumpCertificateFile] = useState(prefill?.route?.jump.certificateFile ?? "");
+  const [editedJumpAuthMethod, setJumpAuthMethod] = useState<SshAuthMethod | null>(prefill?.route?.jump.authMethod ?? null);
+  const [editedJumpIdentityFile, setJumpIdentityFile] = useState<string | null>(prefill?.route?.jump.identityFile ?? null);
+  const [editedJumpCertificateFile, setJumpCertificateFile] = useState<string | null>(prefill?.route?.jump.certificateFile ?? null);
   const [jumpPassword, setJumpPassword] = useState("");
   const [jumpKeyPassphrase, setJumpKeyPassphrase] = useState("");
   const configGeneration = useRef(0);
@@ -242,9 +244,22 @@ export function SshConnect({ onClose }: SshConnectProps) {
     targetRef.current?.focus();
   }, []);
 
-  const parsedTarget = useMemo(() => parseSshTarget(target), [target]);
+  const commandInput = isSshCommandInput(target);
+  const command = useMemo(() => parseSshCommand(target), [target]);
+  const parsedTarget = commandInput ? command?.target : parseSshTarget(target);
+  const matchTarget = command ? sshCommandMatchTarget(command) : target;
   const host = parsedTarget?.host ?? "";
   const user = parsedTarget?.user ?? "";
+  const [localAccount, setLocalAccount] = useState("");
+  const needsLocalAccount = commandInput && Boolean(host) && !user;
+  useEffect(() => {
+    if (!needsLocalAccount || localAccount) return;
+    let current = true;
+    void loadSshLocalAccount().then((account) => {
+      if (current && account) setLocalAccount(account);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, [localAccount, needsLocalAccount]);
 
   const resetConnectionForm = () => {
     setSelectedProfile(null);
@@ -382,8 +397,22 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const { savedProfiles: hosts, configProfiles: configHosts, configSkipped, configDiagnostics } = panelModel;
   const allProfiles = useMemo(() => [...hosts, ...configHosts], [hosts, configHosts]);
   const jumpOptions = useMemo(() => allProfiles.filter((profile) => !profile.proxyJumpProfileId), [allProfiles]);
+  const commandJump = command?.jump;
+  const commandHasJump = commandJump !== undefined;
+  const useCommandJump = commandHasJump && editedJumpProfileId === null;
+  const commandJumpMatches = useCommandJump && commandJump.toLowerCase() !== "none"
+    ? matchingSshJumpProfiles(panelModel, commandJump)
+    : [];
+  const commandJumpProfile = commandJumpMatches.length === 1 ? commandJumpMatches[0] : undefined;
+  const commandJumpError = !useCommandJump || commandJump.toLowerCase() === "none" || commandJumpProfile
+    ? null
+    : t(commandJumpMatches.length > 1 ? "ssh.route.jumpAmbiguous" : "ssh.route.jumpMissing");
+  const jumpProfileId = editedJumpProfileId ?? commandJumpProfile?.id ?? "";
+  const jumpAuthMethod = editedJumpAuthMethod ?? commandJumpProfile?.authMethod ?? "auto";
+  const jumpIdentityFile = editedJumpIdentityFile ?? (jumpAuthMethod === "password" ? "" : commandJumpProfile?.identityFile ?? "");
+  const jumpCertificateFile = editedJumpCertificateFile ?? (jumpAuthMethod === "password" ? "" : commandJumpProfile?.certificateFile ?? "");
   const portText = port.trim();
-  const targetPortInvalid = sshTargetHasInvalidPort(target);
+  const targetPortInvalid = commandInput ? Boolean(command?.invalidPort) : sshTargetHasInvalidPort(target);
   const portFieldInvalid = portText.length > 0 && parseSshPort(portText) === null;
   const showPortErrorNearTarget = targetPortInvalid || (portFieldInvalid && !advancedOpen);
 
@@ -405,21 +434,21 @@ export function SshConnect({ onClose }: SshConnectProps) {
       savedProfiles: [...panelModel.savedProfiles, temporaryTarget],
     });
   }, [authMethod, certificateFile, host, identityFile, jumpProfileId, panelModel, portText, user]);
-  const effectiveResolution = jumpProfileId ? manualResolution : routeResolution;
+  const effectiveResolution = jumpProfileId ? manualResolution : commandHasJump ? null : routeResolution;
   const resolvedRoute = effectiveResolution?.status === "ready" ? effectiveResolution.route : undefined;
   const jumpProfile = resolvedRoute?.jump;
-  const routeError = effectiveResolution?.status === "rejected"
+  const routeError = commandJumpError ?? (effectiveResolution?.status === "rejected"
     ? t(`ssh.route.${effectiveResolution.code}`)
-    : null;
+    : null);
 
   const suggestions = useMemo(() => {
     // Saved and config rows are capped separately so one source cannot crowd out the other.
     const entries = sshProfileEntries(panelModel);
     return [
-      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), target),
-      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "sshConfig"), target),
+      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), command?.destination ?? target),
+      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "sshConfig"), command?.destination ?? target),
     ];
-  }, [panelModel, target]);
+  }, [panelModel, command, target]);
 
   const methodReady = authMethod === "key"
     ? identityFile.trim().length > 0
@@ -433,33 +462,33 @@ export function SshConnect({ onClose }: SshConnectProps) {
         ? jumpPassword.length > 0
         : true
   ));
-  const matchedProfile = exactSshProfileMatch(allProfiles, target);
-  const resolvedUser = user || matchedProfile?.user || "";
+  const matchedProfile = exactSshProfileMatch(allProfiles, matchTarget);
+  const alias = selectedProfile ? undefined : sshAliasProfileMatch(allProfiles, matchTarget);
+  const resolvedUser = user || (commandInput ? alias?.user : undefined) || matchedProfile?.user || (commandInput ? localAccount : "");
   const resolvedHost = host || matchedProfile?.host || "";
   const canConnect = resolvedHost.length > 0
     && resolvedUser.length > 0
     && (portText.length === 0 || parseSshPort(portText) !== null)
+    && (!commandInput || Boolean(parsedTarget))
     && methodReady && jumpReady && !routeError && !loadingConfig && !connecting;
 
   const connect = async () => {
-    if (connectInFlightRef.current || loadingConfig) return;
-    const parsed = parseSshTarget(target);
-    const match = exactSshProfileMatch(allProfiles, target);
+    if (connectInFlightRef.current || !canConnect) return;
+    const match = matchedProfile;
     // A typed alias resolves like picking its row; a picked row already filled the form.
-    const alias = selectedProfile ? undefined : sshAliasProfileMatch(allProfiles, target);
     const aliasSource: SshProfileSourceV1 = alias && hosts.includes(alias) ? "saved" : "sshConfig";
-    const aliasResolution = alias ? resolveSshProfileRoute(alias.id, aliasSource, panelModel) : null;
+    const aliasResolution = alias && !commandHasJump ? resolveSshProfileRoute(alias.id, aliasSource, panelModel) : null;
     if (aliasResolution?.status === "rejected") {
       fillFrom(aliasResolution.profileId, aliasSource);
       return;
     }
     const aliasRoute = aliasResolution?.route;
-    const aliasTarget = aliasRoute?.target;
+    const aliasTarget = aliasRoute?.target ?? (commandHasJump ? alias : undefined);
     // Explicit auth choices in the form win; an untouched form takes the alias's.
     const aliasOwnsAuth = Boolean(aliasTarget && authMethod === "auto" && !identityFile.trim() && !certificateFile.trim());
     const aliasUsesJump = Boolean(aliasRoute?.jump && !jumpProfileId);
-    const nextHost = aliasTarget?.host || parsed?.host || match?.host || "";
-    const nextUser = parsed?.user || aliasTarget?.user || match?.user || "";
+    const nextHost = aliasTarget?.host || host || match?.host || "";
+    const nextUser = user || aliasTarget?.user || match?.user || (commandInput ? localAccount : "");
     const nextAuth = aliasOwnsAuth ? aliasTarget?.authMethod ?? "auto" : authMethod ?? "auto";
     const aliasKeySource = aliasTarget?.identityFile
       ? aliasTarget
@@ -492,14 +521,34 @@ export function SshConnect({ onClose }: SshConnectProps) {
     );
     if (alias && (!nextMethodReady || !nextJumpReady)) {
       // The alias needs a secret (e.g. password auth): show its filled form instead of a silent no-op.
-      fillFrom(alias.id, aliasSource);
+      if (commandHasJump) {
+        setAuthMethod(nextAuth);
+        setAdvancedOpen(true);
+      } else {
+        fillFrom(alias.id, aliasSource);
+        if (commandInput) {
+          setTarget(target);
+          setSelectedProfile(null);
+          if (portEdited || parsedTarget?.port !== undefined) {
+            setPort(port);
+            setPortEdited(portEdited);
+          }
+          if (!aliasOwnsAuth) {
+            setAuthMethod(authMethod);
+            setIdentityFile(identityFile);
+            setCertificateFile(certificateFile);
+          }
+        }
+      }
       return;
     }
     if (!nextHost || !nextUser || !nextMethodReady || !nextJumpReady || routeError) return;
     connectInFlightRef.current = true;
     const attempt = ++connectAttemptRef.current;
     setConnecting(true);
-    const safePort = parsed?.port ?? (portEdited ? normalizeSshPort(port) : aliasTarget?.port ?? match?.port ?? normalizeSshPort(port));
+    const safePort = commandInput && portEdited
+      ? normalizeSshPort(port)
+      : parsedTarget?.port ?? (portEdited ? normalizeSshPort(port) : aliasTarget?.port ?? match?.port ?? normalizeSshPort(port));
     // pty-bridge only forwards IdentityFile for `key`. Auto with a known path
     // therefore opens as key so ssh-config / saved IdentityFile still reaches russh.
     const usesKeyMaterial = nextAuth === "key" || (nextAuth === "auto" && nextIdentity.trim().length > 0);
@@ -577,9 +626,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
       : aliasSource === "saved" ? alias : undefined;
     const pendingSavedHost = sshHostProfileFromSuccessfulConnect(
       remote,
-      match?.label || `${nextUser}@${nextHost}`,
+      (!commandInput || !selectedSaved ? match?.label : undefined) || `${nextUser}@${nextHost}`,
       hosts,
-      selectedSaved,
+      { selectedSaved, createOnly: commandInput },
     );
 
     if (existingSession?.remote && sameEndpoint) {
@@ -707,10 +756,40 @@ export function SshConnect({ onClose }: SshConnectProps) {
             aria-invalid={showPortErrorNearTarget}
             aria-describedby={showPortErrorNearTarget ? "ssh-connect-port-error" : undefined}
             onChange={(event) => {
-              const typedPort = parseSshTarget(event.target.value)?.port;
-              setTarget(event.target.value);
-              if (typedPort !== undefined) setPort(String(typedPort));
-              else if (parsedTarget?.port !== undefined) setPort("22");
+              const value = event.target.value;
+              const nextCommand = parseSshCommand(value);
+              const nextTarget = isSshCommandInput(value) ? nextCommand?.target : parseSshTarget(value);
+              setTarget(value);
+              if (nextTarget?.port !== undefined) {
+                if (!nextCommand || nextTarget.port !== parsedTarget?.port || !commandInput) {
+                  setPort(String(nextTarget.port));
+                  if (nextCommand) setPortEdited(false);
+                }
+              } else if (parsedTarget?.port !== undefined) {
+                setPort("22");
+              }
+              if (nextCommand?.identityFile !== command?.identityFile) {
+                setIdentityFile(nextCommand?.identityFile ?? "");
+                if (nextCommand?.identityFile) {
+                  setAuthMethod("auto");
+                  setAdvancedOpen(true);
+                }
+              }
+              if (nextCommand?.certificateFile !== command?.certificateFile) {
+                setCertificateFile(nextCommand?.certificateFile ?? "");
+                if (nextCommand?.certificateFile) {
+                  setAuthMethod("auto");
+                  setAdvancedOpen(true);
+                }
+              }
+              if (nextCommand?.jump !== command?.jump) {
+                setJumpProfileId(null);
+                setRouteResolution(null);
+                setJumpAuthMethod(null);
+                setJumpIdentityFile(null);
+                setJumpCertificateFile(null);
+                if (nextCommand?.jump) setAdvancedOpen(true);
+              }
               setHighlight(-1);
               setSelectedProfile(null);
               setPassword("");
@@ -756,7 +835,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <div className="ssh-connect-form" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
               <div>
                 <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
+                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); if (!commandInput) setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
                 {portFieldInvalid && (
                   <span id="ssh-connect-port-field-error" role="alert" className="ssh-connect-message" data-tone="warning">
                     {t("ssh.port_invalid")}
