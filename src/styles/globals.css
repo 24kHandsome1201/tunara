@@ -908,17 +908,6 @@ select.ui-control {
   background: var(--c-bg-2);
 }
 .explorer-transfers { margin-left: auto; }
-.explorer-download-armed,
-.panel-icon-button.explorer-download-armed,
-.panel-icon-button.explorer-download-armed[data-active="true"] {
-  width: auto;
-  min-width: var(--h-titlebar-control);
-  padding: 0 5px;
-  gap: 2px;
-  color: var(--c-accent-text);
-  background: var(--c-accent-bg-light);
-}
-.explorer-download-count { font-size: var(--fs-meta); font-weight: 650; }
 .explorer-transfer-entry {
   width: 48px;
   height: var(--h-titlebar-control);
@@ -1004,11 +993,7 @@ button.explorer-listing-action {
   place-items: center;
 }
 .explorer-state-shell .panel-state { width: min(100%, 280px); }
-@container file-explorer (max-width: 340px) {
-  .explorer-place-secondary { display: none; }
-}
 @container file-explorer (max-width: 280px) {
-  .explorer-place-shortcut,
   .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
     --explorer-listing-columns: minmax(0, 1fr) 28px;
