@@ -41,10 +41,21 @@ Release 页面也可能带 `Tunara_<version>_aarch64-legacy.dmg`。这是保留�
 
 ### Homebrew
 
+在 Apple Silicon Mac 上，请等 `brew tap` 完成后再安装。Homebrew 可能会先自动更新；此时按 Ctrl+C 可能会导致 tap 尚未添加。
+
 ```bash
 brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
-brew install --cask tunara
+brew install --cask 24kHandsome1201/tunara/tunara
 ```
+
+如果中断了 tap，请先重新运行 `brew tap`，再安装。若只想为这两条命令跳过自动更新，可在每条命令前加上 `HOMEBREW_NO_AUTO_UPDATE=1`：
+
+```bash
+HOMEBREW_NO_AUTO_UPDATE=1 brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
+HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask 24kHandsome1201/tunara/tunara
+```
+
+如果 Homebrew 提示 cask 不受信任，且你信任此仓库，请运行 `brew trust --cask 24kHandsome1201/tunara/tunara`，然后重试安装。
 
 可在设置中检查、安装更新并重启；Homebrew 用户也可运行 `brew upgrade --cask tunara`。
 

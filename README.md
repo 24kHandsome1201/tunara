@@ -41,10 +41,21 @@ Release pages may also include `Tunara_<version>_aarch64-legacy.dmg`. That is th
 
 ### Homebrew
 
+On macOS Apple Silicon, let `brew tap` finish before installing. Homebrew may auto-update first; pressing Ctrl+C can stop it before the tap is added.
+
 ```bash
 brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
-brew install --cask tunara
+brew install --cask 24kHandsome1201/tunara/tunara
 ```
+
+If you interrupted the tap, rerun it before installing. To skip auto-update for these commands only, prefix each with `HOMEBREW_NO_AUTO_UPDATE=1`:
+
+```bash
+HOMEBREW_NO_AUTO_UPDATE=1 brew tap 24kHandsome1201/tunara https://github.com/24kHandsome1201/tunara
+HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask 24kHandsome1201/tunara/tunara
+```
+
+If Homebrew refuses to load the cask because it is untrusted, run `brew trust --cask 24kHandsome1201/tunara/tunara` if you trust this repository, then retry the install.
 
 Use Settings to check, install, and restart into a new release. Homebrew users can also update with `brew upgrade --cask tunara`.
 
