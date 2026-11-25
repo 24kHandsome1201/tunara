@@ -46,6 +46,7 @@ test("Ctrl+click uses the output line's cwd and opens its directory without chan
   expect(useUIStore.getState().panelVisible).toBe(false);
   links![0].activate(new MouseEvent("click", { ctrlKey: true }), links![0].text);
   await waitFor(() => expect(useUIStore.getState().explorerPaths[owner.id]).toBe("/previous/artifacts"));
+  expect(useUIStore.getState().explorerHistory[owner.id]).toEqual({ paths: ["/previous/artifacts"], index: 0 });
   expect(useUIStore.getState()).toMatchObject({ panelVisible: true, inspectorTab: "files" });
   expect(useSessionsStore.getState().activeSessionId).toBe(owner.id);
   expect(useSessionsStore.getState().sessions[0].dir).toBe("/current");

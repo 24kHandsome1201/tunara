@@ -17,6 +17,19 @@ function openFileActions() {
 }
 
 describe("FileExplorer directory navigation", () => {
+  test("tracks the local terminal directory until Files navigates away from it", async () => {
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir") return "/home/dev";
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      const { path } = payload as { path: string };
+      return [{ name: path === "/tmp/first" ? "first.txt" : "next.txt", kind: "file", size: 0, mtime: 0 }];
+    });
+    const { rerender } = render(<FileExplorer sessionId="local" rootDir="/tmp/first" />);
+    await screen.findByRole("treeitem", { name: "first.txt" });
+    rerender(<FileExplorer sessionId="local" rootDir="/tmp/next" />);
+    expect(await screen.findByRole("treeitem", { name: "next.txt" })).toBeTruthy();
+  });
+
   test("revalidates the current directory on return to Files", async () => {
     let filename = "before.txt";
     const reads: string[] = [];

@@ -72,7 +72,7 @@ export async function openResource(ref: ResourceRef, disposition: "editor" | "pr
       throw new Error("stale directory resource");
     }
     useSessionsStore.getState().setActive(ref.logicalSessionId);
-    useUIStore.getState().setExplorerPath(ref.logicalSessionId, path, current.dir);
+    useUIStore.getState().setExplorerPath(ref.logicalSessionId, path);
     useUIStore.setState({ panelVisible: true, inspectorTab: "files" });
     return;
   }
