@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug. Please fill in the fields below — it makes triage much faster.
+        Thanks for taking the time to report a bug. Only “What happened?” is required; any other details you can share help with triage.
 
         For **security issues**, do NOT open an issue. See [SECURITY.md](https://github.com/24kHandsome1201/tunara/blob/main/SECURITY.md).
 
@@ -15,8 +15,6 @@ body:
       label: Tunara version
       description: From Settings → About, or the title bar.
       placeholder: "0.5.9"
-    validations:
-      required: true
 
   - type: dropdown
     id: os
@@ -27,16 +25,12 @@ body:
         - macOS (Intel)
         - Linux
         - Windows
-    validations:
-      required: true
 
   - type: input
     id: os-version
     attributes:
       label: OS version
       placeholder: "macOS 15.2 / Ubuntu 24.04 / Windows 11 23H2"
-    validations:
-      required: true
 
   - type: textarea
     id: what-happened
@@ -50,8 +44,6 @@ body:
     id: expected
     attributes:
       label: What did you expect to happen?
-    validations:
-      required: true
 
   - type: textarea
     id: steps
@@ -62,8 +54,6 @@ body:
         1. Open Tunara
         2. Click ...
         3. ...
-    validations:
-      required: true
 
   - type: textarea
     id: logs
@@ -79,6 +69,6 @@ body:
       label: Before submitting
       options:
         - label: I searched existing issues and didn't find a duplicate
-          required: true
+          required: false
         - label: I am running the latest version (or this happens on `main`)
           required: false
