@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { CloseIcon, PanelIconButton, RefreshIcon, SearchIcon, UploadIcon } from "../shared";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { breadcrumbSegments } from "../lib/breadcrumbs";
@@ -110,6 +110,9 @@ export function ExplorerNav({
 
 export function ExplorerSearchRow({
   t,
+  id,
+  hidden,
+  inputRef,
   disabled,
   searchMode,
   searchQuery,
@@ -121,6 +124,9 @@ export function ExplorerSearchRow({
   onToggleHidden,
 }: {
   t: Translate;
+  id?: string;
+  hidden: boolean;
+  inputRef: Ref<HTMLInputElement>;
   disabled: boolean;
   searchMode: "name" | "content";
   searchQuery: string;
@@ -132,7 +138,7 @@ export function ExplorerSearchRow({
   onToggleHidden: () => void;
 }) {
   return (
-    <div className="explorer-search-row" role="search" aria-label={t("explorer.chrome.search")}>
+    <div id={id} hidden={hidden} className="explorer-search-row" role="search" aria-label={t("explorer.chrome.search")}>
       <div className="explorer-search">
         <button
           type="button"
@@ -148,6 +154,7 @@ export function ExplorerSearchRow({
         </button>
         <SearchIcon />
         <input
+          ref={inputRef}
           className="ui-native-control"
           type="text"
           disabled={disabled}
@@ -184,6 +191,9 @@ export function ExplorerSearchRow({
 
 export function ExplorerRemoteTools({
   t,
+  remoteHost,
+  remoteHostTitle,
+  searchToggle,
   active,
   bindingKey,
   showPlaces,
@@ -211,6 +221,9 @@ export function ExplorerRemoteTools({
   onOpenTransfers,
 }: {
   t: Translate;
+  remoteHost?: string;
+  remoteHostTitle?: string;
+  searchToggle: ReactNode;
   active: boolean;
   bindingKey: string;
   showPlaces: boolean;
@@ -313,6 +326,7 @@ export function ExplorerRemoteTools({
 
   return (
     <div className="explorer-tools" role="toolbar" aria-label={t("explorer.chrome.tools")}>
+      {remoteHost && <span className="inspector-context-badge" title={remoteHostTitle ?? remoteHost}>{remoteHost}</span>}
       <div className="explorer-places" role="group" aria-label={t("explorer.chrome.places")}>
         <PanelIconButton
           title={t("explorer.paths")}
@@ -348,6 +362,7 @@ export function ExplorerRemoteTools({
           </button>
         )}
       </div>
+      {searchToggle}
       <PanelIconButton
         title={t("explorer.more_actions")}
         aria-haspopup="menu"

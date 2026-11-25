@@ -407,6 +407,8 @@
   "explorer.go_up": "返回上级",
   "explorer.chrome.nav": "目录",
   "explorer.chrome.search": "搜索文件",
+  "explorer.search_expand": "显示文件搜索",
+  "explorer.search_collapse": "隐藏文件搜索",
   "explorer.chrome.tools": "远程文件操作",
   "explorer.chrome.places": "远程位置",
   "explorer.chrome.transfers": "文件传输",

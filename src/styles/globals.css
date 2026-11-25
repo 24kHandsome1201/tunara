@@ -965,6 +965,7 @@ select.ui-control {
   flex-shrink: 0;
 }
 .explorer-search-row { padding: 6px var(--sp-2); }
+.explorer-search-row[hidden] { display: none; }
 .file-explorer > .scroll-fade-y {
   flex: 1;
   overflow-y: auto;
@@ -1143,6 +1144,7 @@ select.ui-control {
 .explorer-transfers {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 2px;
   min-width: 0;
   padding: 1px 2px;
@@ -1150,7 +1152,7 @@ select.ui-control {
   border-radius: var(--r-input);
   background: var(--c-bg-2);
 }
-.explorer-transfers { margin-left: auto; }
+.explorer-places { margin-inline-start: auto; }
 .explorer-transfer-entry {
   width: 48px;
   height: var(--h-titlebar-control);
