@@ -168,6 +168,18 @@ test("jump matching prefers the saved copy without hiding distinct profiles shar
   assert.deepEqual(matchingSshJumpProfiles({ ...model, configProfiles: [distinct] }, "bastion"), [saved, distinct]);
 });
 
+test("a saved jump without key material can inherit its config copy's key and certificate", () => {
+  const saved = { id: "saved", label: "bastion", host: "jump.example", port: 22, user: "ops", identityFile: "" };
+  const imported = { ...saved, id: "imported", identityFile: "~/.ssh/jump", certificateFile: "~/.ssh/jump-cert.pub" };
+  const model = toProfilesPanelModel([saved], { imported: [imported], skipped: 0, diagnostics: [] });
+  assert.deepEqual(matchingSshJumpProfiles(model, "bastion"), [{
+    ...saved, identityFile: imported.identityFile, certificateFile: imported.certificateFile,
+  }]);
+  for (const savedWithAuth of [{ ...saved, identityFile: "~/.ssh/other" }, { ...saved, authMethod: "password" }]) {
+    assert.deepEqual(matchingSshJumpProfiles({ ...model, savedProfiles: [savedWithAuth] }, "bastion"), [savedWithAuth]);
+  }
+});
+
 test("IPv6 targets survive formatting and parsing without inventing a port", () => {
   for (const host of ["2001:db8::1", "2001:db8::0", "::1"]) {
     assert.deepEqual(parseSshTarget(host), { user: "", host });

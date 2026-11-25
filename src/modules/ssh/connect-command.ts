@@ -97,7 +97,14 @@ export function matchingSshJumpProfiles(model: SshProfilesPanelModelV1, raw: str
       ...model,
       savedProfiles: model.savedProfiles.filter(matches),
       configProfiles: model.configProfiles.filter(matches),
-    }).map(({ profile }) => profile);
+    }).map(({ profile, configProfile }) => {
+      if (!configProfile || profile.identityFile || profile.authMethod === "password") return profile;
+      return {
+        ...profile,
+        identityFile: configProfile.identityFile,
+        ...(!profile.certificateFile && configProfile.certificateFile ? { certificateFile: configProfile.certificateFile } : {}),
+      };
+    });
   };
   const aliases = matchingEntries((profile) => host === profile.label.trim().toLowerCase());
   return aliases.length > 0 ? aliases : matchingEntries((profile) => host === profile.host.toLowerCase());

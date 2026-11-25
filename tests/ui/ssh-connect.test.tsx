@@ -153,10 +153,13 @@ describe("SSH connection sheet", () => {
   test("resolves an SSH command's saved target and ProxyJump aliases without falling back to direct", async () => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") return [
-        { id: "jump", label: "bastion", host: "jump.example", port: 2201, user: "ops", identity_file: "/keys/jump" },
+        { id: "jump", label: "bastion", host: "jump.example", port: 2201, user: "ops", identity_file: "" },
         { id: "lab", label: "lab", host: "lab.example", port: 22, user: "qa", identity_file: "" },
       ];
-      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      if (command === "ssh_hosts_import_config") return {
+        imported: [{ id: "config-jump", label: "bastion", host: "jump.example", port: 2201, user: "ops", identity_file: "/keys/jump" }],
+        skipped: 0,
+      };
       if (command === "ssh_local_account") return "localuser";
       throw new Error(`unexpected command: ${command}`);
     });
