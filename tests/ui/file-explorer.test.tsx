@@ -1266,9 +1266,12 @@ describe("FileExplorer workspace files", () => {
     const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];
     mockIPC((command, payload) => {
       const path = (payload as { path?: string }).path;
-      if (command === "ssh_fs_read_dir") return [
-        { name: "report.txt", kind: "file", size: 8, mtime: 0 },
+      if (command === "ssh_fs_read_dir" && path === "/srv/app") return [
+        { name: "docs", kind: "dir", size: 0, mtime: 0 },
         { name: "notes.txt", kind: "file", size: 12, mtime: 0 },
+      ];
+      if (command === "ssh_fs_read_dir" && path === "/srv/app/docs") return [
+        { name: "report.txt", kind: "file", size: 8, mtime: 0 },
         { name: "huge.bin", kind: "file", size: 100 * 1024 * 1024 + 1, mtime: 0 },
       ];
       if (command === "plugin:dialog|open") return "/home/alice/Downloads";
@@ -1283,8 +1286,11 @@ describe("FileExplorer workspace files", () => {
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />);
-    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+    const docs = await screen.findByRole("treeitem", { name: "docs" });
     fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select notes.txt for download" }));
+    fireEvent.click(docs);
+    await screen.findByRole("checkbox", { name: "Select report.txt for download" });
     fireEvent.click(screen.getByRole("checkbox", { name: "Select all downloadable files" }));
 
     expect(screen.getByRole("checkbox", { name: "Select report.txt for download" }).getAttribute("aria-checked")).not.toBe("false");
@@ -1295,7 +1301,7 @@ describe("FileExplorer workspace files", () => {
     expect(screen.queryByRole("checkbox", { name: "Select all downloadable files" })).toBeNull();
     expect(downloads.map(({ remotePath, localPath, binding }) => [remotePath, localPath, binding.transportGeneration])).toEqual([
       ["/srv/app/notes.txt", "/home/alice/Downloads/notes.txt", "download-generation"],
-      ["/srv/app/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
+      ["/srv/app/docs/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
     ]);
     expect(useTransferStore.getState().materializeItems().every(({ batchId }) => typeof batchId === "string")).toBe(true);
   });

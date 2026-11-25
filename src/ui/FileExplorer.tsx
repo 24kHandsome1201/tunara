@@ -316,19 +316,23 @@ export function FileExplorer({
   }, [hasCachedListing, entries, currentPath, sort]);
   const nodeIndexByPath = useMemo(() => new Map(listingNodes.map(({ path }, index) => [path, index])), [listingNodes]);
   const isConfirmedMissingFile = useCallback((path: string) => (
-    listingNodes[nodeIndexByPath.get(path) ?? -1]?.entry.kind !== "file"
-  ), [listingNodes, nodeIndexByPath]);
-  const selectionContext = useRef(treeRequestContext);
+    parentPath(path) === (currentPath.replace(/\/+$/, "") || "/")
+      && listingNodes[nodeIndexByPath.get(path) ?? -1]?.entry.kind !== "file"
+  ), [currentPath, listingNodes, nodeIndexByPath]);
+  const selectionContext = JSON.stringify([sessionId, remotePtyId, transportGeneration, includeHidden]);
+  const previousSelectionContext = useRef(selectionContext);
   useEffect(() => {
-    if (selectionContext.current === treeRequestContext) return;
-    selectionContext.current = treeRequestContext;
+    if (previousSelectionContext.current === selectionContext) return;
+    previousSelectionContext.current = selectionContext;
     if (!remoteDisconnected) {
       setSelectedDownloads(new Map());
       setSelectingDownloads(false);
     }
+  }, [selectionContext, remoteDisconnected]);
+  useEffect(() => {
     selectionAnchorRef.current = null;
     setBatchDownloadPreparing(false);
-  }, [treeRequestContext, remoteDisconnected]);
+  }, [treeRequestContext]);
   const downloadListingRef = useRef<typeof isConfirmedMissingFile | null>(null);
   downloadListingRef.current = hasCachedListing ? isConfirmedMissingFile : null;
   useEffect(() => {
@@ -978,10 +982,11 @@ export function FileExplorer({
       });
       return;
     }
-    const next = new Map<string, BatchDownloadSource>();
-    let total = 0;
+    const next = new Map(selectedDownloads);
+    let total = [...next.values()].reduce((sum, file) => sum + file.size, 0);
     let rejected: "files" | "total" | null = null;
     for (const node of selectableDownloadNodes) {
+      if (next.has(node.path)) continue;
       if (next.size >= downloadLimits.maxFiles) { rejected = "files"; break; }
       if (total + node.entry.size > downloadLimits.maxTotalBytes) { rejected = "total"; break; }
       next.set(node.path, { path: node.path, name: node.entry.name, size: node.entry.size });
