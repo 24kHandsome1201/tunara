@@ -1589,7 +1589,9 @@ describe("FileExplorer workspace files", () => {
     src.focus();
     fireEvent.keyDown(src, { key: "ArrowRight" });
     act(() => rejectFirst(new Error("temporary read failure")));
-    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(document.activeElement).toBe(retry);
+    fireEvent.click(retry);
 
     expect(await screen.findByRole("treeitem", { name: /^recovered\.ts/ })).toBeTruthy();
     expect(nestedAttempts).toBe(2);

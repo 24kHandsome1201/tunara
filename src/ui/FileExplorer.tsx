@@ -721,14 +721,14 @@ export function FileExplorer({
   }, [nodeIndexByPath, isSearching]);
 
   useLayoutEffect(() => {
-    if (focusAfterNavigationRef.current !== currentPath || (!hasCachedListing && !error)) return;
+    if (focusAfterNavigationRef.current !== currentPath || loading || (!hasCachedListing && !error)) return;
     focusAfterNavigationRef.current = null;
     if (active && document.activeElement === document.body) {
-      treeListRef.current
-        ?.querySelector<HTMLElement>(hasCachedListing ? "[data-explorer-item]" : "[role=alert] button")
-        ?.focus({ preventScroll: true });
+      const listing = treeListRef.current;
+      const target = listing?.querySelector<HTMLElement>("[data-explorer-item], [role=alert] button") ?? listing;
+      target?.focus({ preventScroll: true });
     }
-  }, [active, currentPath, error, hasCachedListing]);
+  }, [active, currentPath, error, hasCachedListing, loading]);
 
   useLayoutEffect(() => {
     if (pendingListingFocus === null) return;
@@ -1101,7 +1101,7 @@ export function FileExplorer({
             toggleDownloadSelection(node, event.shiftKey);
             return;
           }
-          if (isDir) navigateTo(node.path);
+          if (isDir) navigateTo(node.path, "in", true);
           else openFile(node.path);
         }}
         onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY, event.currentTarget); }}
@@ -1445,6 +1445,7 @@ export function FileExplorer({
       {!isSearching && <div
         key={contentKey}
         ref={treeListRef}
+        tabIndex={-1}
         onScroll={measureTree}
         data-nav={navDir}
         className="no-scrollbar scroll-fade-y"
