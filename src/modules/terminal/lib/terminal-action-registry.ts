@@ -14,7 +14,7 @@ import { stringOffsetToCellColumn, type TerminalSearchSource } from "./cross-ses
 interface TerminalActions {
   terminal: Terminal;
   openSearch: () => void;
-  isAtShellPrompt?: () => boolean;
+  isAtFreshShellPrompt?: () => boolean;
   revealAttention?: () => void;
   getBlocks?: () => readonly TerminalCommandBlock[];
 }
@@ -145,7 +145,7 @@ export function pasteIntoActiveShellPrompt(sessionId: string, text: string): boo
   const session = useSessionsStore.getState().sessions.find((item) => item.id === sessionId);
   if (
     !registration || !session || session.connection?.phase !== "ready"
-    || session.agent || session.pendingInput || !registration.isAtShellPrompt?.()
+    || session.agent || session.pendingInput || !registration.isAtFreshShellPrompt?.()
   ) return false;
   const { terminal } = registration;
   const target = captureTerminalActionTarget(sessionId, terminal);

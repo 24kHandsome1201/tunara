@@ -91,7 +91,7 @@ test("SSH sends the path through the bound prompt, not a running command", async
   await expect(terminal).toContainText("Running a command");
   await file.hover();
   await send.click();
-  await expect(page.getByText("Wait for a shell prompt with shell integration enabled.")).toBeVisible();
+  await expect(page.getByText("Start at a fresh prompt with shell integration enabled, or use Copy path.")).toBeVisible();
   expect(await backend.ptyWrites(1)).toBe("");
 
   await backend.emitPtyOutput(1, "\r\n\x1b]133;D;0\x07\x1b]133;A\x07ssh$ \x1b]133;B\x07");
@@ -122,3 +122,35 @@ test("SSH startup command invalidates an older shell's prompt without a command-
   await expect(page.getByText("Could not send path to terminal")).toBeVisible();
   expect(await backend.ptyWrites(1)).toBe("sleep 60\r");
 });
+
+for (const { label, input } of [
+  { label: "unfinished quote", input: 'echo "' },
+  { label: "command without a separator", input: "cat" },
+]) {
+  test(`file path insertion waits for a fresh prompt after typing: ${label}`, async ({ page, backend }) => {
+    const terminal = await openFiles(page);
+    await page.locator(".xterm-helper-textarea").focus();
+    await page.keyboard.type(input);
+    await expect(terminal).toContainText(`e2e$ ${input}`);
+    const file = page.getByRole("treeitem", { name: "README.md", exact: true });
+    const send = file.getByRole("button", { name: "Send path to terminal: README.md" });
+    await file.hover();
+    await send.click();
+    await expect(page.getByText("Could not send path to terminal")).toBeVisible();
+    expect(await backend.ptyWrites(1)).toBe(input);
+
+    await backend.emitPtyOutput(1, "\r\n\x1b]133;A\x07delayed$ \x1b]133;B\x07");
+    await expect(terminal).toContainText("delayed$");
+    await send.click();
+    expect(await backend.ptyWrites(1)).toBe(input);
+
+    await page.locator(".xterm-helper-textarea").focus();
+    await page.keyboard.press("Control+c");
+    await expect.poll(() => backend.ptyWrites(1)).toBe(input + "\x03");
+    await backend.emitPtyOutput(1, "\r\n\x1b]133;A\x07fresh$ \x1b]133;B\x07");
+    await expect(terminal).toContainText("fresh$");
+    await send.click();
+    await expect(terminal).toContainText("fresh$ '/home/e2e/README.md'");
+    expect(await backend.ptyWrites(1)).toBe(input + "\x03'/home/e2e/README.md'");
+  });
+}

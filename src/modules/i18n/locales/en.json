@@ -495,7 +495,7 @@
   "explorer.send_path": "Send path to terminal",
   "explorer.send_path.named": "Send path to terminal: {{name}}",
   "explorer.send_path.failed": "Could not send path to terminal",
-  "explorer.send_path.prompt_required": "Wait for a shell prompt with shell integration enabled.",
+  "explorer.send_path.prompt_required": "Start at a fresh prompt with shell integration enabled, or use Copy path.",
   "explorer.send_path.unsupported_path": "This path is not absolute or contains unsupported control characters.",
   "inspector.tab.files": "Files",
   "inspector.tab.transfers": "Transfers",

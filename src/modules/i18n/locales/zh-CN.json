@@ -495,7 +495,7 @@
   "explorer.send_path": "发送路径到终端",
   "explorer.send_path.named": "发送路径到终端：{{name}}",
   "explorer.send_path.failed": "无法将路径发送到终端",
-  "explorer.send_path.prompt_required": "请等待已启用 Shell 集成的终端显示命令提示符。",
+  "explorer.send_path.prompt_required": "请在启用了 Shell 集成的终端中从新的命令提示符开始，或使用「复制路径」。",
   "explorer.send_path.unsupported_path": "此路径不是绝对路径，或包含不支持的控制字符。",
   "inspector.tab.files": "文件",
   "inspector.tab.transfers": "传输",

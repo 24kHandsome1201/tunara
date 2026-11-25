@@ -145,7 +145,7 @@ export function FileExplorer({
     useUIStore.getState().addToast({
       sessionId,
       title: t("explorer.send_path.failed"),
-      subtitle: t(text ? "explorer.send_path.prompt_required" : "explorer.send_path.unsupported_path"),
+      subtitle: text ? t("explorer.send_path.prompt_required") : t("explorer.send_path.unsupported_path"),
       variant: "warning",
     });
   }
