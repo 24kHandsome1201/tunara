@@ -321,7 +321,7 @@ fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, Str
         if truncated {
             return true;
         }
-        let content = std::str::from_utf8(l.content()).unwrap_or("");
+        let content = String::from_utf8_lossy(l.content());
         let origin = l.origin();
         let prefix_len = if matches!(origin, '+' | '-' | ' ') {
             1
@@ -336,7 +336,7 @@ fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, Str
             out.push(origin);
             lines += 1;
         }
-        out.push_str(content);
+        out.push_str(&content);
         true
     })
     .map_err(|e| e.to_string())?;
@@ -550,6 +550,31 @@ mod tests {
             Some("unstaged".into()),
         )
         .expect("unstaged diff")
+    }
+
+    #[test]
+    fn git_diff_preserves_line_boundaries_in_non_utf8_text() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).unwrap();
+        commit_file(&repo, &dir.path, "tracked.txt", "old\n");
+        let patches =
+            [("tracked.txt", "unstaged"), ("new.txt", "untracked")].map(|(file, stage)| {
+                std::fs::write(dir.path.join(file), b"caf\xe9\nsecond\n").unwrap();
+                text_patch(
+                    git_diff(
+                        dir.path.to_str().unwrap().into(),
+                        file.into(),
+                        Some(stage.into()),
+                    )
+                    .unwrap(),
+                )
+            });
+        assert!(
+            patches
+                .iter()
+                .all(|patch| patch.contains("+caf�\n+second\n")),
+            "{patches:?}"
+        );
     }
 
     #[test]
