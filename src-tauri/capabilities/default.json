@@ -17,6 +17,7 @@
     "core:window:allow-request-user-attention",
     "core:window:allow-set-badge-count",
     "core:window:allow-toggle-maximize",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-show",
     "core:window:allow-set-focus",
     "core:window:allow-is-fullscreen",

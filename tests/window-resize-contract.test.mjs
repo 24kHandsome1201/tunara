@@ -35,6 +35,20 @@ test("borderless Linux chrome exposes native resize dragging on every edge", () 
   assert.ok(capability.permissions.includes("core:window:allow-start-resize-dragging"));
 });
 
+test("titlebar drag region keeps its double-click maximize command", () => {
+  const tauri = JSON.parse(read("src-tauri/tauri.conf.json"));
+  const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
+  const generated = JSON.parse(read("src-tauri/gen/schemas/capabilities.json"));
+
+  // Tauri's drag-region script invokes `internal_toggle_maximize` on double-click,
+  // and `removeUnusedCommands` strips that command unless a capability allows it.
+  assert.equal(tauri.build.removeUnusedCommands, true);
+  for (const permissions of [capability.permissions, generated.default.permissions]) {
+    assert.ok(permissions.includes("core:window:allow-start-dragging"));
+    assert.ok(permissions.includes("core:window:allow-internal-toggle-maximize"));
+  }
+});
+
 test("native window state only restores size and position", () => {
   const lib = read("src-tauri/src/lib.rs");
 
