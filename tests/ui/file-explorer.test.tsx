@@ -1556,6 +1556,10 @@ describe("FileExplorer workspace files", () => {
     fireEvent.change(input, { target: { value: "relative" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.change(input, { target: { value: "/opt/other/../releases" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(nav.getByRole("textbox")).toBe(input);
     fireEvent.keyDown(input, { key: "Escape" });
     expect(nav.queryByRole("textbox")).toBeNull();
     expect(document.activeElement).toBe(edit);

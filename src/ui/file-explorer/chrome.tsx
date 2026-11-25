@@ -123,7 +123,7 @@ export function ExplorerNav({
                 finishEditing();
                 return;
               }
-              if (!draft.path.startsWith("/") || draft.path.includes("\0")) {
+              if (!draft.path.startsWith("/") || draft.path.includes("\0") || /(?:^|\/)\.{1,2}(?:\/|$)/.test(draft.path)) {
                 setDraft({ ...draft, invalid: true });
                 return;
               }

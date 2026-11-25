@@ -406,7 +406,7 @@
   "explorer.go_forward": "Forward",
   "explorer.edit_path": "Edit path",
   "explorer.directory_path": "Directory path",
-  "explorer.path_absolute_required": "Enter an absolute path starting with /.",
+  "explorer.path_absolute_required": "Enter an absolute path starting with /, without . or .. segments.",
   "explorer.chrome.nav": "Directory",
   "explorer.chrome.search": "Search files",
   "explorer.chrome.tools": "Remote file tools",
