@@ -152,8 +152,9 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   assert.doesNotMatch(explorerChrome, /stroke="var\(--c-accent\)"/);
   assert.doesNotMatch(explorerIcons, /stroke="var\(--c-accent\)"/);
   assert.match(explorerChrome, /<UploadIcon/);
-  assert.match(explorerChrome, /<UploadFolderIcon/);
-  assert.match(explorerChrome, /<DownloadIcon/);
+  const contextMenu = read("src/ui/ContextMenu.tsx");
+  assert.match(contextMenu, /<UploadFolderIcon/);
+  assert.match(contextMenu, /<DownloadIcon/);
   const icons = read("src/ui/icons.tsx");
   assert.match(icons, /className="explorer-tree-chevron"/);
   assert.match(shared, /export \{\n  CloseIcon,\n  DownloadIcon,\n  RefreshIcon,\n  SearchIcon,\n  UploadFolderIcon,\n  UploadIcon,\n\} from "@\/ui\/icons"/);

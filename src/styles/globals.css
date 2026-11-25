@@ -781,8 +781,8 @@ select.ui-control {
 /* Files chrome is three stacked bands: where you are, what to find, then
    remote places/transfers. Navigation never shares a wrapping row with
    filters or SSH actions, so the path stays readable in a 320px inspector. */
+.file-explorer { container: file-explorer / inline-size; }
 .file-explorer {
-  container: file-explorer / inline-size;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -941,6 +941,15 @@ select.ui-control {
   border: 1px solid var(--c-accent-border);
   background: var(--c-accent-bg-soft);
 }
+.explorer-search-notice {
+  flex-shrink: 0;
+  padding: 5px var(--sp-2);
+  border-bottom: 1px solid var(--c-border-1);
+  background: var(--c-bg-1);
+  font-size: var(--fs-meta);
+  line-height: 16px;
+  color: var(--c-text-4);
+}
 .explorer-search {
   flex: 1;
   min-width: 0;
@@ -1018,17 +1027,6 @@ select.ui-control {
   background: var(--c-bg-2);
 }
 .explorer-transfers { margin-left: auto; }
-.explorer-download-armed,
-.panel-icon-button.explorer-download-armed,
-.panel-icon-button.explorer-download-armed[data-active="true"] {
-  width: auto;
-  min-width: var(--h-titlebar-control);
-  padding: 0 5px;
-  gap: 2px;
-  color: var(--c-accent-text);
-  background: var(--c-accent-bg-light);
-}
-.explorer-download-count { font-size: var(--fs-meta); font-weight: 650; }
 .explorer-transfer-entry {
   width: 48px;
   height: var(--h-titlebar-control);
@@ -1114,11 +1112,7 @@ button.explorer-listing-action {
   place-items: center;
 }
 .explorer-state-shell .panel-state { width: min(100%, 280px); }
-@container file-explorer (max-width: 340px) {
-  .explorer-place-secondary { display: none; }
-}
 @container file-explorer (max-width: 280px) {
-  .explorer-place-shortcut,
   .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
     --explorer-listing-columns: minmax(0, 1fr) 28px;
@@ -2196,6 +2190,7 @@ html[data-window-translucent] .file-editor-paper,
 html[data-window-translucent] .notebook-preview,
 html[data-window-translucent] .explorer-nav,
 html[data-window-translucent] .explorer-search-row,
+html[data-window-translucent] .explorer-search-notice,
 html[data-window-translucent] .explorer-tools,
 html[data-window-translucent] .tunara-statusbar,
 html[data-window-translucent] .xterm .xterm-viewport,
