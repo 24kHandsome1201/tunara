@@ -1014,15 +1014,23 @@ button.explorer-listing-action {
 @container file-explorer (max-width: 340px) {
   .explorer-place-secondary { display: none; }
 }
-/* Names outrank dates: the default 320px panel drops the Modified column. */
+/* Names outrank dates: the default 320px panel drops the Modified column from
+   rows, while the header keeps its sort button over the action column. */
 @container file-explorer (max-width: 360px) {
-  .explorer-listing-modified { display: none; }
+  .explorer-listing-row .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
     --explorer-listing-columns: minmax(0, 1fr) 28px;
   }
   .explorer-listing-grid[data-selectable="true"] {
     --explorer-listing-columns: 20px minmax(0, 1fr) 28px;
   }
+  .explorer-listing-header {
+    --explorer-listing-columns: minmax(0, 1fr) auto;
+  }
+  .explorer-listing-header[data-selectable="true"] {
+    --explorer-listing-columns: 20px minmax(0, 1fr) auto;
+  }
+  .explorer-listing-header > .explorer-listing-action { display: none; }
 }
 @container file-explorer (max-width: 280px) {
   .explorer-place-shortcut { display: none; }
