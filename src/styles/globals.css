@@ -931,6 +931,18 @@ select.ui-control {
 .explorer-nav button:disabled,
 .explorer-tools button:disabled { color: var(--c-text-6) !important; opacity: .45 !important; pointer-events: none; }
 .explorer-breadcrumbs { display: flex; align-items: center; gap: 1px; flex: 1; min-width: 0; padding: 0 2px; margin-block: -2px; overflow: hidden; white-space: nowrap; }
+.explorer-path-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 5px;
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-btn);
+  background: var(--c-bg-0);
+  color: var(--c-text-2);
+  font: var(--fs-meta) var(--font-mono);
+}
+.explorer-path-input[aria-invalid="true"] { border-color: var(--c-error); }
 .explorer-breadcrumb { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .explorer-breadcrumb-link,
 .explorer-breadcrumb-current {
@@ -952,9 +964,7 @@ select.ui-control {
   color: var(--c-text-3);
   font-weight: 500;
   cursor: default;
-  flex-shrink: 0;
 }
-.explorer-breadcrumb:last-child { flex-shrink: 0; }
 .explorer-breadcrumb-link { cursor: pointer; }
 .explorer-breadcrumb[data-collapsed="true"] > button { flex-shrink: 0; min-width: 0; }
 .explorer-breadcrumb-sep {
@@ -1203,7 +1213,7 @@ select.ui-control {
 .explorer-listing-row {
   min-height: 30px;
   border-radius: var(--r-btn);
-  padding-right: var(--sp-1);
+  padding-inline: var(--sp-2) var(--sp-1);
 }
 .explorer-listing-row.hover-bg { border: none; background: transparent; }
 .explorer-listing-row[data-active="true"] { background: var(--c-accent-bg-light); }
@@ -1280,30 +1290,6 @@ button.explorer-listing-action {
   position: absolute;
   top: 0;
   left: 0;
-}
-.file-explorer [data-virtual="true"] > .explorer-tree-error { right: 0; }
-.explorer-tree-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.explorer-tree-error > [role="alert"] {
-  color: var(--c-error);
-  font-size: var(--fs-meta);
-}
-.explorer-tree-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 24px;
-  padding: 0 3px;
-  margin-left: -3px;
-  border: none;
-  background: transparent;
-  color: var(--c-text-4);
-  cursor: pointer;
-  border-radius: var(--r-btn);
-  flex-shrink: 0;
 }
 .explorer-tree-chevron {
   flex-shrink: 0;

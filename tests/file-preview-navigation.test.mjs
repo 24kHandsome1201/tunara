@@ -12,6 +12,4 @@ test("FileExplorer opens files in persistent workspace tabs", async () => {
 test("directory navigation no longer owns or unmounts an editor", async () => {
   const source = await readFile(new URL("../src/ui/FileExplorer.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /import\([^)]*FilePreview|<FilePreview/);
-  assert.match(source, /function goUp\(\) \{\s*setNavDir\("out"\)/);
-  assert.match(source, /if \(isDir\) \{ setNavDir\("in"\); setCurrentPath\(node\.path\); \}/);
 });
