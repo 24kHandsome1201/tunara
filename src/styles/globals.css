@@ -831,6 +831,15 @@ select.ui-control {
   flex-shrink: 0;
 }
 .explorer-search-row { padding: 6px var(--sp-2); }
+.explorer-search-notice {
+  flex-shrink: 0;
+  padding: 5px var(--sp-2);
+  border-bottom: 1px solid var(--c-border-1);
+  background: var(--c-bg-1);
+  font-size: var(--fs-meta);
+  line-height: 16px;
+  color: var(--c-text-4);
+}
 .explorer-search {
   flex: 1;
   min-width: 0;
@@ -2086,6 +2095,7 @@ html[data-window-translucent] .file-editor-paper,
 html[data-window-translucent] .notebook-preview,
 html[data-window-translucent] .explorer-nav,
 html[data-window-translucent] .explorer-search-row,
+html[data-window-translucent] .explorer-search-notice,
 html[data-window-translucent] .explorer-tools,
 html[data-window-translucent] .tunara-statusbar,
 html[data-window-translucent] .xterm .xterm-viewport,
