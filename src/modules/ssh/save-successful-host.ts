@@ -13,6 +13,18 @@ export function sshHostProfileFromSuccessfulConnect(
   remote: RemoteInfo,
   label: string,
   hosts: SshHostProfile[],
+  options?: { selectedSaved?: SshHostProfile; createOnly?: false },
+): SshHostProfile;
+export function sshHostProfileFromSuccessfulConnect(
+  remote: RemoteInfo,
+  label: string,
+  hosts: SshHostProfile[],
+  options: { selectedSaved?: SshHostProfile; createOnly: boolean },
+): SshHostProfile | undefined;
+export function sshHostProfileFromSuccessfulConnect(
+  remote: RemoteInfo,
+  label: string,
+  hosts: SshHostProfile[],
   { selectedSaved, createOnly = false }: { selectedSaved?: SshHostProfile; createOnly?: boolean } = {},
 ): SshHostProfile | undefined {
   const jumpId = remote.route?.profileId ?? "";
