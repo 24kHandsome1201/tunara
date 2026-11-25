@@ -42,6 +42,35 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.queryByRole("treeitem", { name: /^before\.txt/ })).toBeNull();
   });
 
+  test("can reopen nested folders whose listing was discarded under a collapsed parent", async () => {
+    let filename = "before.txt";
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") return "/home/dev";
+      const { path } = payload as { path: string };
+      if (path === "/srv/app") return [{ name: "docs", kind: "dir", size: 0, mtime: 0 }];
+      if (path === "/srv/app/docs") return [{ name: "drafts", kind: "dir", size: 0, mtime: 0 }];
+      return [{ name: filename, kind: "file", size: 1, mtime: 0 }];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand drafts" }));
+    await screen.findByRole("treeitem", { name: /^before\.txt/ });
+    fireEvent.click(screen.getByRole("button", { name: "Collapse docs" }));
+    rerender(explorer(false));
+    filename = "after.txt";
+    await act(async () => rerender(explorer(true)));
+    fireEvent.click(screen.getByRole("button", { name: "Expand docs" }));
+    const drafts = await screen.findByRole("treeitem", { name: /^drafts/ });
+    expect(drafts.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Expand drafts" }));
+    await screen.findByRole("treeitem", { name: /^after\.txt/ });
+  });
+
   test("replaces the previous listing with a retryable error if the folder moved while Files was hidden", async () => {
     let moved = false;
     let reads = 0;

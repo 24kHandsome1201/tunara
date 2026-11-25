@@ -225,6 +225,8 @@ export function useTreeListing({
 
   function refreshExpandedDirectories() {
     const paths = visibleTreeRows.flatMap((row) => row.kind === "node" && row.expanded ? [row.path] : []);
+    beginListingEpoch();
+    setExpandedPaths(new Set(paths));
     setTreeChildren((current) => Object.fromEntries(paths.filter((path) => path in current).map((path) => [path, current[path]])));
     for (const path of paths) expandDirectory(path, true);
   }
