@@ -75,6 +75,7 @@ function TerminalViewImpl({
   }));
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
+  const atShellPromptRef = useRef(false);
   const initRef = useRef(false);
   const terminalInstanceEpochRef = useRef(allocateTerminalInstanceEpoch());
   // Gates the pendingInput effect to fire once when the PTY is ready.
@@ -112,12 +113,14 @@ function TerminalViewImpl({
       pty,
       input: pendingInput,
       submit: pendingInputSubmit !== false,
+      onWrite: () => { atShellPromptRef.current = false; },
       onConsumed: () => onPendingInputConsumed?.(sessionIdRef.current),
     }).dispose;
   }, [pendingInput, pendingInputSubmit, onPendingInputConsumed, ptyReady]);
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;
+    atShellPromptRef.current = false;
     let disposed = false;
     const cleanups: Array<() => void> = [];
     (async () => {
@@ -153,11 +156,10 @@ function TerminalViewImpl({
       cleanups.push(disposeUnicodeGraphemes);
       const terminalScreen = term.element?.querySelector<HTMLElement>(".xterm-screen");
       if (terminalScreen) cleanups.push(linkInputRef.current.attach(terminalScreen));
-      let atShellPrompt = false;
       cleanups.push(registerTerminalActions(sessionIdRef.current, {
         terminal: term,
         openSearch: search.openSearch,
-        isAtShellPrompt: () => atShellPrompt,
+        isAtShellPrompt: () => atShellPromptRef.current,
         getBlocks: blocks.getBlocks,
         revealAttention: () => {
           const current = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
@@ -315,7 +317,7 @@ function TerminalViewImpl({
       }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
         const marker = data.charAt(0);
-        if (marker === "A" || marker === "C" || marker === "D") atShellPrompt = marker === "A";
+        if (marker === "A" || marker === "C" || marker === "D") atShellPromptRef.current = marker === "A";
         if (marker === "A" || marker === "B" || marker === "C" || marker === "D") {
           useSessionsStore.getState().markShellIntegrationSeen(sessionIdRef.current);
         }
@@ -570,7 +572,7 @@ function TerminalViewImpl({
         };
         const result = scanTerminalInputBuffer(inputState.buffer, data, inputState.bracketedPasteActive);
         inputState = result;
-        if (result.submissions.length > 0) atShellPrompt = false;
+        if (result.submissions.length > 0) atShellPromptRef.current = false;
         for (const submitted of result.submissions) {
           submitAgentInput(submitted);
           submitCommandBuffer(submitted);

@@ -4,15 +4,19 @@ import { expect, test } from "./fixtures";
 
 test.use({ viewport: { width: 1280, height: 620 } });
 
-async function openFiles(page: Page, { ssh = false, controlName = false } = {}) {
+async function openFiles(page: Page, { ssh = false, controlName = false, startupCommand = "" } = {}) {
   await page.goto("/");
-  await page.evaluate((controlName) => {
+  await page.evaluate(({ controlName, startupCommand }) => {
     type MockInvoke = (command: string, args?: Record<string, unknown>, options?: unknown) => Promise<unknown>;
     const invoke = window.__TAURI_INTERNALS__.invoke as MockInvoke;
     const entry = (name: string, kind: DirEntry["kind"]): DirEntry => ({
       name, kind, size: 42, mtime: Date.UTC(2025, 2, 3, 12),
     });
     const invokeWithListing: MockInvoke = (command, args, options) => {
+      if (startupCommand && command === "pty_write" && args?.data === startupCommand + "\r") {
+        const pty = window.__TUNARA_E2E__?.state.ptys.find((pty) => pty.id === args.id);
+        if (pty) pty.autoPrompt = false;
+      }
       if (command === "fs_resolve_dir" && args?.path === "~") {
         return Promise.resolve("/home/e2e");
       }
@@ -29,11 +33,15 @@ async function openFiles(page: Page, { ssh = false, controlName = false } = {}) 
       return invoke(command, args, options);
     };
     window.__TAURI_INTERNALS__.invoke = invokeWithListing;
-  }, controlName);
+  }, { controlName, startupCommand });
   if (ssh) {
     await page.getByRole("button", { name: "Connect SSH" }).click();
     const dialog = page.locator('[role="dialog"][aria-labelledby="ssh-connect-title"]');
     await dialog.locator("#ssh-connect-host").fill("deploy@example.test");
+    if (startupCommand) {
+      await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
+      await dialog.locator("#ssh-post-connect-command").fill(startupCommand);
+    }
     await dialog.getByRole("button", { name: "Connect", exact: true }).click();
   } else {
     await page.getByRole("button", { name: "Local terminal" }).click();
@@ -102,4 +110,15 @@ test("a path containing a newline is never written into a live prompt", async ({
   await file.getByRole("button", { name: "Send path to terminal: bad name" }).click();
   await expect(page.getByText("This path is not absolute or contains unsupported control characters.")).toBeVisible();
   expect(await backend.ptyWrites(1)).toBe("");
+});
+
+test("SSH startup command invalidates an older shell's prompt without a command-start marker", async ({ page, backend }) => {
+  const terminal = await openFiles(page, { ssh: true, startupCommand: "sleep 60" });
+  await expect.poll(() => backend.ptyWrites(1)).toBe("sleep 60\r");
+  await expect(terminal).toContainText("e2e$ sleep 60");
+  const file = page.getByRole("treeitem", { name: "README.md", exact: true });
+  await file.hover();
+  await file.getByRole("button", { name: "Send path to terminal: README.md" }).click();
+  await expect(page.getByText("Could not send path to terminal")).toBeVisible();
+  expect(await backend.ptyWrites(1)).toBe("sleep 60\r");
 });
