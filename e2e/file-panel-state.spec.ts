@@ -11,9 +11,12 @@ async function mockListing(page: Page) {
       name, kind, mtime: Date.UTC(2025, 2, 3, 12), size: 42,
     });
     window.__TAURI_INTERNALS__.invoke = (cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === "fs_resolve_dir" && args?.path === "~") return Promise.resolve("/home/e2e");
+      // Use the filesystem root as home so both revisions show the same absolute breadcrumbs.
+      if (cmd === "ssh_fs_home" || (cmd === "fs_resolve_dir" && args?.path === "~")) return Promise.resolve("/");
       if (cmd === "fs_read_dir" || cmd === "ssh_fs_read_dir") {
         void invoke(cmd, args);
+        if (args?.path === "/") return Promise.resolve([entry("home", "dir")]);
+        if (args?.path === "/home") return Promise.resolve([entry("e2e", "dir")]);
         if (args?.path === "/home/e2e/src") {
           return Promise.resolve([
             entry("explorer.tsx"), entry("file-tree.tsx"), entry("index.ts"),
@@ -32,8 +35,20 @@ async function mockListing(page: Page) {
   });
 }
 
+async function expectListingBreadcrumb(page: Page) {
+  const breadcrumbs = page.getByRole("navigation", { name: "Directory" }).locator(".explorer-breadcrumbs");
+  await expect(breadcrumbs).toHaveAttribute("title", "/home/e2e");
+  await expect(breadcrumbs.getByRole("button")).toHaveText(["/", "home", "e2e"]);
+}
+
 async function browseFiles(page: Page) {
   await page.getByRole("tab", { name: "Files", exact: true }).click();
+  const root = page.getByRole("navigation", { name: "Directory" }).getByRole("button", { name: "/", exact: true });
+  await expect(root).toBeVisible();
+  if (await root.isEnabled()) await root.click();
+  await page.getByRole("treeitem", { name: "home", exact: true }).press("Enter");
+  await page.getByRole("treeitem", { name: "e2e", exact: true }).press("Enter");
+  await expectListingBreadcrumb(page);
   const folder = page.getByRole("treeitem", { name: "src", exact: true });
   await folder.click();
   const file = page.getByRole("treeitem", { name: "file-tree.tsx", exact: true });
@@ -60,6 +75,7 @@ test("Files keeps expanded folders and the scroll position after visiting Change
   await page.getByRole("tab", { name: "Changes", exact: true }).click();
   await page.getByRole("tab", { name: "Files", exact: true }).click();
   await expect(folder).toBeVisible();
+  await expectListingBreadcrumb(page);
   await capturePanel(page, "tabs");
   await expect(folder).toHaveAttribute("aria-expanded", "true");
   await expect(file).toBeVisible();
@@ -75,12 +91,14 @@ test("Files keeps a read-only snapshot on SSH disconnect and refreshes on reconn
   await dialog.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.locator(".xterm-rows").first()).toContainText("e2e$");
   const { folder, file, list } = await browseFiles(page);
+  const snapshot = page.getByText("SSH disconnected · Read-only snapshot", { exact: true });
+  await expect(snapshot).toHaveCount(0);
   await file.press("Control+Space");
   await expect(file).toHaveAttribute("aria-selected", "true");
   await page.evaluate(() => window.__TUNARA_E2E__!.disconnectPty(1));
   await expect(page.getByRole("button", { name: "Reconnect", exact: true })).toBeVisible();
-  const snapshot = page.getByText("SSH disconnected · Read-only snapshot", { exact: true });
   await expect(snapshot.or(page.getByText("Remote files are unavailable", { exact: true }))).toBeVisible();
+  await expectListingBreadcrumb(page);
   await capturePanel(page, "disconnect");
   await expect(folder).toHaveAttribute("aria-expanded", "true");
   await expect(snapshot).toBeVisible();
@@ -98,9 +116,10 @@ test("Files keeps a read-only snapshot on SSH disconnect and refreshes on reconn
   await page.getByRole("button", { name: "Reconnect", exact: true }).click();
   await dialog.getByRole("button", { name: "Reconnect", exact: true }).click();
   await expect.poll(() => backend.openPtyIds()).toEqual([2]);
-  await expect(page.getByText("SSH disconnected · Read-only snapshot")).toHaveCount(0);
   await expect(page.getByRole("treeitem", { name: "updated-on-reconnect.md" })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "refreshed.ts" })).toBeVisible();
   await expect(folder).toHaveAttribute("aria-expanded", "true");
   await expect(file.getByRole("button")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Upload file…" })).toBeEnabled();
+  await expect(snapshot).toHaveCount(0);
 });
