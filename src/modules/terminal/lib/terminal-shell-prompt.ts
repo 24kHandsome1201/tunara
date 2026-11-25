@@ -8,7 +8,7 @@ export function createShellPromptTracker() {
     reset: () => { state = "awaiting"; },
     recordWrite,
     recordInput(data: string, bracketedPasteActive: boolean) {
-      const last = data.at(-1);
+      const last = data.charAt(data.length - 1);
       const submittedLine = (last === "\r" || last === "\n") && !/[\u0000-\u001f\u007f-\u009f]/.test(data.slice(0, -1));
       recordWrite(!bracketedPasteActive && (submittedLine || data === "\x03"));
     },
