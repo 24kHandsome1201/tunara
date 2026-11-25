@@ -24,8 +24,6 @@ body:
     attributes:
       label: Proposed solution
       description: How would you imagine using this? UX sketch, behavior, keyboard shortcut, anything that helps us picture it.
-    validations:
-      required: true
 
   - type: textarea
     id: alternatives
@@ -41,8 +39,6 @@ body:
         - "Yes, with guidance"
         - "Yes, I can do it"
         - "No, just suggesting"
-    validations:
-      required: true
 
   - type: checkboxes
     id: checks
@@ -50,4 +46,4 @@ body:
       label: Before submitting
       options:
         - label: I searched existing issues and didn't find a duplicate
-          required: true
+          required: false
