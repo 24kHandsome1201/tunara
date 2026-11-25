@@ -624,11 +624,14 @@ export function SshConnect({ onClose }: SshConnectProps) {
     const selectedSaved = selectedProfile?.source === "saved"
       ? hosts.find((candidate) => candidate.id === selectedProfile.id)
       : aliasSource === "saved" ? alias : undefined;
+    const savedProfileForRoute = commandHasJump && (selectedSaved?.proxyJumpProfileId ?? "") !== (route?.profileId ?? "")
+      ? undefined
+      : selectedSaved;
     const pendingSavedHost = sshHostProfileFromSuccessfulConnect(
       remote,
       match?.label || `${nextUser}@${nextHost}`,
       hosts,
-      selectedSaved,
+      savedProfileForRoute,
     );
 
     if (existingSession?.remote && sameEndpoint) {

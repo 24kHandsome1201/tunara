@@ -175,6 +175,37 @@ describe("SSH connection sheet", () => {
     });
   });
 
+  test("a pasted -J none does not overwrite a routed saved alias", async () => {
+    const saves: Array<Record<string, unknown>> = [];
+    mockIPC((command, payload) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "jump", label: "bastion", host: "jump.example", port: 22, user: "ops", identity_file: "" },
+        { id: "routed", label: "lab", host: "lab.example", port: 22, user: "qa", identity_file: "", proxy_jump_profile_id: "jump" },
+      ];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      if (command === "ssh_local_account") return "localuser";
+      if (command === "ssh_hosts_save") {
+        const profile = (payload as { profile: Record<string, unknown> }).profile;
+        saves.push(profile);
+        return [profile];
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+    await screen.findByRole("button", { name: /lab\.example/ });
+    fireEvent.change(hostInput(), { target: { value: "ssh -J none lab" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    const [session] = useSessionsStore.getState().sessions;
+    expect(session.remote?.route).toBeUndefined();
+    act(() => {
+      useSessionsStore.getState().handleConnectionEvent(session.id, { type: "ready", transport: "ssh", source: "backend" });
+    });
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toMatchObject({ host: "lab.example", proxy_jump_profile_id: "" });
+    expect(saves[0].id).not.toBe("routed");
+  });
+
   test("keeps Password strictly password-only once Advanced is opened", async () => {
     useUIStore.setState({ sidebarVisible: false });
     const saves: Array<Record<string, unknown>> = [];
