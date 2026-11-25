@@ -8,7 +8,9 @@ export function createShellPromptTracker() {
     reset: () => { state = "awaiting"; },
     recordWrite,
     recordInput(data: string, bracketedPasteActive: boolean) {
-      recordWrite(!bracketedPasteActive && (data === "\r" || data === "\n" || data === "\x03"));
+      const last = data.at(-1);
+      const submittedLine = (last === "\r" || last === "\n") && !/[\u0000-\u001f\u007f-\u009f]/.test(data.slice(0, -1));
+      recordWrite(!bracketedPasteActive && (submittedLine || data === "\x03"));
     },
     recordMarker(marker: string) {
       // A marker can lag behind input already sent to the shell.
