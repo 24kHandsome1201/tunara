@@ -1522,11 +1522,11 @@ describe("FileExplorer workspace files", () => {
       return [{ name: "release.txt", kind: "file", size: 1, mtime: 0 }];
     });
 
-    render(<FileExplorer sessionId={remote ? "remote" : "local"} rootDir="/tmp/repo" remotePtyId={remote ? 40 : undefined} />);
-    const nav = within(screen.getByRole("navigation", { name: "Directory" }));
-    const back = nav.getByRole<HTMLButtonElement>("button", { name: "Back" });
-    const forward = nav.getByRole<HTMLButtonElement>("button", { name: "Forward" });
-    const edit = nav.getByRole("button", { name: "Edit path" });
+    const explorer = <FileExplorer sessionId={remote ? "remote" : "local"} rootDir="/tmp/repo" remotePtyId={remote ? 40 : undefined} />;
+    const { rerender } = render(explorer);
+    let nav = within(screen.getByRole("navigation", { name: "Directory" }));
+    let back = nav.getByRole<HTMLButtonElement>("button", { name: "Back" });
+    let forward = nav.getByRole<HTMLButtonElement>("button", { name: "Forward" });
     expect(back.disabled).toBe(true);
     expect(forward.disabled).toBe(true);
     const src = await screen.findByRole("treeitem", { name: "src" });
@@ -1540,6 +1540,14 @@ describe("FileExplorer workspace files", () => {
     const index = await screen.findByRole("treeitem", { name: "index.ts" });
     expect(document.activeElement).toBe(index);
 
+    rerender(null);
+    rerender(explorer);
+    await screen.findByRole("treeitem", { name: "index.ts" });
+    nav = within(screen.getByRole("navigation", { name: "Directory" }));
+    back = nav.getByRole<HTMLButtonElement>("button", { name: "Back" });
+    forward = nav.getByRole<HTMLButtonElement>("button", { name: "Forward" });
+    const edit = nav.getByRole("button", { name: "Edit path" });
+    expect(back.disabled).toBe(false);
     fireEvent.click(back);
     await screen.findByRole("treeitem", { name: "nested" });
     expect(forward.disabled).toBe(false);
@@ -1571,7 +1579,7 @@ describe("FileExplorer workspace files", () => {
     await screen.findByRole("treeitem", { name: "release.txt" });
     expect(forward.disabled).toBe(true);
     expect(reads).toEqual([
-      "/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested", "/tmp/repo/src",
+      "/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested", "/tmp/repo/src/nested", "/tmp/repo/src",
       "/tmp/repo/src/nested", "/tmp/repo", "/tmp/repo/src/nested", "/opt/releases",
     ]);
   });

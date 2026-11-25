@@ -78,8 +78,6 @@ export { sortExplorerEntries, formatModifiedTime } from "./file-explorer/helpers
 
 const GREP_HEADER_HEIGHT = 24;
 const GREP_LINE_HEIGHT = 22;
-const DIRECTORY_HISTORY_LIMIT = 100;
-
 type ListingNode = { path: string; entry: DirEntry };
 
 type SearchRow = { key: string; height: number; focusable: boolean } & (
@@ -216,21 +214,9 @@ export function FileExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- home only needs resolving once per explorer
   }, [isRemote]);
   const currentPath = useUIStore((state) => state.explorerPaths[sessionId] ?? (isRemote ? "" : rootDir));
-  const [history, setHistory] = useState<{ sessionId: string; paths: string[]; index: number }>({
-    sessionId, paths: [], index: -1,
-  });
-  if (history.sessionId !== sessionId || (currentPath.startsWith("/") && history.paths[history.index] !== currentPath)) {
-    const paths = history.sessionId === sessionId ? history.paths.slice(0, history.index + 1) : [];
-    if (currentPath.startsWith("/")) paths.push(currentPath);
-    const recent = paths.slice(-DIRECTORY_HISTORY_LIMIT);
-    setHistory({ sessionId, paths: recent, index: recent.length - 1 });
-  }
+  const history = useUIStore((state) => state.explorerHistory[sessionId]);
   const setCurrentPath = useCallback((next: string | ((current: string) => string)) => {
-    useUIStore.setState((state) => {
-      const current = state.explorerPaths[sessionId] ?? (isRemote ? "" : rootDir);
-      const path = typeof next === "function" ? next(current) : next;
-      return path === current ? state : { explorerPaths: { ...state.explorerPaths, [sessionId]: path } };
-    });
+    useUIStore.getState().setExplorerPath(sessionId, next, isRemote ? "" : rootDir);
   }, [sessionId, isRemote, rootDir]);
   const previousCwdFollow = useRef({ rootDir, followTerminalCwd });
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -751,24 +737,27 @@ export function FileExplorer({
     setReloadKey((n) => n + 1);
   }
 
-  function navigateTo(path: string, direction: "in" | "out" = "in", focusListing = false) {
-    if (remoteDisconnected) return;
+  function prepareNavigation(path: string, direction: "in" | "out", focusListing: boolean) {
+    if (remoteDisconnected) return false;
     search.setQuery("");
-    if (path === currentPath) return;
+    if (path === currentPath) return false;
     focusAfterNavigationRef.current = focusListing ? path : null;
     focusedPathRef.current = null;
     setListingFocusIndex(0);
     setPendingListingFocus(null);
     setNavDir(direction);
-    setCurrentPath(path);
+    return true;
+  }
+
+  function navigateTo(path: string, direction: "in" | "out" = "in", focusListing = false) {
+    if (prepareNavigation(path, direction, focusListing)) setCurrentPath(path);
   }
 
   function goHistory(offset: -1 | 1) {
-    const index = history.index + offset;
-    const path = history.paths[index];
-    if (!path || remoteDisconnected) return;
-    setHistory({ ...history, index });
-    navigateTo(path, offset === -1 ? "out" : "in");
+    const path = history?.paths[history.index + offset];
+    if (path && prepareNavigation(path, offset === -1 ? "out" : "in", false)) {
+      useUIStore.getState().stepExplorerHistory(sessionId, offset);
+    }
   }
 
   function focusTreeIndex(index: number) {
@@ -1314,8 +1303,8 @@ export function FileExplorer({
       <ExplorerNav
         t={t}
         disabled={remoteDisconnected}
-        canGoBack={history.index > 0}
-        canGoForward={history.index + 1 < history.paths.length}
+        canGoBack={!!history && history.index > 0}
+        canGoForward={!!history && history.index + 1 < history.paths.length}
         onGoBack={() => goHistory(-1)}
         onGoForward={() => goHistory(1)}
         currentPath={currentPath}

@@ -337,7 +337,10 @@ interface UIState extends AppearanceSettings {
   explorerFollowCwd: boolean;
   /** Last browsed directory per session; survives Inspector tab unmounts, not app restarts. */
   explorerPaths: Record<string, string>;
+  explorerHistory: Record<string, { paths: string[]; index: number }>;
 
+  setExplorerPath: (sessionId: string, next: string | ((current: string) => string), initial?: string) => void;
+  stepExplorerHistory: (sessionId: string, offset: -1 | 1) => void;
   showTerminal: () => void;
   openSshHosts: () => void;
   setNativeFullscreen: (fullscreen: boolean) => void;
@@ -439,8 +442,34 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: {},
     explorerFollowCwd: true,
     explorerPaths: {},
+    explorerHistory: {},
     ...DEFAULT_SETTINGS,
 
+    setExplorerPath: (sessionId, next, initial = "") => set((s) => {
+      const current = s.explorerPaths[sessionId] ?? initial;
+      const path = typeof next === "function" ? next(current) : next;
+      if (s.explorerPaths[sessionId] === path) return s;
+      const history = s.explorerHistory[sessionId];
+      const paths = history?.paths[history.index] === current
+        ? history.paths.slice(0, history.index + 1)
+        : current.startsWith("/") ? [current] : [];
+      if (path.startsWith("/") && path !== paths.at(-1)) paths.push(path);
+      const recent = paths.slice(-100);
+      return {
+        explorerPaths: { ...s.explorerPaths, [sessionId]: path },
+        explorerHistory: { ...s.explorerHistory, [sessionId]: { paths: recent, index: recent.length - 1 } },
+      };
+    }),
+    stepExplorerHistory: (sessionId, offset) => set((s) => {
+      const history = s.explorerHistory[sessionId];
+      if (!history) return s;
+      const index = history.index + offset;
+      const path = history.paths[index];
+      return path ? {
+        explorerPaths: { ...s.explorerPaths, [sessionId]: path },
+        explorerHistory: { ...s.explorerHistory, [sessionId]: { ...history, index } },
+      } : s;
+    }),
     showTerminal: () => set({ mainSurface: "terminal" }),
     openSshHosts: () => set({
       mainSurface: "ssh-hosts",
