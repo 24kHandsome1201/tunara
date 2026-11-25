@@ -977,6 +977,13 @@ select.ui-control {
   align-items: center;
   gap: 6px;
 }
+.explorer-listing-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
+}
 .explorer-listing-modified { min-width: 0; }
 .explorer-listing-row .explorer-listing-modified {
   color: var(--c-text-5);
@@ -1002,14 +1009,23 @@ button.explorer-listing-action {
   place-items: center;
 }
 .explorer-state-shell .panel-state { width: min(100%, 280px); }
-@container file-explorer (max-width: 280px) {
-  .explorer-listing-modified { display: none; }
+/* Names outrank dates: the default 320px panel drops the Modified column from
+   rows, while the header keeps its sort button over the action column. */
+@container file-explorer (max-width: 360px) {
+  .explorer-listing-row .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
     --explorer-listing-columns: minmax(0, 1fr) 28px;
   }
   .explorer-listing-grid[data-selectable="true"] {
     --explorer-listing-columns: 20px minmax(0, 1fr) 28px;
   }
+  .explorer-listing-header {
+    --explorer-listing-columns: minmax(0, 1fr) auto;
+  }
+  .explorer-listing-header[data-selectable="true"] {
+    --explorer-listing-columns: 20px minmax(0, 1fr) auto;
+  }
+  .explorer-listing-header > .explorer-listing-action { display: none; }
 }
 .explorer-tree-node {
   overflow: visible;

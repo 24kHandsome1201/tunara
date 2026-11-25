@@ -171,7 +171,7 @@ test("Files keeps aligned action-aware columns and a non-wrapping compact SSH to
   assert.match(styles, /\.file-explorer \{ container: file-explorer \/ inline-size; \}/);
   assert.match(styles, /\.explorer-listing-grid \{[\s\S]*?grid-template-columns: var\(--explorer-listing-columns\)/);
   assert.match(styles, /\.explorer-listing-grid\[data-selectable="true"\] \{[\s\S]*?20px minmax\(0, 1fr\) minmax\(42px, 92px\) 28px/);
-  assert.match(styles, /@container file-explorer \(max-width: 280px\) \{[\s\S]*?\.explorer-listing-modified \{ display: none; \}[\s\S]*?20px minmax\(0, 1fr\) 28px/);
+  assert.match(styles, /@container file-explorer \(max-width: 360px\) \{[\s\S]*?\.explorer-listing-modified \{ display: none; \}[\s\S]*?20px minmax\(0, 1fr\) 28px/);
   assert.equal((explorer.match(/explorer-listing-grid/g) ?? []).length, 2);
   assert.match(explorer, /className="hover-bg explorer-listing-grid explorer-listing-row"/);
   assert.match(explorer, /className="explorer-listing-grid explorer-listing-header"/);

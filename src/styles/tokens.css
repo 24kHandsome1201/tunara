@@ -457,7 +457,7 @@ html[data-reduce-motion] {
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 4px;
   font: 500 var(--fs-meta) var(--font-ui);
   text-align: left;
