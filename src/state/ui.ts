@@ -453,7 +453,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
       const paths = history?.paths[history.index] === current
         ? history.paths.slice(0, history.index + 1)
         : current.startsWith("/") ? [current] : [];
-      if (path.startsWith("/") && path !== paths.at(-1)) paths.push(path);
+      if (path.startsWith("/") && path !== current) paths.push(path);
       const recent = paths.slice(-100);
       return {
         explorerPaths: { ...s.explorerPaths, [sessionId]: path },
