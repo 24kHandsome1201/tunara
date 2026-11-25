@@ -121,6 +121,7 @@ their own commands.
 | `ssh_hosts_save` | Upsert a host profile, return the new list | `saveHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_remove` | Delete a host profile by id | `removeHost`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_hosts_import_config` | Import static host profiles from `~/.ssh/config` | `importSshConfig`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
+| `ssh_local_account` | Get the process account name as the default user for a pasted SSH command | `loadSshLocalAccount`, [`hosts-bridge.ts`](../src/modules/ssh/hosts-bridge.ts) |
 | `ssh_known_hosts_list_v1` / `ssh_known_hosts_remove_v1` / `ssh_known_hosts_refresh_v1` | Inspect and prune the app known_hosts file | [`KnownHostsPanel.tsx`](../src/modules/ssh/KnownHostsPanel.tsx) |
 | `ssh_fs_read_dir` | List a remote directory over SFTP | `sshReadDir`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |
 | `ssh_fs_read_file` | Read a remote file over SFTP | `sshReadFile`, [`remote-fs-bridge.ts`](../src/modules/ssh/remote-fs-bridge.ts) |

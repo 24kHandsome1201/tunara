@@ -42,6 +42,7 @@ import {
   sshTargetHasInvalidPort,
   withSshTargetPort,
 } from "../src/modules/ssh/connect-target.ts";
+import { matchingSshJumpProfiles, parseSshCommand } from "../src/modules/ssh/connect-command.ts";
 
 // ── failure-reason ───────────────────────────────────────────────────────
 
@@ -115,6 +116,36 @@ test("parseSshTarget accepts user@host[:port], aliases, and IPv6", () => {
   assert.equal(sshTargetHasInvalidPort("alice@prod:99999"), true);
   assert.equal(formatSshTarget("alice", "prod", 22), "alice@prod");
   assert.equal(formatSshTarget("alice", "prod", 2222), "alice@prod:2222");
+});
+
+test("SSH commands accept flags either side of the target, attached values, quotes, and IPv6", () => {
+  assert.deepEqual(parseSshCommand("ssh lab")?.target, { user: "", host: "lab", port: undefined });
+  assert.deepEqual(parseSshCommand("ssh -vvp2222 'alice@[::1]'")?.target, { user: "alice", host: "::1", port: 2222 });
+  assert.deepEqual(parseSshCommand("  ssh alice@2001:db8::1 -p 2222")?.target, { user: "alice", host: "2001:db8::1", port: 2222 });
+  const options = parseSshCommand(`ssh -L 9000:localhost:9000 -J jump -o 'Port = 2222' -l alice -i "~/.ssh/lab key" -o 'CertificateFile=~/.ssh/lab cert' -- lab`);
+  assert.deepEqual(options?.target, { user: "alice", host: "lab", port: 2222 });
+  assert.equal(options?.identityFile, "~/.ssh/lab key");
+  assert.equal(options?.certificateFile, "~/.ssh/lab cert");
+  assert.equal(options?.jump, "jump");
+  assert.deepEqual(parseSshCommand("ssh -o User=alice lab -q uptime -p 2222")?.target, { user: "alice", host: "lab", port: undefined });
+});
+
+test("SSH command fragments and invalid explicit ports do not become literal targets", () => {
+  for (const raw of ["ssh", "ssh ", "ssh -i key", "ssh -p", "ssh host -i ''", 'ssh "host', "ssh host;foo", "alice@host"]) {
+    assert.equal(parseSshCommand(raw), null, raw);
+  }
+  for (const raw of ["ssh user@host -p 65536", "ssh -p nope user@host", "ssh user@[::1]:0"]) {
+    assert.equal(parseSshCommand(raw)?.target, null, raw);
+    assert.equal(parseSshCommand(raw)?.invalidPort, true, raw);
+  }
+});
+
+test("SSH command jump matching honors profile aliases and explicit endpoints", () => {
+  const jump = { id: "jump", label: "bastion", host: "::1", port: 2222, user: "ops", identityFile: "" };
+  assert.deepEqual(matchingSshJumpProfiles([jump], "bastion"), [jump]);
+  assert.deepEqual(matchingSshJumpProfiles([jump], "ops@[::1]:2222"), [jump]);
+  assert.deepEqual(matchingSshJumpProfiles([jump], "other@bastion"), []);
+  assert.deepEqual(matchingSshJumpProfiles([jump], "bastion,another-hop"), []);
 });
 
 test("IPv6 targets survive formatting and parsing without inventing a port", () => {

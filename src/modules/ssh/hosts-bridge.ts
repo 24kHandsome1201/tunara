@@ -23,6 +23,10 @@ export async function importSshConfig(): Promise<SshImportResult> {
   return toImportResult(raw);
 }
 
+export function loadSshLocalAccount(): Promise<string | null> {
+  return invoke<string | null>("ssh_local_account");
+}
+
 /** Snapshot loader for F3. It intentionally performs no connect or secret action. */
 export async function loadSshProfilesPanel(): Promise<SshProfilesPanelModelV1> {
   const [savedProfiles, config] = await Promise.all([loadHosts(), importSshConfig()]);

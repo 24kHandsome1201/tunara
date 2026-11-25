@@ -54,13 +54,15 @@ const mapped = {
 
 // Strict exemptions: these commands cannot leak a Result<String> error. The two
 // run/open and bounded-view v1 commands return typed errors; cancel commands
-// return bool, while transfer cancellation returns the typed CancelResult enum.
+// return bool, transfer cancellation returns the typed CancelResult enum, and
+// the local account lookup returns an optional username.
 const exemptions = new Set([
   "ssh_open_v2", "ssh_diagnostic_run_v1", "ssh_cancel_open",
   "ssh_diagnostic_cancel_v1", "ssh_fs_cancel_upload", "ssh_transfer_cancel",
   "ssh_file_view_head_v1", "ssh_file_view_tail_v1",
   "ssh_fs_read_if_changed_v1",
   "ssh_remote_git_snapshot_v1",
+  "ssh_local_account",
 ]);
 
 const addedSshCommands = [

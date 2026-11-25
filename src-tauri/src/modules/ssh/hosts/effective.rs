@@ -263,7 +263,7 @@ pub(crate) fn local_account_name() -> Option<String> {
 }
 
 #[cfg(not(unix))]
-fn local_account_name() -> Option<String> {
+pub(crate) fn local_account_name() -> Option<String> {
     // Do not pretend USERNAME has OS-account authority on Windows. Until the
     // Windows account API is wired, aliases depending on Match localuser,
     // default Match user, or %u are rejected by the empty value.

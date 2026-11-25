@@ -167,6 +167,7 @@ pub fn run() {
             modules::ssh::hosts::ssh_hosts_save,
             modules::ssh::hosts::ssh_hosts_remove,
             modules::ssh::hosts::ssh_hosts_import_config,
+            modules::ssh::hosts::ssh_local_account,
             modules::ssh::known_hosts::ssh_known_hosts_list_v1,
             modules::ssh::known_hosts::ssh_known_hosts_remove_v1,
             modules::ssh::known_hosts::ssh_known_hosts_refresh_v1,
