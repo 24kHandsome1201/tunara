@@ -1070,6 +1070,25 @@ describe("FileExplorer workspace files", () => {
     useUIStore.setState({ downloadMaxFiles: previous.downloadMaxFiles, downloadMaxTotalBytes: previous.downloadMaxTotalBytes });
   });
 
+  test("drops missing files from batch download selection after refreshing", async () => {
+    let removed = false;
+    mockIPC((command) => {
+      if (command !== "ssh_fs_read_dir") return "/home/dev";
+      return [
+        { name: "keep.txt", kind: "file", size: 1, mtime: removed ? 1 : 0 },
+        ...(!removed ? [{ name: "removed.txt", kind: "file", size: 1, mtime: 0 }] : []),
+      ];
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select all downloadable files" }));
+    expect(screen.getByRole("button", { name: "Download selected files (2)" })).toBeTruthy();
+    removed = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh file list" })));
+    expect(screen.queryByRole("checkbox", { name: "Select removed.txt for download" })).toBeNull();
+    expect((screen.getByRole("checkbox", { name: "Select keep.txt for download" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("button", { name: "Download selected files (1)" })).toBeTruthy();
+  });
+
   test("selects multiple remote files and queues safe typed downloads into one folder", async () => {
     useTransferStore.getState().replaceItemsForTest([]);
     const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];

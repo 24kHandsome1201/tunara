@@ -295,6 +295,7 @@ export function FileExplorer({
     rowIndexByPath,
     expandDirectory,
     collapsePath,
+    hasListedFile,
     refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
@@ -319,6 +320,17 @@ export function FileExplorer({
     selectionAnchorRef.current = null;
     setBatchDownloadPreparing(false);
   }, [treeRequestContext, remoteDisconnected]);
+  const hasListedFileRef = useRef(hasListedFile);
+  hasListedFileRef.current = hasListedFile;
+  useEffect(() => {
+    if (remoteDisconnected) return;
+    if (selectionAnchorRef.current && !hasListedFile(selectionAnchorRef.current)) selectionAnchorRef.current = null;
+    setSelectedDownloads((current) => {
+      if (current.size === 0) return current;
+      const listed = new Map([...current].filter(([path]) => hasListedFile(path)));
+      return listed.size === current.size ? current : listed;
+    });
+  }, [hasListedFile, remoteDisconnected]);
   const closeTransientControls = useCallback(() => {
     setContextMenu(null);
     setProperties(null);
@@ -1011,8 +1023,10 @@ export function FileExplorer({
       }
       const existing = await fsReadDir(destinationRoot, true);
       if (treeRequestContextRef.current !== requestContext) return;
+      const sources = [...selectedDownloads.values()].filter(({ path }) => hasListedFileRef.current(path));
+      if (sources.length === 0) return;
       const requests = planBatchDownloads({
-        sources: [...selectedDownloads.values()],
+        sources,
         destinationRoot,
         existingNames: existing.map(({ name }) => name),
         binding,

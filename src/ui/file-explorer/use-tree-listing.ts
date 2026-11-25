@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { fsReadDir, type DirEntry } from "@/modules/fs/fs-bridge";
 import { sshReadDir } from "@/modules/ssh/remote-fs-bridge";
-import { joinPath, sortExplorerEntries, usableExplorerEntries, type SortDirection, type SortKey } from "./helpers";
+import { joinPath, parentPath, sortExplorerEntries, usableExplorerEntries, type SortDirection, type SortKey } from "./helpers";
 
 export interface ExplorerTreeNode {
   entry: DirEntry;
@@ -48,6 +48,7 @@ export interface TreeListing {
   treeErrors: Record<string, TreeLoadError>;
   expandDirectory: (path: string) => void;
   collapsePath: (path: string) => void;
+  hasListedFile: (path: string) => boolean;
   refreshExpandedDirectories: () => void;
   /** Invalidate in-flight child reads when the listing target changes. */
   beginListingEpoch: () => void;
@@ -228,6 +229,20 @@ export function useTreeListing({
     for (const path of paths) expandDirectory(path, true);
   }
 
+  const hasListedFile = useCallback((path: string) => {
+    const root = currentPath.replace(/\/+$/, "") || "/";
+    if (path === root || !path.startsWith(root === "/" ? root : root + "/")) return false;
+    let kind: DirEntry["kind"] = "file";
+    while (path !== root) {
+      const parent = parentPath(path);
+      const siblings = parent === root ? entries : treeChildren[parent];
+      if (!siblings?.some((entry) => entry.kind === kind && joinPath(parent, entry.name) === path)) return false;
+      path = parent;
+      kind = "dir";
+    }
+    return true;
+  }, [currentPath, entries, treeChildren]);
+
   return {
     visibleTreeNodes,
     visibleTreeRows,
@@ -238,6 +253,7 @@ export function useTreeListing({
     treeErrors,
     expandDirectory,
     collapsePath,
+    hasListedFile,
     refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
