@@ -76,7 +76,7 @@ beforeEach(() => {
   });
 });
 
-test("mounts only the active panel and keeps unavailable tools in More", async () => {
+test("keeps Files mounted but hidden across tabs and puts unavailable tools in More", async () => {
   render(<InspectorPanel session={remoteSession} filesOnly={false} />);
 
   expect(screen.getByTestId("files-panel")).toBeTruthy();
@@ -100,7 +100,7 @@ test("mounts only the active panel and keeps unavailable tools in More", async (
   expect(useUIStore.getState().inspectorPreviewOpenedSessionIds[session.id]).toBe(true);
 
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
-  expect(screen.queryByTestId("files-panel")).toBeNull();
+  expect(screen.getByTestId("files-panel").style.display).toBe("none");
   expect(await screen.findByTestId("changes-panel")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Return Inspector to automatic follow" })).toBeNull();
   fireEvent.click(screen.getByRole("tab", { name: "Preview" }));

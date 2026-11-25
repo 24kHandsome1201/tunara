@@ -1164,7 +1164,7 @@ describe("FileExplorer workspace files", () => {
     await screen.findByRole("treeitem", { name: /^cached\.txt/ });
     view.rerender(<FileExplorer sessionId="remote" rootDir="/srv/app" remote />);
 
-    expect(await screen.findByText("SSH disconnected · showing a read-only cached tree")).toBeTruthy();
+    expect(await screen.findByText("SSH disconnected · Read-only snapshot")).toBeTruthy();
     expect(screen.getByRole("treeitem", { name: /^cached\.txt/ })).toBeTruthy();
     expect(calls).not.toContain("fs_read_dir");
   });

@@ -38,6 +38,7 @@ export type MockBackendState = {
 export type TunaraE2EHandle = {
   state: MockBackendState;
   emitPtyOutput: (ptyId: number, text: string) => void;
+  disconnectPty: (ptyId: number) => void;
   ptyWrites: (ptyId?: number) => string;
   openPtyIds: () => number[];
   callCount: (cmd: string) => number;
@@ -282,6 +283,12 @@ export function installMockBackend(): TunaraE2EHandle {
       const pty = ptyById(ptyId);
       if (!pty) throw new Error(`unknown pty ${ptyId}`);
       emitData(pty, text);
+    },
+    disconnectPty: (ptyId) => {
+      const pty = ptyById(ptyId);
+      if (!pty) throw new Error(`unknown pty ${ptyId}`);
+      pty.closed = true;
+      sendChannel(pty, { type: "transportLost", reason: "mock transport closed" });
     },
     ptyWrites: (ptyId) => state.ptys.filter((pty) => ptyId === undefined || pty.id === ptyId).flatMap((pty) => pty.writes).join(""),
     openPtyIds: () => state.ptys.filter((pty) => !pty.closed).map((pty) => pty.id),

@@ -887,7 +887,7 @@
   "settings.cli.reset_overrides.confirm": "清除所有 CLI 的自定义路径？",
   "settings.appearance.font_family.suggest": "常用：JetBrains Mono · Menlo · SF Mono · Monaco · Courier New",
   "sidebar.search.no_drag": "搜索时不支持拖拽排序",
-  "explorer.remote_disconnected": "SSH 已断开 · 正在显示只读缓存",
+  "explorer.remote_disconnected": "SSH 已断开 · 只读快照",
   "explorer.remote_unavailable": "远程文件暂不可用",
   "explorer.remote_unavailable_hint": "请重新连接 SSH 后加载此目录。",
   "sidebar.session.move_up": "上移",

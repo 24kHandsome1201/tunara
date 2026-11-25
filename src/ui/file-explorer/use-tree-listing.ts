@@ -48,6 +48,7 @@ export interface TreeListing {
   treeErrors: Record<string, TreeLoadError>;
   expandDirectory: (path: string) => void;
   collapsePath: (path: string) => void;
+  refreshExpandedDirectories: () => void;
   /** Invalidate in-flight child reads when the listing target changes. */
   beginListingEpoch: () => void;
   /** Drop expansion state after the root listing reloaded. */
@@ -116,9 +117,10 @@ export function useTreeListing({
     });
   }, []);
 
-  function expandDirectory(path: string) {
+  function expandDirectory(path: string, refresh = false) {
+    if (remoteDisconnected && !treeChildren[path]) return;
     setExpandedPaths((current) => new Set(current).add(path));
-    if (treeChildren[path] || treeLoading.has(path) || remoteDisconnected) return;
+    if (remoteDisconnected || (!refresh && (treeChildren[path] || treeLoading.has(path)))) return;
     setTreeErrors((current) => {
       if (!(path in current)) return current;
       const next = { ...current };
@@ -154,6 +156,13 @@ export function useTreeListing({
     })
       .catch(() => {
         if (currentRequest()) {
+          if (refresh) {
+            setTreeChildren((current) => {
+              const next = { ...current };
+              delete next[path];
+              return next;
+            });
+          }
           setTreeErrors((current) => ({ ...current, [path]: { kind: "readFailed" } }));
         }
       })
@@ -213,6 +222,12 @@ export function useTreeListing({
     return result;
   }, [visibleTreeRows]);
 
+  function refreshExpandedDirectories() {
+    const paths = visibleTreeRows.flatMap((row) => row.kind === "node" && row.expanded ? [row.path] : []);
+    setTreeChildren((current) => Object.fromEntries(paths.filter((path) => path in current).map((path) => [path, current[path]])));
+    for (const path of paths) expandDirectory(path, true);
+  }
+
   return {
     visibleTreeNodes,
     visibleTreeRows,
@@ -223,6 +238,7 @@ export function useTreeListing({
     treeErrors,
     expandDirectory,
     collapsePath,
+    refreshExpandedDirectories,
     beginListingEpoch,
     resetExpansion,
   };
