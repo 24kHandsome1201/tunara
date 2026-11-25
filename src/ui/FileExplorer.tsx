@@ -567,10 +567,13 @@ export function FileExplorer({
   const browsingContext = useMemo(() => ({ baseDir, currentPath, includeHidden, reloadKey, sessionId, isRemote }), [baseDir, currentPath, includeHidden, reloadKey, sessionId, isRemote]);
   const listingContext = useMemo(() => ({ treeRequestContext, browsingContext }), [treeRequestContext, browsingContext]);
   const loadedListingContext = useRef<typeof listingContext | null>(null);
+  const lastUploadReloadKey = useRef(uploadReloadKey);
   const revalidateExpandedDirectories = useEffectEvent(refreshExpandedDirectories);
   useEffect(() => {
     // An upload only changes the root entries; keep unrelated expanded folders and reads.
     const backgroundRefresh = loadedListingContext.current === listingContext;
+    const reopened = backgroundRefresh && lastUploadReloadKey.current === uploadReloadKey;
+    lastUploadReloadKey.current = uploadReloadKey;
     const reconnected = isRemote && !remoteDisconnected && !backgroundRefresh
       && loadedListingContext.current?.browsingContext === browsingContext;
     if (!backgroundRefresh) beginListingEpoch();
@@ -616,7 +619,7 @@ export function FileExplorer({
         if (!cancelled && treeRequestContextRef.current === treeRequestContext) {
           setEntries(e);
           setCachedListingKey(`${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`);
-          if (reconnected) revalidateExpandedDirectories();
+          if (reopened || reconnected) revalidateExpandedDirectories();
           else if (!backgroundRefresh) resetExpansion();
           loadedListingContext.current = listingContext;
           setLoading(false);

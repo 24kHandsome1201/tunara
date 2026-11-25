@@ -1,6 +1,7 @@
 import { Channel } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { Activity } from "react";
 import { describe, expect, test, vi } from "vitest";
 import { downloadFailureKey, FileExplorer, parseUploadFailure, sortExplorerEntries, uploadFailureKey } from "@/ui/FileExplorer";
 import { useUIStore } from "@/state/ui";
@@ -12,6 +13,35 @@ import type { Session } from "@/ui/types";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
 
 describe("FileExplorer directory navigation", () => {
+  test("revalidates children on return to Files without collapsing expanded folders", async () => {
+    let filename = "before.txt";
+    const reads: string[] = [];
+    mockIPC((command, payload) => {
+      if (command !== "fs_read_dir") return "/home/dev";
+      const { path } = payload as { path: string };
+      reads.push(path);
+      return path === "/srv/app"
+        ? [{ name: "docs", kind: "dir", size: 0, mtime: 0 }]
+        : [{ name: filename, kind: "file", size: 1, mtime: 0 }];
+    });
+    const explorer = (active: boolean) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    await screen.findByRole("treeitem", { name: /^before\.txt/ });
+    rerender(explorer(false));
+    reads.length = 0;
+    filename = "after.txt";
+    await act(async () => rerender(explorer(true)));
+    expect(reads).toEqual(["/srv/app", "/srv/app/docs"]);
+    expect(screen.getByRole("treeitem", { name: /^docs/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("treeitem", { name: /^after\.txt/ })).toBeTruthy();
+    expect(screen.queryByRole("treeitem", { name: /^before\.txt/ })).toBeNull();
+  });
+
   test.each([false, true])("preserves the browsed directory across Inspector tabs (remote=%s)", async (remote) => {
     const session: Session = {
       id: "transfer-navigation", title: "Navigation", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
