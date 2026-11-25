@@ -46,17 +46,18 @@ describe("FileExplorer directory navigation", () => {
       fireEvent.change(search, { target: { value } });
       await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
     };
-    await submit("/home/dev/docs/");
+    await submit("/home//dev/../dev/./docs/");
     await screen.findByRole("treeitem", { name: "archive" });
     expect(useUIStore.getState().explorerPaths[id]).toBe("/home/dev/docs");
     expect(search).toHaveProperty("value", "");
 
-    await submit("~/docs/.notes.md");
+    await submit("~/./docs//archive/../.notes.md");
     const pinned = await screen.findByRole("treeitem", { name: ".notes.md" });
     expect(screen.getAllByRole("treeitem").map((row) => row.getAttribute("aria-label"))).toEqual([
       ".notes.md", "archive", "readme.md",
     ]);
     expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(pinned.getAttribute("data-tree-path")).toBe("/home/dev/docs/.notes.md");
     expect(useUIStore.getState().readers[id]).toBeUndefined();
 
     await submit("/home/dev/docs/missing.md");

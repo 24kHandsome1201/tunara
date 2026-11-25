@@ -45,6 +45,7 @@ import {
 import { validateManifest } from "@/modules/ssh/transfer-bridge";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
+import { normalizePosixPath } from "@/modules/terminal/lib/terminal-file-link-parser";
 import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutationDialog";
 import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
@@ -1314,16 +1315,16 @@ export function FileExplorer({
         ? remotePtyId !== undefined ? await sshHome(remotePtyId) : await fsResolveDir("~")
         : "";
       if (request !== pathJumpRequest.current || (homeRelative && !home.startsWith("/"))) return;
-      const path = homeRelative ? home.replace(/\/+$/, "") + (query.slice(1) || "/") : query;
-      const trimmed = path.replace(/\/+$/, "") || "/";
-      const isDirectory = await readDir(trimmed, false).then(() => true, () => false);
+      const absolute = homeRelative ? home + query.slice(1) : query;
+      const path = normalizePosixPath(absolute);
+      const isDirectory = await readDir(path, false).then(() => true, () => false);
       if (request !== pathJumpRequest.current) return;
       if (isDirectory) {
         setPinnedFile(null);
-        openSearchDir(trimmed);
+        openSearchDir(path);
         return;
       }
-      if (path.endsWith("/")) return;
+      if (/\/(?:\.\.?)?$/.test(absolute)) return;
       const directory = parentPath(path);
       const name = path.slice(path.lastIndexOf("/") + 1);
       const siblings = await readDir(directory, name.startsWith("."));
