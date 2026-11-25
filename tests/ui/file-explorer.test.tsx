@@ -68,6 +68,29 @@ describe("FileExplorer directory navigation", () => {
     expect(screen.queryByRole("treeitem", { name: ".notes.md" })).toBeNull();
   });
 
+  test("refreshes the current directory when a path jump finds a file absent from the listing", async () => {
+    let created = false;
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_search") return { hits: [], unreadable: 0 };
+      if (command !== "fs_read_dir") return null;
+      if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
+      return [
+        { name: "archive", kind: "dir", size: 0, mtime: 0 },
+        ...(created ? [{ name: "new.md", kind: "file", size: 1, mtime: 0 }] : []),
+      ];
+    });
+    render(<FileExplorer sessionId="new-file-jump" rootDir="/srv/app" />);
+    await screen.findByRole("treeitem", { name: "archive" });
+    created = true;
+    const search = screen.getByRole("textbox", { name: "Search this folder" });
+    fireEvent.change(search, { target: { value: "/srv/app/new.md" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    const pinned = await screen.findByRole("treeitem", { name: "new.md" });
+    expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(screen.getAllByRole("treeitem")[0]).toBe(pinned);
+  });
+
   test("revalidates children on return to Files without collapsing expanded folders", async () => {
     let filename = "before.txt";
     const reads: string[] = [];

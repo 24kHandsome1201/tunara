@@ -1329,6 +1329,7 @@ export function FileExplorer({
       const siblings = await readDir(directory, name.startsWith("."));
       if (request !== pathJumpRequest.current || !siblings.some((entry) => entry.name === name && entry.kind !== "dir")) return;
       setPinnedFile({ directory, name });
+      if (directory === currentPath && !entries.some((entry) => entry.name === name && entry.kind !== "dir")) refresh();
       openSearchDir(directory);
     } catch {
       // Keep the query and its normal search results when a path cannot be resolved.
