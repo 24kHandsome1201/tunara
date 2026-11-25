@@ -155,11 +155,15 @@ fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChang
         if oversized_untracked(&delta).is_some() {
             continue;
         }
-        if let Some(patch) = Patch::from_diff(diff, index).map_err(|e| e.to_string())? {
-            let (_, added, removed) = patch.line_stats().map_err(|e| e.to_string())?;
-            change.added += added;
-            change.removed += removed;
-        }
+        let patch = match Patch::from_diff(diff, index) {
+            Ok(Some(patch)) => patch,
+            Ok(None) => continue,
+            Err(_) if delta.status() == Delta::Untracked => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        let (_, added, removed) = patch.line_stats().map_err(|e| e.to_string())?;
+        change.added += added;
+        change.removed += removed;
     }
 
     Ok(per_file
@@ -584,6 +588,35 @@ mod tests {
         let change = &changes[0];
         assert_eq!((&*change.path, &*change.stage), (file, "untracked"));
         assert_eq!((change.added, change.removed), (3, 0));
+    }
+
+    #[test]
+    fn git_status_keeps_other_changes_when_an_untracked_patch_cannot_be_read() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).unwrap();
+        commit_file(&repo, &dir.path, "tracked", "before\n");
+        std::fs::write(dir.path.join("tracked"), "after\n").unwrap();
+        let unavailable = dir.path.join("unavailable");
+        std::fs::write(&unavailable, "untracked\n").unwrap();
+        let mut opts = DiffOptions::new();
+        include_untracked_text(&mut opts);
+        let diff = repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&unavailable, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        if std::fs::File::open(&unavailable).is_ok() {
+            std::fs::remove_file(&unavailable).unwrap();
+        }
+        let changes = collect_diff(&diff, false).unwrap();
+        let tracked = changes.iter().find(|file| file.path == "tracked").unwrap();
+        assert_eq!((tracked.added, tracked.removed), (1, 1));
+        let unavailable = changes
+            .iter()
+            .find(|file| file.path == "unavailable")
+            .unwrap();
+        assert_eq!((&*unavailable.stage, unavailable.added), ("untracked", 0));
     }
 
     #[test]
