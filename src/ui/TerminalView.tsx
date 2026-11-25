@@ -153,9 +153,11 @@ function TerminalViewImpl({
       cleanups.push(disposeUnicodeGraphemes);
       const terminalScreen = term.element?.querySelector<HTMLElement>(".xterm-screen");
       if (terminalScreen) cleanups.push(linkInputRef.current.attach(terminalScreen));
+      let atShellPrompt = false;
       cleanups.push(registerTerminalActions(sessionIdRef.current, {
         terminal: term,
         openSearch: search.openSearch,
+        isAtShellPrompt: () => atShellPrompt,
         getBlocks: blocks.getBlocks,
         revealAttention: () => {
           const current = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
@@ -312,10 +314,11 @@ function TerminalViewImpl({
         onCwd: handleCwdChange,
       }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
-        if (data.charAt(0) === "A" || data.charAt(0) === "B" || data.charAt(0) === "C" || data.charAt(0) === "D") {
+        const marker = data.charAt(0);
+        if (marker === "A" || marker === "C" || marker === "D") atShellPrompt = marker === "A";
+        if (marker === "A" || marker === "B" || marker === "C" || marker === "D") {
           useSessionsStore.getState().markShellIntegrationSeen(sessionIdRef.current);
         }
-        const marker = data.charAt(0);
         const trackedSession = getCurrentSession();
         if (trackedSession?.agent) { const shellMarker = data.includes(";tunara-shell");
           if (marker === "A" && shellMarker) {
@@ -567,6 +570,7 @@ function TerminalViewImpl({
         };
         const result = scanTerminalInputBuffer(inputState.buffer, data, inputState.bracketedPasteActive);
         inputState = result;
+        if (result.submissions.length > 0) atShellPrompt = false;
         for (const submitted of result.submissions) {
           submitAgentInput(submitted);
           submitCommandBuffer(submitted);

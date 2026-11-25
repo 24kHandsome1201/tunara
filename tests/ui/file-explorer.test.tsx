@@ -418,7 +418,7 @@ describe("FileExplorer directory navigation", () => {
     expect(row?.children).toHaveLength(4);
     expect(header?.querySelector(".explorer-listing-modified")).toBeTruthy();
     expect(row?.querySelector(".explorer-listing-modified")).toBeTruthy();
-    expect(header?.querySelector(".explorer-listing-action")).toBeTruthy();
+    expect(header?.querySelector(".explorer-listing-actions")).toBeTruthy();
     expect(row?.querySelector("button.explorer-listing-action")).toBeTruthy();
   });
 
