@@ -634,6 +634,175 @@ describe("FileExplorer workspace files", () => {
     expect(reads).toBe(initialReads + Number(refreshes));
   });
 
+  test("refreshes only the target expanded subdirectory after a queued SSH upload", async () => {
+    useTransferStore.getState().replaceItemsForTest([]);
+    const readsByPath = new Map<string, number>();
+    let uploaded = false;
+    let finishUpload!: () => void;
+    const upload = new Promise((resolve) => {
+      finishUpload = () => {
+        uploaded = true;
+        resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
+      };
+    });
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") {
+        const path = (payload as { path: string }).path;
+        readsByPath.set(path, (readsByPath.get(path) ?? 0) + 1);
+        if (path === "/srv/app") {
+          return [
+            { name: "docs", kind: "dir", size: 0, mtime: 0 },
+            { name: "src", kind: "dir", size: 0, mtime: 0 },
+          ];
+        }
+        if (path === "/srv/app/docs") {
+          return [{ name: "guide.txt", kind: "file", size: 2, mtime: 0 }];
+        }
+        if (path === "/srv/app/src") {
+          return [
+            { name: "notes.md", kind: "file", size: 2, mtime: 0 },
+            ...(uploaded ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
+          ];
+        }
+        return [];
+      }
+      if (command === "ssh_transfer_upload") return upload;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    const docs = await screen.findByRole("treeitem", { name: /^docs$/ });
+    fireEvent.keyDown(docs, { key: "ArrowRight" });
+    await screen.findByRole("treeitem", { name: /^guide\.txt$/ });
+    const src = await screen.findByRole("treeitem", { name: /^src$/ });
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+
+    const beforeRoot = readsByPath.get("/srv/app") ?? 0;
+    const beforeDocs = readsByPath.get("/srv/app/docs") ?? 0;
+    const beforeSrc = readsByPath.get("/srv/app/src") ?? 0;
+
+    const transferId = useTransferStore.getState().enqueue({
+      binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: "current" },
+      direction: "upload",
+      source: "/home/alice/report.txt",
+      destination: "/srv/app/src/report.txt",
+      conflict: "rename",
+    });
+    const status = () => useTransferStore.getState().itemsById.get(transferId)?.status;
+    await waitFor(() => expect(status()).toBe("running"));
+
+    await act(async () => finishUpload());
+    expect(status()).toBe("completed");
+    expect(await screen.findByRole("treeitem", { name: /^report\.txt$/ })).toBeTruthy();
+    expect(screen.getByRole("treeitem", { name: /^guide\.txt$/ })).toBeTruthy();
+    expect(readsByPath.get("/srv/app/src")).toBe(beforeSrc + 1);
+    expect(readsByPath.get("/srv/app")).toBe(beforeRoot);
+    expect(readsByPath.get("/srv/app/docs")).toBe(beforeDocs);
+  });
+
+  test("invalidates a collapsed subdirectory cache on upload and fetches fresh entries when re-expanded", async () => {
+    useTransferStore.getState().replaceItemsForTest([]);
+    let srcReads = 0;
+    let uploaded = false;
+    let finishUpload!: () => void;
+    const upload = new Promise((resolve) => {
+      finishUpload = () => {
+        uploaded = true;
+        resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
+      };
+    });
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") {
+        const path = (payload as { path: string }).path;
+        if (path === "/srv/app") return [{ name: "src", kind: "dir", size: 0, mtime: 0 }];
+        if (path === "/srv/app/src") {
+          srcReads += 1;
+          return [
+            { name: "notes.md", kind: "file", size: 2, mtime: 0 },
+            ...(uploaded ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
+          ];
+        }
+        return [];
+      }
+      if (command === "ssh_transfer_upload") return upload;
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    const src = await screen.findByRole("treeitem", { name: /^src$/ });
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+    fireEvent.keyDown(src, { key: "ArrowLeft" });
+    expect(screen.queryByRole("treeitem", { name: /^notes\.md$/ })).toBeNull();
+    expect(srcReads).toBe(1);
+
+    const transferId = useTransferStore.getState().enqueue({
+      binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: "current" },
+      direction: "upload",
+      source: "/home/alice/report.txt",
+      destination: "/srv/app/src/report.txt",
+      conflict: "rename",
+    });
+    await waitFor(() => expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("running"));
+    await act(async () => finishUpload());
+    expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("completed");
+    expect(srcReads).toBe(1);
+
+    fireEvent.keyDown(src, { key: "ArrowRight" });
+    expect(await screen.findByRole("treeitem", { name: /^report\.txt$/ })).toBeTruthy();
+    expect(srcReads).toBe(2);
+  });
+
+  test("shows an inline notice when hidden files are enabled during SSH search, and hides it otherwise", async () => {
+    const noticeText = "Hidden files appear in the tree, but not in SSH file-name or content search.";
+    mockIPC((command) => {
+      if (command === "ssh_fs_home") return "/home/alice";
+      if (command === "ssh_fs_read_dir") return [{ name: "notes.md", kind: "file", size: 2, mtime: 0 }];
+      if (command === "ssh_fs_search") return [];
+      if (command === "ssh_fs_grep") return { hits: [], truncated: false, unreadable: 0 };
+      if (command === "fs_read_dir") return [{ name: "notes.md", kind: "file", size: 2, mtime: 0 }];
+      if (command === "fs_search") return { hits: [], unreadable: 0 };
+      if (command === "fs_cancel_search") return true;
+      return null;
+    });
+
+    const remoteView = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+
+    const searchInput = screen.getByPlaceholderText("Search this folder");
+    fireEvent.change(searchInput, { target: { value: ".env" } });
+    await screen.findByText("No matching files");
+    expect(screen.queryByText(noticeText)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show dotfiles" }));
+    expect(screen.getByText(noticeText)).toBeTruthy();
+
+    // Still shown in SSH content search mode when searching with hidden files enabled.
+    fireEvent.click(screen.getByRole("button", { name: "Switch to content search" }));
+    const contentInput = screen.getByPlaceholderText("Search in file contents");
+    fireEvent.change(contentInput, { target: { value: "SECRET" } });
+    await screen.findByText("No matching content");
+    expect(screen.getByText(noticeText)).toBeTruthy();
+
+    // Clearing the search query hides the notice even while Show dotfiles stays active.
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(screen.queryByText(noticeText)).toBeNull();
+    // Restore module-scoped search mode for subsequent tests.
+    fireEvent.click(screen.getByRole("button", { name: "Switch to file-name search" }));
+    remoteView.unmount();
+
+    // Local explorer does not show the SSH-specific notice.
+    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
+    fireEvent.click(screen.getByRole("button", { name: "Show dotfiles" }));
+    fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: ".env" } });
+    await screen.findByText("No matching files");
+    expect(screen.queryByText(noticeText)).toBeNull();
+  });
+
   test("uploads every file selected by a legacy SSH session and continues after one fails", async () => {
     useUIStore.setState({ toasts: [] });
     const uploads: Array<{ localPath: string; remotePath: string; overwrite: boolean }> = [];

@@ -291,6 +291,7 @@ export function FileExplorer({
     nodeIndexByPath,
     rowIndexByPath,
     expandDirectory,
+    refreshDirectory,
     collapsePath,
     beginListingEpoch,
     resetExpansion,
@@ -345,13 +346,18 @@ export function FileExplorer({
       if (upload && upload !== previous.lastCompletedUpload
         && upload.binding.logicalSessionId === binding.logicalSessionId
         && upload.binding.physicalPtyId === binding.physicalPtyId
-        && upload.binding.transportGeneration === binding.transportGeneration
-        && parentPath(upload.destination) === directory) {
-        invalidateRemoteSearchCache(binding.physicalPtyId);
-        setUploadReloadKey((n) => n + 1);
+        && upload.binding.transportGeneration === binding.transportGeneration) {
+        const targetDir = parentPath(upload.destination);
+        if (targetDir === directory) {
+          invalidateRemoteSearchCache(binding.physicalPtyId);
+          setUploadReloadKey((n) => n + 1);
+        } else if (directory === "/" || targetDir.startsWith(`${directory}/`)) {
+          invalidateRemoteSearchCache(binding.physicalPtyId);
+          refreshDirectory(targetDir);
+        }
       }
     });
-  }, [binding, currentPath]);
+  }, [binding, currentPath, refreshDirectory]);
   const activeTransferNotice = useTransferStore((s) =>
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
@@ -1301,6 +1307,11 @@ export function FileExplorer({
           first.focus();
         }}
       />
+      {isRemote && includeHidden && isSearching && (
+        <div role="status" aria-live="polite" className="explorer-search-notice">
+          {t("explorer.remote_hidden_search_notice")}
+        </div>
+      )}
       {isRemote && (
         <ExplorerRemoteTools
           t={t}

@@ -47,6 +47,8 @@ export interface TreeListing {
   expandedPaths: Set<string>;
   treeErrors: Record<string, TreeLoadError>;
   expandDirectory: (path: string) => void;
+  /** Re-read an expanded directory in place, or drop stale cache if collapsed. */
+  refreshDirectory: (path: string) => void;
   collapsePath: (path: string) => void;
   /** Invalidate in-flight child reads when the listing target changes. */
   beginListingEpoch: () => void;
@@ -90,10 +92,13 @@ export function useTreeListing({
   treeRequestContextRef,
 }: TreeListingOptions): TreeListing {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
+  const expandedPathsRef = useRef(expandedPaths);
+  expandedPathsRef.current = expandedPaths;
   const [treeChildren, setTreeChildren] = useState<Record<string, DirEntry[]>>({});
   const [treeLoading, setTreeLoading] = useState<Set<string>>(() => new Set());
   const [treeErrors, setTreeErrors] = useState<Record<string, TreeLoadError>>({});
   const treeRequestGenerationRef = useRef(0);
+  const treePathRequestSeqRef = useRef(0);
   const treeRequestTokensRef = useRef(new Map<string, string>());
 
   const beginListingEpoch = useCallback(() => {
@@ -116,21 +121,24 @@ export function useTreeListing({
     });
   }, []);
 
-  function expandDirectory(path: string) {
-    setExpandedPaths((current) => new Set(current).add(path));
-    if (treeChildren[path] || treeLoading.has(path) || remoteDisconnected) return;
-    setTreeErrors((current) => {
-      if (!(path in current)) return current;
-      const next = { ...current };
-      delete next[path];
-      return next;
-    });
+  const readDirectoryChildren = useCallback((path: string, background: boolean) => {
+    if (remoteDisconnected) return;
+    if (!background) {
+      setTreeErrors((current) => {
+        if (!(path in current)) return current;
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
+    }
     setTreeLoading((current) => new Set(current).add(path));
+    treePathRequestSeqRef.current += 1;
     const token = JSON.stringify({
       logical: sessionId,
       physical: remotePtyId ?? null,
       transport: transportGeneration ?? null,
       generation: treeRequestGenerationRef.current,
+      seq: treePathRequestSeqRef.current,
       path,
       includeHidden,
       remote: isRemote,
@@ -153,7 +161,7 @@ export function useTreeListing({
       });
     })
       .catch(() => {
-        if (currentRequest()) {
+        if (!background && currentRequest()) {
           setTreeErrors((current) => ({ ...current, [path]: { kind: "readFailed" } }));
         }
       })
@@ -164,7 +172,33 @@ export function useTreeListing({
         next.delete(path);
         return next;
       }));
+  }, [includeHidden, isRemote, remoteDisconnected, remotePtyId, sessionId, transportGeneration, treeRequestContext, treeRequestContextRef]);
+
+  function expandDirectory(path: string) {
+    setExpandedPaths((current) => new Set(current).add(path));
+    if (treeChildren[path] || treeLoading.has(path) || remoteDisconnected) return;
+    readDirectoryChildren(path, false);
   }
+
+  const refreshDirectory = useCallback((path: string) => {
+    const normalized = path.replace(/\/+$/, "") || "/";
+    if (!expandedPathsRef.current.has(normalized)) {
+      setTreeChildren((current) => {
+        if (!(normalized in current)) return current;
+        const next = { ...current };
+        delete next[normalized];
+        return next;
+      });
+      setTreeErrors((current) => {
+        if (!(normalized in current)) return current;
+        const next = { ...current };
+        delete next[normalized];
+        return next;
+      });
+      return;
+    }
+    readDirectoryChildren(normalized, true);
+  }, [readDirectoryChildren]);
 
   const visibleTreeNodes = useMemo(() => {
     const result: ExplorerTreeNode[] = [];
@@ -222,6 +256,7 @@ export function useTreeListing({
     expandedPaths,
     treeErrors,
     expandDirectory,
+    refreshDirectory,
     collapsePath,
     beginListingEpoch,
     resetExpansion,
