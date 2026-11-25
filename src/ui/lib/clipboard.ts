@@ -1,9 +1,5 @@
 /**
- * Single front door for the system clipboard.
- *
- * Writes used to be inlined as `navigator.clipboard.writeText(...)` with four
- * different error-handling styles. They all route through `copyText` so the
- * Clipboard API guard and error swallowing live in one place.
+ * Shared clipboard helpers for user-initiated copy and paste.
  *
  * Returns whether the write succeeded so callers that show a toast / checkmark
  * can branch on it. Callers that just want fire-and-forget can ignore the
@@ -16,12 +12,17 @@
  * stays on the trusted native paste event and never calls this helper.
  */
 
-import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { isTauri } from "@tauri-apps/api/core";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 export async function copyText(text: string): Promise<boolean> {
-  if (typeof navigator === "undefined" || !navigator.clipboard) return false;
   try {
-    await navigator.clipboard.writeText(text);
+    if (isTauri()) {
+      await writeText(text);
+    } else {
+      if (typeof navigator === "undefined" || !navigator.clipboard) return false;
+      await navigator.clipboard.writeText(text);
+    }
     return true;
   } catch {
     return false;

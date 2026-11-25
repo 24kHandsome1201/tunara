@@ -1,11 +1,38 @@
-import { beforeEach, expect, test, vi } from "vitest";
-import { readText } from "@tauri-apps/plugin-clipboard-manager";
-import { readClipboardText } from "@/ui/lib/clipboard";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { copyText, readClipboardText } from "@/ui/lib/clipboard";
 
-vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ readText: vi.fn() }));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ readText: vi.fn(), writeText: vi.fn() }));
 
 beforeEach(() => {
   vi.mocked(readText).mockReset();
+  vi.mocked(writeText).mockReset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+test("Tauri copy replaces stale system text even if the WebView reports a successful no-op", async () => {
+  vi.stubGlobal("isTauri", true);
+  const webWrite = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  let systemClipboard = "previous text";
+  vi.mocked(writeText).mockImplementation(async (text) => { systemClipboard = text; });
+
+  await expect(copyText("new text")).resolves.toBe(true);
+  expect(systemClipboard).toBe("new text");
+  expect(webWrite).not.toHaveBeenCalled();
+});
+
+test("Tauri copy reports native failure without falling back to the WebView", async () => {
+  vi.stubGlobal("isTauri", true);
+  const webWrite = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  vi.mocked(writeText).mockRejectedValue(new Error("clipboard unavailable"));
+
+  await expect(copyText("new text")).resolves.toBe(false);
+  expect(writeText).toHaveBeenCalledWith("new text");
+  expect(webWrite).not.toHaveBeenCalled();
 });
 
 test("menu clipboard reads use Tauri clipboard-manager text access", async () => {

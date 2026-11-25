@@ -23,6 +23,7 @@
     "core:window:allow-is-fullscreen",
     "opener:default",
     "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     "dialog:allow-confirm",
     "dialog:allow-open",
     "dialog:allow-save",
