@@ -15,10 +15,12 @@ function shellTintBootPlugin(): Plugin {
   };
 }
 
-/** Phosphor ships six weights per icon. Tunara only uses regular and bold. */
-const PHOSPHOR_KEEP_WEIGHTS = new Set(["regular", "bold"]);
+/** These chrome icons are only rendered at the regular weight. */
+const PHOSPHOR_REGULAR_ONLY = new Set([
+  "ClipboardText", "FolderSimplePlus", "Gear", "MagnifyingGlass", "TerminalWindow",
+]);
 
-function trimPhosphorWeights(code: string): string | null {
+function trimPhosphorWeights(code: string, keepBold: boolean): string | null {
   const markerMatch = code.match(/const \w+ = \/\* @__PURE__ \*\/ new Map\(\[/);
   if (!markerMatch || markerMatch.index === undefined) return null;
   const marker = markerMatch[0];
@@ -51,7 +53,7 @@ function trimPhosphorWeights(code: string): string | null {
         if (depth === 0) {
           const entry = body.slice(i, j + 1);
           const weight = entry.match(/^\s*\[\s*"(\w+)"/)?.[1];
-          if (weight && PHOSPHOR_KEEP_WEIGHTS.has(weight)) kept.push(entry.trim());
+          if (weight === "regular" || (weight === "bold" && keepBold)) kept.push(entry.trim());
           i = j;
           break;
         }
@@ -79,7 +81,7 @@ function phosphorWeightTrimPlugin(): Plugin {
       if (!id.startsWith(PHOSPHOR_TRIM_PREFIX)) return;
       const file = id.slice(PHOSPHOR_TRIM_PREFIX.length);
       const source = readFileSync(file, "utf8");
-      return trimPhosphorWeights(source) ?? source;
+      return trimPhosphorWeights(source, !PHOSPHOR_REGULAR_ONLY.has(path.basename(file, ".es.js"))) ?? source;
     },
   };
 }
