@@ -576,7 +576,6 @@ export function FileExplorer({
     if (!sourceChanged) return;
     setHomeDir(null);
     setBaseDir(rootDir);
-    setCurrentPath(useUIStore.getState().explorerPaths[sessionId] ?? rootDir);
     // Follow-cwd applies later OSC 7 updates. Including rootDir here would
     // clear search and reset local/remote explorers on every shell cd.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above

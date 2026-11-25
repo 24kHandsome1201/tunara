@@ -36,6 +36,29 @@ describe("FileExplorer directory navigation", () => {
     expect(await screen.findByRole("treeitem", { name: "next.txt" })).toBeTruthy();
   });
 
+  test("opens a terminal link back to the last displayed directory after a hidden cwd change", async () => {
+    const session: Session = { id: "local", title: "Local", dir: "/tmp/next", branch: "", runState: "idle", updatedAt: 1 };
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    mockIPC((command, payload) => {
+      const { path } = payload as { path: string };
+      if (command === "fs_resolve_dir") return path === "~" ? "/home/dev" : path;
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      return [{ name: `${path.split("/").pop()}.txt`, kind: "file", size: 0, mtime: 0 }];
+    });
+    const explorer = (active: boolean, rootDir: string) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId={session.id} rootDir={rootDir} />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true, "/tmp/first"));
+    await screen.findByRole("treeitem", { name: "first.txt" });
+    rerender(explorer(false, "/tmp/next"));
+    await act(async () => { await openResource(resourceRefForSession(session, "/tmp/first"), "directory"); });
+    rerender(explorer(true, "/tmp/next"));
+    await screen.findByRole("treeitem", { name: "first.txt" });
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Back" }).disabled).toBe(true);
+  });
+
   test("revalidates the current directory on return to Files", async () => {
     let filename = "before.txt";
     const reads: string[] = [];
