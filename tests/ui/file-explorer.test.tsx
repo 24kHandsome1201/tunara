@@ -350,8 +350,9 @@ describe("FileExplorer directory navigation", () => {
       fireEvent.mouseEnter(clippedRow);
       await act(() => vi.advanceTimersByTimeAsync(500));
       expect(screen.getByRole("tooltip").textContent).toBe(longName);
-      fireEvent.mouseLeave(clippedRow);
+      fireEvent.keyDown(document, { key: "Escape" });
       expect(screen.queryByRole("tooltip")).toBeNull();
+      fireEvent.mouseLeave(clippedRow);
 
       act(() => clippedRow.focus());
       await act(() => vi.advanceTimersByTimeAsync(500));

@@ -20,24 +20,28 @@ export function ExplorerEntryName({ name }: { name: string }) {
     const onFocus = (event: FocusEvent) => {
       if (event.target === row && row.matches(":focus-visible")) reveal();
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") conceal();
-    };
     row.addEventListener("mouseenter", reveal);
     row.addEventListener("mouseleave", conceal);
     row.addEventListener("focus", onFocus);
     row.addEventListener("blur", conceal);
-    row.addEventListener("keydown", onKeyDown);
     row.addEventListener("wheel", conceal, { passive: true });
     return () => {
       row.removeEventListener("mouseenter", reveal);
       row.removeEventListener("mouseleave", conceal);
       row.removeEventListener("focus", onFocus);
       row.removeEventListener("blur", conceal);
-      row.removeEventListener("keydown", onKeyDown);
       row.removeEventListener("wheel", conceal);
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   return (
     <Tooltip label={name} open={open} style={{ minWidth: 0, pointerEvents: "none" }}>
