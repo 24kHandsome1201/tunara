@@ -45,6 +45,7 @@ fn ssh_session(state: &State<'_, PtyState>, id: u32) -> Result<std::sync::Arc<Se
 /// local `git_diff` text-preview budget (256 KiB) — DiffPanel already renders
 /// `tooLarge` beyond that.
 const MAX_STATUS_BYTES: usize = 256 * 1024;
+const STATUS_TOO_LARGE: &str = "status too large";
 const MAX_NUMSTAT_BYTES: usize = 256 * 1024;
 const NUMSTAT_MARKER: &str = "\0TUNARA_NUMSTAT\0";
 const UNSTAGED_MARKER: &str = "\0TUNARA_UNSTAGED\0";
@@ -602,9 +603,10 @@ fn cached_snapshot_response(
     }
 }
 
-fn remote_status_command(cwd: &str) -> Result<String, String> {
+fn remote_status_command(cwd: &str, include_untracked: bool) -> Result<String, String> {
     let cwd = remote_git_cwd(cwd)?;
-    let status_args = "--branch --no-renames --untracked-files=all -z";
+    let untracked = if include_untracked { "all" } else { "no" };
+    let status_args = format!("--branch --no-renames --untracked-files={untracked} -z");
     let status = format!("git -C {cwd} status --porcelain=v2 {status_args} || {{ printf 'TUNARA_V1\\0'; git -C {cwd} status --porcelain=v1 {status_args}; rc=$?; printf 'TUNARA_META\\0TUNARA_RC %s\\n' \"$rc\"; git -C {cwd} symbolic-ref --short HEAD 2>/dev/null || git -C {cwd} rev-parse HEAD 2>/dev/null || true; git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null || true; }}");
     Ok(format!("{status}; printf '\\0TUNARA_NUMSTAT\\0'; git -c diff.relative=false -C {cwd} diff --cached --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_UNSTAGED\\0'; git -c diff.relative=false -C {cwd} diff --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_NUMSTAT_END\\0'"))
 }
@@ -662,7 +664,7 @@ fn apply_untracked_counts(status: &mut StatusResult, raw: &str) {
 fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), String> {
     let (raw, numstat) = raw.split_once(NUMSTAT_MARKER).unwrap_or((raw, ""));
     if raw.len() > MAX_STATUS_BYTES {
-        return Err("status too large".into());
+        return Err(STATUS_TOO_LARGE.into());
     }
     let (mut status, upstream) = if let Some(v1) = raw.strip_prefix("TUNARA_V1\0") {
         let (status_raw, meta) = v1.split_once("TUNARA_META\0").unwrap_or((v1, ""));
@@ -791,11 +793,19 @@ pub async fn ssh_remote_git_snapshot_v1(
         let session = state.get_for_ssh_binding(&request.binding).ok_or_else(|| "stale binding".to_string())?;
         let ssh = match session.as_ref() { Session::Ssh(ssh) => ssh, _ => return Err("stale binding".into()) };
         let cwd = remote_git_cwd(&request.cwd)?;
-        let command = remote_status_command(&request.cwd)?;
+        let command = remote_status_command(&request.cwd, true)?;
         crate::modules::perf_counters::git_process();
         let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
         if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) { return Err("cancelled".into()); }
-        let (mut status, upstream) = parse_status_snapshot(&raw)?;
+        let (mut status, upstream) = match parse_status_snapshot(&raw) {
+            Err(error) if error == STATUS_TOO_LARGE => {
+                let command = remote_status_command(&request.cwd, false)?;
+                crate::modules::perf_counters::git_process();
+                let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
+                parse_status_snapshot(&raw)?
+            }
+            result => result?,
+        };
         if status.files.iter().any(|file| file.stage == "untracked") {
             let command = remote_untracked_counts_command(&request.cwd)?;
             crate::modules::perf_counters::git_process();
@@ -1519,17 +1529,15 @@ mod tests {
         }
 
         fn snapshot_with_shell(&self, prefix: &str) -> Result<StatusResult, String> {
-            let command = format!(
-                "{prefix} {}",
-                remote_status_command(self.0.to_str().unwrap()).unwrap()
-            );
-            let output = std::process::Command::new("sh")
-                .args(["-c", &command])
-                .output()
-                .unwrap();
-            assert!(output.status.success(), "{output:?}");
-            let (mut status, _) =
-                parse_status_snapshot(&String::from_utf8(output.stdout).unwrap())?;
+            let read_status = |include_untracked| {
+                let command =
+                    remote_status_command(self.0.to_str().unwrap(), include_untracked).unwrap();
+                parse_status_snapshot(&self.run_shell(&format!("{prefix} {command}")))
+            };
+            let (mut status, _) = match read_status(true) {
+                Err(error) if error == STATUS_TOO_LARGE => read_status(false)?,
+                result => result?,
+            };
             if status.files.iter().any(|file| file.stage == "untracked") {
                 let counts = self
                     .run_shell(&remote_untracked_counts_command(self.0.to_str().unwrap()).unwrap());
@@ -1574,7 +1582,8 @@ mod tests {
         std::fs::write(repo.0.join("same.txt"), "root final\n").unwrap();
         std::fs::write(repo.0.join("sub dir/same.txt"), "sub final\nsub extra\n").unwrap();
 
-        let command = remote_status_command(repo.0.join("sub dir").to_str().unwrap()).unwrap();
+        let command =
+            remote_status_command(repo.0.join("sub dir").to_str().unwrap(), true).unwrap();
         let output = std::process::Command::new("sh")
             .args(["-c", &command])
             .output()
@@ -1735,6 +1744,43 @@ mod tests {
             assert_eq!(status.files.len(), 1);
             assert_eq!((status.files[0].added, status.files[0].removed), (0, 0));
         }
+    }
+
+    #[test]
+    fn snapshot_keeps_tracked_changes_when_untracked_paths_exceed_the_budget() {
+        let repo = SnapshotTestRepo::new();
+        for file in ["staged", "unstaged"] {
+            std::fs::write(repo.0.join(file), "old\n").unwrap();
+        }
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "initial"]);
+        for file in ["staged", "unstaged"] {
+            std::fs::write(repo.0.join(file), "new\n").unwrap();
+        }
+        repo.git(&["add", "staged"]);
+        let nested = repo.0.join("untracked");
+        std::fs::create_dir(&nested).unwrap();
+        for i in 0..2300 {
+            std::fs::write(nested.join(format!("{i:04}-{}", "x".repeat(230))), "").unwrap();
+        }
+
+        let status = repo.snapshot();
+        let changes: Vec<_> = status
+            .files
+            .iter()
+            .map(|file| {
+                (
+                    file.path.as_str(),
+                    file.stage.as_str(),
+                    file.added,
+                    file.removed,
+                )
+            })
+            .collect();
+        assert_eq!(
+            changes,
+            [("staged", "staged", 1, 1), ("unstaged", "unstaged", 1, 1)]
+        );
     }
 
     #[test]
@@ -1946,7 +1992,7 @@ mod tests {
         let raw = String::from_utf8(output.stdout).unwrap();
         println!("real git status: {}", raw.replace('\0', "\\0"));
         let (status, _) = parse_porcelain_v2(&raw).unwrap();
-        let command = remote_status_command(path.to_str().unwrap()).unwrap();
+        let command = remote_status_command(path.to_str().unwrap(), true).unwrap();
         let output = std::process::Command::new("sh")
             .args(["-c", &command])
             .output()
