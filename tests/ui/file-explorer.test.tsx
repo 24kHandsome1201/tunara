@@ -18,6 +18,56 @@ function openFileActions() {
 }
 
 describe("FileExplorer directory navigation", () => {
+  test.each([false, true])("jumps to absolute directories and pins files without opening them (remote=%s)", async (remote) => {
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home" || command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_read_dir" || command === "ssh_fs_read_dir") {
+        const { path, includeHidden } = payload as { path: string; includeHidden: boolean };
+        if (path === "/srv/app") return [];
+        if (path === "/home/dev/docs") return [
+          { name: "archive", kind: "dir", size: 0, mtime: 0 },
+          { name: "readme.md", kind: "file", size: 1, mtime: 0 },
+          ...(includeHidden ? [".notes.md", ".other"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 })) : []),
+        ];
+        throw new Error("not a directory");
+      }
+      if (command === "ssh_fs_search") return [];
+      return { hits: [], unreadable: 0 };
+    });
+    const id = "path-jump";
+    const session: Session = {
+      id, title: "Path jump", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
+      ...(remote ? { remote: { host: "example.test", port: 22, user: "dev" }, ptyId: 40, transportGeneration: "g1" } : {}),
+    };
+    useSessionsStore.setState({ sessions: [session], activeSessionId: id });
+    render(<FileExplorer sessionId={id} rootDir={session.dir} remotePtyId={session.ptyId} transportGeneration={session.transportGeneration} />);
+    const search = screen.getByRole("textbox", { name: "Search this folder" });
+    const submit = async (value: string) => {
+      fireEvent.change(search, { target: { value } });
+      await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+    };
+    await submit("/home/dev/docs/");
+    await screen.findByRole("treeitem", { name: "archive" });
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/home/dev/docs");
+    expect(search).toHaveProperty("value", "");
+
+    await submit("~/docs/.notes.md");
+    const pinned = await screen.findByRole("treeitem", { name: ".notes.md" });
+    expect(screen.getAllByRole("treeitem").map((row) => row.getAttribute("aria-label"))).toEqual([
+      ".notes.md", "archive", "readme.md",
+    ]);
+    expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(useUIStore.getState().readers[id]).toBeUndefined();
+
+    await submit("/home/dev/docs/missing.md");
+    expect(search).toHaveProperty("value", "/home/dev/docs/missing.md");
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/home/dev/docs");
+
+    await submit("/home/dev/docs");
+    await screen.findByRole("treeitem", { name: "archive" });
+    expect(screen.queryByRole("treeitem", { name: ".notes.md" })).toBeNull();
+  });
+
   test("revalidates children on return to Files without collapsing expanded folders", async () => {
     let filename = "before.txt";
     const reads: string[] = [];

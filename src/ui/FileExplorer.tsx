@@ -228,6 +228,9 @@ export function FileExplorer({
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
+  const [pinnedFile, setPinnedFile] = useState<{ directory: string; name: string } | null>(null);
+  const pinnedFileName = pinnedFile?.directory === currentPath ? pinnedFile.name : undefined;
+  const readHidden = includeHidden || pinnedFileName?.startsWith(".") === true;
   const [reloadKey, setReloadKey] = useState(0);
   const [uploadReloadKey, setUploadReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
@@ -247,6 +250,7 @@ export function FileExplorer({
     searchMaxLimit,
     isSearching,
   } = search;
+  const pathJumpRequest = useRef(0);
   const searchRows = useMemo<SearchRow[]>(() => {
     if (!isSearching) return [];
     if (searchMode === "name") {
@@ -306,6 +310,12 @@ export function FileExplorer({
   const treeRequestContextRef = useRef(treeRequestContext);
   // Render-time assignment closes the window before passive effect cleanup.
   treeRequestContextRef.current = treeRequestContext;
+  useLayoutEffect(() => () => {
+    pathJumpRequest.current += 1;
+  }, [active, searchQuery, searchMode, treeRequestContext]);
+  useEffect(() => {
+    setPinnedFile((pinned) => pinned?.directory === currentPath ? pinned : null);
+  }, [currentPath]);
   const {
     visibleTreeNodes,
     visibleTreeRows,
@@ -323,6 +333,7 @@ export function FileExplorer({
     currentPath,
     sort,
     includeHidden,
+    pinnedFileName,
     isRemote,
     remotePtyId,
     remoteDisconnected,
@@ -547,6 +558,7 @@ export function FileExplorer({
     if (sourceChanged) {
       initializedDirectory.current = directorySource;
       setNavDir(null);
+      setPinnedFile(null);
       search.resetSearch();
     }
     if (isRemote) {
@@ -652,8 +664,8 @@ export function FileExplorer({
     }
     const read =
       isRemote && remotePtyId !== undefined
-        ? sshReadDir(remotePtyId, currentPath, includeHidden)
-        : fsReadDir(currentPath, includeHidden);
+        ? sshReadDir(remotePtyId, currentPath, readHidden)
+        : fsReadDir(currentPath, readHidden);
     read
       .then((e) => {
         if (!cancelled && treeRequestContextRef.current === treeRequestContext) {
@@ -679,7 +691,7 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, beginListingEpoch, resetExpansion, setCurrentPath]);
+  }, [currentPath, readHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, beginListingEpoch, resetExpansion, setCurrentPath]);
 
   const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();
@@ -1076,6 +1088,7 @@ export function FileExplorer({
     const isDir = node.entry.kind === "dir";
     const expanded = row.expanded;
     const active = activeFilePath === node.path;
+    const pinned = !isDir && node.parentPath === null && node.entry.name === pinnedFileName;
     const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
     const openMenu = (x: number, y: number, opener: HTMLElement) => {
@@ -1094,11 +1107,12 @@ export function FileExplorer({
         aria-expanded={isDir ? expanded : undefined}
         aria-setsize={node.setSize}
         aria-posinset={node.posInSet}
-        aria-selected={batchSelectable ? batchSelected : batchSelected || active}
+        aria-selected={pinned && !selectionMode ? true : batchSelectable ? batchSelected : batchSelected || active}
         data-explorer-item
         data-listing-index={listingIndex}
         data-tree-row-index={rowIndex}
         data-tree-path={node.path}
+        data-pinned={pinned ? "true" : undefined}
         data-drop-target={dropHighlightPath === node.path ? "true" : undefined}
         data-file-path={!isDir ? node.path : undefined}
         tabIndex={rovingFocusPath === node.path ? 0 : -1}
@@ -1288,6 +1302,39 @@ export function FileExplorer({
     setCurrentPath(path);
   }
 
+  async function jumpToPath(query: string) {
+    if (!active || remoteDisconnected) return;
+    const request = ++pathJumpRequest.current;
+    const readDir = remotePtyId !== undefined
+      ? (path: string, hidden: boolean) => sshReadDir(remotePtyId, path, hidden)
+      : fsReadDir;
+    try {
+      const homeRelative = !query.startsWith("/");
+      const home = homeRelative
+        ? remotePtyId !== undefined ? await sshHome(remotePtyId) : await fsResolveDir("~")
+        : "";
+      if (request !== pathJumpRequest.current || (homeRelative && !home.startsWith("/"))) return;
+      const path = homeRelative ? home.replace(/\/+$/, "") + (query.slice(1) || "/") : query;
+      const trimmed = path.replace(/\/+$/, "") || "/";
+      const isDirectory = await readDir(trimmed, false).then(() => true, () => false);
+      if (request !== pathJumpRequest.current) return;
+      if (isDirectory) {
+        setPinnedFile(null);
+        openSearchDir(trimmed);
+        return;
+      }
+      if (path.endsWith("/")) return;
+      const directory = parentPath(path);
+      const name = path.slice(path.lastIndexOf("/") + 1);
+      const siblings = await readDir(directory, name.startsWith("."));
+      if (request !== pathJumpRequest.current || !siblings.some((entry) => entry.name === name && entry.kind !== "dir")) return;
+      setPinnedFile({ directory, name });
+      openSearchDir(directory);
+    } catch {
+      // Keep the query and its normal search results when a path cannot be resolved.
+    }
+  }
+
   function openFile(path: string, line?: number) {
     if (remoteDisconnected) return;
     const owner = useSessionsStore.getState().sessions.find((session) => session.id === sessionId);
@@ -1422,6 +1469,14 @@ export function FileExplorer({
         includeHidden={includeHidden}
         onToggleHidden={() => setIncludeHidden((v) => !v)}
         onInputKeyDown={(event) => {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            const query = searchQuery.trimStart();
+            if (query.startsWith("/") || query === "~" || query.startsWith("~/")) {
+              event.preventDefault();
+              void jumpToPath(query);
+            }
+            return;
+          }
           if (event.key === "Escape") {
             event.preventDefault();
             if (searchQuery) search.setQuery("");
@@ -1553,7 +1608,7 @@ export function FileExplorer({
               onRetry: refresh,
             }} />
           </div>
-        ) : entries.length === 0 ? (
+        ) : listingNodeCount === 0 ? (
           <div className="explorer-state-shell">
             <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} compact={false} />
           </div>

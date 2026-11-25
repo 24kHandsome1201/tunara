@@ -1206,7 +1206,8 @@ select.ui-control {
   padding-right: var(--sp-1);
 }
 .explorer-listing-row.hover-bg { border: none; background: transparent; }
-.explorer-listing-row[data-active="true"] { background: var(--c-accent-bg-light); }
+.explorer-listing-row[data-active="true"],
+.explorer-tree-node[data-pinned] > .explorer-listing-row { background: var(--c-accent-bg-light); }
 .explorer-tree-node[data-drop-target] > .explorer-listing-row {
   border: 1px dashed var(--c-accent);
   background: color-mix(in srgb, var(--c-accent) 12%, transparent);

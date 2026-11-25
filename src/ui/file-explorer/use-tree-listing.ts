@@ -25,6 +25,7 @@ export interface TreeListingOptions {
   currentPath: string;
   sort: { key: SortKey; direction: SortDirection };
   includeHidden: boolean;
+  pinnedFileName?: string;
   isRemote: boolean;
   remotePtyId: number | undefined;
   remoteDisconnected: boolean;
@@ -85,6 +86,7 @@ export function useTreeListing({
   currentPath,
   sort,
   includeHidden,
+  pinnedFileName,
   isRemote,
   remotePtyId,
   remoteDisconnected,
@@ -213,11 +215,15 @@ export function useTreeListing({
   const visibleTreeNodes = useMemo(() => {
     const result: ExplorerTreeNode[] = [];
     const append = (siblings: DirEntry[], parent: string, parentLevel: number, parentPath: string | null) => {
-      const usable = usableExplorerEntries(siblings);
+      const pinned = parentLevel === 1 ? pinnedFileName : undefined;
+      const usable = usableExplorerEntries(siblings).filter((entry) =>
+        includeHidden || !entry.name.startsWith(".") || entry.name === pinned);
       const sorted = [
         ...sortExplorerEntries(usable.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
         ...sortExplorerEntries(usable.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
       ];
+      const pinIndex = pinned === undefined ? -1 : sorted.findIndex((entry) => entry.name === pinned && entry.kind !== "dir");
+      if (pinIndex > 0) sorted.unshift(sorted.splice(pinIndex, 1)[0]);
       sorted.forEach((entry, index) => {
         const path = joinPath(parent, entry.name);
         if (path === parent) return;
@@ -229,7 +235,7 @@ export function useTreeListing({
     };
     append(entries, currentPath, 1, null);
     return result;
-  }, [entries, currentPath, expandedPaths, treeChildren, sort]);
+  }, [entries, currentPath, expandedPaths, treeChildren, sort, includeHidden, pinnedFileName]);
 
   // Row rendering used to run findIndex/filter per node (O(n²) on large
   // directories); one pass here keeps focus roving and child lookup O(1).
