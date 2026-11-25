@@ -115,28 +115,11 @@ export function Tooltip({
           ref={tipRef}
           role="tooltip"
           id={tipId}
+          className="ui-tooltip"
           style={{
-            position: "fixed",
             left: pos ? pos.x : 0,
             top: pos ? pos.y : 0,
-            transform: "translateX(-50%)",
             visibility: pos ? "visible" : "hidden",
-            zIndex: "var(--z-menu)",
-            padding: "4px 8px",
-            borderRadius: "var(--r-badge)",
-            border: "1px solid var(--c-border-1)",
-            background: "var(--c-bg-white)",
-            boxShadow: "var(--shadow-card)",
-            color: "var(--c-text-primary)",
-            fontSize: "var(--fs-meta)",
-            fontFamily: "var(--font-ui)",
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            pointerEvents: "none",
-            animation: "fadeIn var(--dur-fast) var(--ease-out)",
           }}
         >
           <span>{label}</span>

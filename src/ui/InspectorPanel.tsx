@@ -73,7 +73,6 @@ function SwitcherButton({
       tabIndex={active ? 0 : -1}
       data-active={active ? "true" : "false"}
       className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
-      style={{ flexShrink: 0, minHeight: 30, padding: "0 8px", border: "none", borderRadius: "var(--r-btn)", background: active ? "var(--c-bg-3)" : "transparent", color: active ? "var(--c-text-primary)" : "var(--c-text-4)", fontSize: "var(--fs-secondary)", fontWeight: active ? 600 : 400, cursor: "pointer" }}
     >
       {label}
       {children}
@@ -212,61 +211,31 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
         overflow: "hidden",
       }}
     >
-      <div
-        className="tunara-translucent-layer"
-        style={{
-          minHeight: "var(--h-titlebar)",
-          background: "var(--c-bg-1)",
-          borderBottom: "1px solid var(--c-border-1)",
-          display: "flex",
-          alignItems: "center",
-          paddingLeft: 8,
-          gap: 4,
-          flexShrink: 0,
-        }}
-      >
-        {!filesOnly && (
-          <div
-            ref={tabListRef}
-            role="tablist"
-            aria-label={t("inspector.tab.aria_label")}
-            onKeyDown={handleTabListKeyDown}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              flex: 1,
-              minWidth: 0,
-              overflowX: "auto",
-            }}
-          >
-            {navigation.primary.map((id) => (
-              <SwitcherButton
-                key={id}
-                tabId={id}
-                active={tab === id}
-                label={t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey)}
-                onClick={() => selectTab(id)}
-              >
-                {id === "changes" && !!session.changes?.files.length && <span style={{ marginLeft: 4 }}>{session.changes.files.length}</span>}
-                {id === "transfers" && transferCount > 0 && <span style={{ marginLeft: 4 }}>{transferCount}</span>}
-              </SwitcherButton>
-            ))}
-          </div>
-        )}
-
-        {filesOnly && (
-          <div
-            ref={tabListRef}
-            className="no-scrollbar"
-            role="tablist"
-            aria-label={t("inspector.tab.aria_label")}
-            style={{ display: "flex", alignItems: "center", flexShrink: 0 }}
-          >
+      <div className="tunara-translucent-layer inspector-toolbar">
+        <div
+          ref={tabListRef}
+          role="tablist"
+          aria-label={t("inspector.tab.aria_label")}
+          onKeyDown={filesOnly ? undefined : handleTabListKeyDown}
+          className={filesOnly ? "inspector-files-tab no-scrollbar" : "inspector-tab-list"}
+        >
+          {filesOnly ? (
             <SwitcherButton tabId="files" active label={t(INSPECTOR_TAB_DESCRIPTORS.files.titleKey)} onClick={() => {}}>
               {null}
             </SwitcherButton>
-          </div>
-        )}
+          ) : navigation.primary.map((id) => (
+            <SwitcherButton
+              key={id}
+              tabId={id}
+              active={tab === id}
+              label={t(INSPECTOR_TAB_DESCRIPTORS[id].titleKey)}
+              onClick={() => selectTab(id)}
+            >
+              {id === "changes" && !!session.changes?.files.length && <span>{session.changes.files.length}</span>}
+              {id === "transfers" && transferCount > 0 && <span>{transferCount}</span>}
+            </SwitcherButton>
+          ))}
+        </div>
 
         {!filesOnly && navigation.secondary.length > 0 && (
           <PanelIconButton
@@ -302,53 +271,19 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
         <div
           className="tunara-translucent-layer"
           id="inspector-context-bar"
-          style={{
-            minHeight: 28,
-            padding: "3px 9px 3px 10px",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            borderBottom: "1px solid var(--c-border-1)",
-            background: "var(--c-bg-1)",
-            flexShrink: 0,
-            minWidth: 0,
-            overflow: "hidden",
-            position: "relative",
-          }}
         >
           <span
             title={`${session.dir}\n${t(scopeDescriptionKey)}`}
-            style={{
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              padding: "1px 6px",
-              borderRadius: "var(--r-pill)",
-              background: "var(--c-bg-3)",
-              color: "var(--c-text-5)",
-              fontSize: "var(--fs-meta)",
-              fontFamily: "var(--font-mono)",
-            }}
+            className="inspector-context-badge"
           >
             {session.remote ? `${session.remote.user}@${session.remote.host}` : session.dir.split(/[\\/]/).filter(Boolean).pop() || session.dir}
           </span>
-          <span style={{ flex: 1, minWidth: 0 }} />
+          <span className="inspector-context-spacer" />
           {showSourceSummary && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
+            <div className="inspector-source-summary">
               <WorkspaceSourceChip session={session} />
               {!session.workspace && session.branch && (
-                <span
-                  style={{
-                    fontSize: "var(--fs-meta)",
-                    color: "var(--c-text-5)",
-                    fontFamily: "var(--font-mono)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    minWidth: 0,
-                  }}
-                >
+                <span className="inspector-source-branch">
                   ⎇ {session.branch}
                 </span>
               )}
@@ -356,17 +291,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
           )}
           <span
             id="inspector-scope-description"
-            style={{
-              position: "absolute",
-              width: 1,
-              height: 1,
-              padding: 0,
-              margin: -1,
-              overflow: "hidden",
-              clip: "rect(0, 0, 0, 0)",
-              whiteSpace: "nowrap",
-              border: 0,
-            }}
+            className="sr-only"
           >
             {session.remote ? `${session.remote.user}@${session.remote.host}: ${session.dir}` : session.dir}
           </span>
@@ -378,7 +303,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
         id={INSPECTOR_TABPANEL_ID}
         aria-label={t(descriptor.titleKey)}
         aria-describedby={showContextBar ? "inspector-scope-description" : undefined}
-        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+        className="inspector-panel-content"
       >
         {fileSessions.map((fileSession) => {
           const active = tab === "files" && fileSession.id === session.id;
@@ -391,12 +316,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
         {tab !== "files" && <div
           key={`${tab}:${inspectorScope.key}`}
           data-scope-key={inspectorScope.key}
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-          }}
+          className="inspector-panel-content"
         >
           <Suspense fallback={<PanelLoadingState label={t("diff.mini.loading")} />}>
             {activePanel}

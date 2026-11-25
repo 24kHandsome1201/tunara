@@ -7,7 +7,8 @@ const LISTING_ROW_HEIGHT = 32;
 const LISTING_TOP_INSET = 33;
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { fsReadDir, fsResolveDir, type DirEntry } from "@/modules/fs/fs-bridge";
+import { fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
+import type { GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import {
   invalidateRemoteSearchCache,
   sshHome,
@@ -66,12 +67,22 @@ import { useExplorerSearch } from "./file-explorer/use-explorer-search";
 import { useTreeListing, type ExplorerTreeNode, type ExplorerTreeRow } from "./file-explorer/use-tree-listing";
 import { mountedTreeRowIndexes } from "./file-explorer/tree-virtual";
 import { useDirectUpload } from "./file-explorer/use-direct-upload";
-import { SearchLimitControl, SearchRetryButton } from "./file-explorer/search-controls";
+import { SearchViewport } from "./file-explorer/search-viewport";
+import { useExplorerViewport } from "./file-explorer/use-explorer-viewport";
 import { recordFrontendPerf } from "@/modules/perf/benchmark-counters";
 
 // Re-exported for existing importers/tests; implementations moved to ./file-explorer/.
 export { downloadFailureKey, parseUploadFailure, uploadFailureKey, type UploadFailure } from "./file-explorer/transfer-failures";
 export { sortExplorerEntries, formatModifiedTime } from "./file-explorer/helpers";
+
+const GREP_HEADER_HEIGHT = 24;
+const GREP_LINE_HEIGHT = 22;
+
+type SearchRow = { key: string; height: number; focusable: boolean } & (
+  | { kind: "name"; hit: SearchHit }
+  | { kind: "group"; group: GrepFileGroup }
+  | { kind: "line"; group: GrepFileGroup; ln: GrepFileGroup["lines"][number] }
+);
 
 interface FileExplorerProps {
   active?: boolean;
@@ -88,16 +99,6 @@ interface FileExplorerProps {
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
   remoteHost?: string;
-}
-
-function UnreadableNotice({ count }: { count: number }) {
-  const t = useT();
-  if (count === 0) return null;
-  return (
-    <div role="status" style={{ padding: "0 6px 8px", fontSize: "var(--fs-meta)", lineHeight: "18px", color: "var(--c-text-5)" }}>
-      {t(count === 1 ? "explorer.search_unreadable_one" : "explorer.search_unreadable_other", { count })}
-    </div>
-  );
 }
 
 export function FileExplorer({
@@ -246,6 +247,19 @@ export function FileExplorer({
     searchMaxLimit,
     isSearching,
   } = search;
+  const searchRows = useMemo<SearchRow[]>(() => {
+    if (!isSearching) return [];
+    if (searchMode === "name") {
+      return searchHits.map((hit) => ({ kind: "name", key: hit.path, height: LISTING_ROW_HEIGHT, focusable: true, hit }));
+    }
+    return grepHits.flatMap((group): SearchRow[] => [
+      { kind: "group", key: group.path, height: GREP_HEADER_HEIGHT, focusable: false, group },
+      ...group.lines.map((ln, index): SearchRow => ({
+        kind: "line", key: `${ln.line}:${group.path}`, height: GREP_LINE_HEIGHT + (index === group.lines.length - 1 ? 6 : 0),
+        focusable: true, group, ln,
+      })),
+    ]);
+  }, [grepHits, isSearching, searchHits, searchMode]);
   const [contextMenu, setContextMenu] = useState<{
     items: MenuEntry[];
     position: { x: number; y: number };
@@ -266,8 +280,8 @@ export function FileExplorer({
   const activeFilePath = useUIStore((s) =>
     s.readers[sessionId]?.current?.filePath,
   );
-  const resultsListRef = useRef<HTMLDivElement>(null);
-  const [listScroll, setListScroll] = useState({ top: 0, height: 0 });
+  const treeListRef = useRef<HTMLDivElement>(null);
+  const focusFirstSearchResultRef = useRef<() => boolean>(null);
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
   const [listingFocusIndex, setListingFocusIndex] = useState(0);
   const explorerRef = useRef<HTMLDivElement>(null);
@@ -432,7 +446,7 @@ export function FileExplorer({
         return;
       }
       const rect = explorerRef.current?.getBoundingClientRect();
-      const listRect = resultsListRef.current?.getBoundingClientRect();
+      const listRect = treeListRef.current?.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
       const x = event.payload.position.x / scale;
       const y = event.payload.position.y / scale;
@@ -443,7 +457,7 @@ export function FileExplorer({
         ? dropDestinationFromListing({
           clientY: y,
           listTop: listRect.top,
-          scrollTop: resultsListRef.current?.scrollTop ?? 0,
+          scrollTop: treeListRef.current?.scrollTop ?? 0,
           inset: LISTING_TOP_INSET,
           rowHeight: LISTING_ROW_HEIGHT,
           nodes: listing.nodes,
@@ -677,23 +691,11 @@ export function FileExplorer({
     ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
     : [], [binding, visibleTreeNodes, downloadLimits]);
 
-  const contentKey = isSearching ? `search:${searchQuery}` : currentPath;
+  const contentKey = isSearching ? `search:${searchMode}:${searchQuery}` : currentPath;
   const hasCachedRemoteListing = remoteDisconnected && hasCachedListing;
   const listingNodeCount = visibleTreeNodes.length;
   const listingRowCount = visibleTreeRows.length;
-  useLayoutEffect(() => {
-    const element = resultsListRef.current;
-    if (!element) return;
-    const update = () => setListScroll({ top: element.scrollTop, height: element.clientHeight });
-    update();
-    element.addEventListener("scroll", update, { passive: true });
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
-    observer?.observe(element);
-    return () => {
-      element.removeEventListener("scroll", update);
-      observer?.disconnect();
-    };
-  }, [contentKey]);
+  const { view: listScroll, measure: measureTree } = useExplorerViewport(treeListRef, contentKey);
   const virtualizeListing = !isSearching && listingRowCount > 100;
   const listingSlice = virtualizeListing
     ? computeVirtualSlice(
@@ -752,7 +754,7 @@ export function FileExplorer({
 
   useLayoutEffect(() => {
     if (pendingListingFocus === null) return;
-    const target = resultsListRef.current?.querySelector<HTMLElement>(
+    const target = treeListRef.current?.querySelector<HTMLElement>(
       `[data-listing-index="${pendingListingFocus}"]`,
     );
     if (!target) return;
@@ -782,7 +784,7 @@ export function FileExplorer({
     if (!node) return;
     focusedPathRef.current = node.path;
     setListingFocusIndex(target);
-    const list = resultsListRef.current;
+    const list = treeListRef.current;
     const mounted = list?.querySelector<HTMLElement>(`[data-listing-index="${target}"]`);
     if (mounted) {
       mounted.focus();
@@ -792,7 +794,7 @@ export function FileExplorer({
     if (!list || rowIndex === undefined) return;
     const rowTop = LISTING_TOP_INSET + rowIndex * LISTING_ROW_HEIGHT;
     list.scrollTop = Math.max(0, rowTop - Math.max(0, list.clientHeight - LISTING_ROW_HEIGHT));
-    setListScroll({ top: list.scrollTop, height: list.clientHeight });
+    measureTree();
     setPendingListingFocus(target);
   }
 
@@ -1190,25 +1192,15 @@ export function FileExplorer({
         }}
         className="explorer-tree-node"
         style={{
-          width: "100%",
           height: LISTING_ROW_HEIGHT,
-          cursor: "pointer",
-          ...(virtualizeListing ? {
-            position: "absolute",
-            top: 0,
-            left: 0,
-            transform: `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)`,
-          } : {}),
+          transform: virtualizeListing ? `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)` : undefined,
         }}
       >
         <div
           className="hover-bg explorer-listing-grid explorer-listing-row"
           data-selectable={selectionMode ? "true" : undefined}
-          style={{
-            padding: `0 var(--sp-1) 0 ${8 + (node.level - 1) * 16}px`,
-            border: dropHighlightPath === node.path ? "1px dashed var(--c-accent)" : "none",
-            background: dropHighlightPath === node.path ? "color-mix(in srgb, var(--c-accent) 12%, transparent)" : batchSelected || active ? "var(--c-accent-bg-light)" : "transparent",
-          }}
+          data-active={batchSelected || active}
+          style={{ paddingLeft: 8 + (node.level - 1) * 16 }}
         >
         {selectionMode && (
           <input
@@ -1221,7 +1213,7 @@ export function FileExplorer({
             title={node.entry.kind === "file" && node.entry.size > downloadLimits.maxFileBytes ? t("explorer.download.too_large") : undefined}
             onClick={(event) => { event.stopPropagation(); toggleDownloadSelection(node, event.shiftKey); }}
             onChange={() => {}}
-            style={{ margin: 0, visibility: node.entry.kind === "file" ? "visible" : "hidden" }}
+            style={{ visibility: node.entry.kind === "file" ? "visible" : "hidden" }}
           />
         )}
         <span className="explorer-listing-name">
@@ -1242,7 +1234,7 @@ export function FileExplorer({
               <TreeChevron expanded={expanded} />
             </button>
           ) : (
-            <span aria-hidden="true" style={{ display: "flex", pointerEvents: "none" }}><FileIcon tint={fileKindTint(node.entry.name)} /></span>
+            <span aria-hidden="true" className="explorer-entry-icon"><FileIcon tint={fileKindTint(node.entry.name)} /></span>
           )}
           <ExplorerEntryName name={node.entry.name} />
         </span>
@@ -1273,22 +1265,14 @@ export function FileExplorer({
       <div
         key={`${row.parentPath}:load-error`}
         data-tree-row-index={rowIndex}
+        className="explorer-tree-error"
         style={{
           height: LISTING_ROW_HEIGHT,
           paddingLeft: 8 + (row.level - 1) * 16,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          ...(virtualizeListing ? {
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            transform: `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)`,
-          } : {}),
+          transform: virtualizeListing ? `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)` : undefined,
         }}
       >
-        <span role="alert" style={{ color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
+        <span role="alert">
           {t("explorer.read_dir_failed")}
         </span>
         {!remoteDisconnected && <button type="button" tabIndex={-1} className="ui-button" onClick={() => expandDirectory(row.parentPath)}>
@@ -1317,6 +1301,81 @@ export function FileExplorer({
       : { key, direction: key === "modified" ? "desc" : "asc" });
   }
 
+  function renderSearchRow(row: SearchRow) {
+    if (row.kind === "line") {
+      const { group, ln } = row;
+      return (
+        <button
+          data-explorer-item
+          onClick={() => openFile(group.path, ln.line)}
+          title={group.rel}
+          className="hover-bg explorer-search-hit explorer-search-line"
+          style={{ height: GREP_LINE_HEIGHT - 1 }}
+        >
+          <span className="explorer-search-line-number">{ln.line}</span>
+          <span className="explorer-search-line-text">{ln.text}</span>
+        </button>
+      );
+    }
+    const file = row.kind === "name" ? row.hit : row.group;
+    const isDir = row.kind === "name" && row.hit.isDir;
+    const pathLabel = (
+      <>
+        {isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(row.kind === "name" ? row.hit.name : file.rel)} />}
+        <span className="explorer-search-path" title={file.rel}>{compactRelativePath(file.rel)}</span>
+      </>
+    );
+    if (row.kind === "group") {
+      return (
+        <div className="explorer-search-group" style={{ height: GREP_HEADER_HEIGHT }}>
+          {pathLabel}
+          <span className="explorer-search-count">{row.group.lines.length}</span>
+        </div>
+      );
+    }
+    return (
+      <button
+        data-explorer-item
+        data-active={activeFilePath === file.path}
+        onClick={() => isDir ? openSearchDir(file.path) : openFile(file.path)}
+        className="hover-bg explorer-search-hit"
+        style={{ height: LISTING_ROW_HEIGHT - 2 }}
+      >
+        {pathLabel}
+        {isDir && <TreeChevron />}
+      </button>
+    );
+  }
+
+  const resultCount = searchMode === "content" ? grepHits.length : searchHits.length;
+  const resultsTruncated = searchMode === "content" ? grepTruncated : searchTruncated;
+  const searchHeader = searchLoading && resultCount === 0 ? (
+    <PanelLoadingState label={t("explorer.searching")} />
+  ) : searchError ? (
+    <>
+      <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
+      <div className="explorer-search-retry">
+        <button className="hover-bg" onClick={search.retrySearch}>{t("common.retry")}</button>
+      </div>
+    </>
+  ) : (
+    <>
+      {resultCount === 0 ? (
+        <PanelEmptyState label={t(searchMode === "content" ? "explorer.content_no_match" : "explorer.no_match")} sublabel={searchQuery.trim()} />
+      ) : (
+        <div className="explorer-search-summary">
+          <span>{t("explorer.results")}</span>
+          <span className="explorer-search-count">{resultCount}</span>
+        </div>
+      )}
+      {searchUnreadable !== 0 && (
+        <div role="status" className="explorer-search-unreadable">
+          {t(searchUnreadable === 1 ? "explorer.search_unreadable_one" : "explorer.search_unreadable_other", { count: searchUnreadable })}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div
       ref={explorerRef}
@@ -1325,16 +1384,16 @@ export function FileExplorer({
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false); }}
       onDrop={(event) => { event.preventDefault(); setDropActive(false); }}
-      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative", overflow: "hidden", outline: dropActive ? "2px dashed var(--c-accent)" : undefined, outlineOffset: -3 }}
+      data-drop-active={dropActive}
     >
       {dropActive && (
-        <div role="status" style={{ flexShrink: 0, padding: "7px var(--sp-2)", borderBottom: "1px dashed var(--c-accent)", fontWeight: 600, textAlign: "center" }}>
+        <div role="status" className="explorer-drop-notice">
           ↥ {dropHighlightPath ? t("explorer.drop.on_folder", { path: dropHighlightPath }) : t("explorer.drop.ready")}
         </div>
       )}
       {dropMessage && <div role="status" aria-live="polite" className="sr-only">{dropMessage}</div>}
       {mutationPrepareError && (
-        <div role="alert" style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
+        <div role="alert" className="explorer-error-notice">
           {mutationPrepareError}
         </div>
       )}
@@ -1370,7 +1429,11 @@ export function FileExplorer({
             return;
           }
           if (event.key !== "ArrowDown") return;
-          const first = resultsListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
+          if (isSearching) {
+            if (focusFirstSearchResultRef.current?.()) event.preventDefault();
+            return;
+          }
+          const first = treeListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
           if (!first) return;
           event.preventDefault();
           first.focus();
@@ -1424,142 +1487,53 @@ export function FileExplorer({
         />
       )}
       {hasCachedRemoteListing && (
-        <div role="status" title={t("explorer.remote_disconnected")} style={{ flexShrink: 0, padding: "5px var(--sp-2)", color: "var(--c-warning)", background: "color-mix(in srgb, var(--c-warning) 8%, transparent)", borderBottom: "1px solid var(--c-border-1)", fontSize: "var(--fs-meta)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div role="status" title={t("explorer.remote_disconnected")} className="explorer-disconnected">
           {t("explorer.remote_disconnected")}
         </div>
       )}
 
       {upload && (
         <div className="explorer-transfer-status">
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-meta)", color: "var(--c-text-3)" }}>
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+          <div className="explorer-transfer-row">
+            <span>
               {upload.cancelling ? t("explorer.upload.cancelling") : t("explorer.upload.progress", { file: upload.fileName, percent: upload.total > 0 ? Math.min(100, Math.round(upload.transferred / upload.total * 100)) : 0 })}
             </span>
-            <button type="button" onClick={directUpload.cancelUpload} disabled={upload.cancelling} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", cursor: upload.cancelling ? "default" : "pointer", padding: "2px 5px", borderRadius: "var(--r-btn)", fontSize: "var(--fs-meta)" }}>{t("common.cancel")}</button>
+            <button type="button" onClick={directUpload.cancelUpload} disabled={upload.cancelling} className="hover-bg">{t("common.cancel")}</button>
           </div>
-          <progress className="ui-progress" aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} style={{ display: "block", width: "100%", height: 4, marginTop: 5 }} />
+          <progress className="ui-progress" aria-label={t("explorer.upload.progress_label")} max={upload.total || 1} value={upload.transferred} />
         </div>
       )}
       <div aria-live="polite" aria-atomic="true" className="sr-only" data-transfer-announcement>
         {transferAnnouncement}
       </div>
-      <div
+      {isSearching && (
+        <SearchViewport
+          key={contentKey}
+          ref={focusFirstSearchResultRef}
+          rows={searchError ? [] : searchRows}
+          renderRow={renderSearchRow}
+          header={searchHeader}
+          footer={resultCount > 0 && !searchError && (resultsTruncated || searchLoading) && (
+            searchLoading || searchLimit >= searchMaxLimit ? (
+              <div className="explorer-search-limit" aria-live={searchLoading ? "polite" : undefined}>
+                {t(searchLoading ? "explorer.searching" : "explorer.results_limit_reached")}
+              </div>
+            ) : (
+              <button type="button" className="hover-bg explorer-search-more" onClick={search.loadMoreSearchResults}>
+                {t("explorer.load_more")}
+              </button>
+            )
+          )}
+        />
+      )}
+      {!isSearching && <div
         key={contentKey}
-        ref={resultsListRef}
-        onKeyDown={(e) => {
-          // 结果/树列表方向键漫游：↑↓ 在列表内按钮间移动焦点
-          if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-          if (!isSearching) return;
-          const list = e.currentTarget as HTMLElement;
-          const active = document.activeElement as HTMLElement | null;
-          const items = Array.from(list.querySelectorAll<HTMLElement>("[data-explorer-item]"));
-          if (items.length === 0) return;
-          e.preventDefault();
-          const idx = items.indexOf(active as HTMLElement);
-          if (idx === -1) return;
-          const next = e.key === "ArrowDown"
-            ? items[Math.min(idx + 1, items.length - 1)]
-            : items[Math.max(idx - 1, 0)];
-          next?.focus();
-        }}
-        style={{ flex: 1, overflowY: "auto", padding: "6px var(--sp-2)", animation: !isSearching && navDir ? `${navDir === "in" ? "slideInRight" : "slideInLeft"} var(--dur-base) var(--ease-out)` : undefined }}
+        ref={treeListRef}
+        onScroll={measureTree}
+        data-nav={navDir}
         className="no-scrollbar scroll-fade-y"
       >
-        {isSearching ? (
-          searchMode === "content" ? (
-            searchLoading && grepHits.length === 0 ? (
-              <PanelLoadingState label={t("explorer.searching")} />
-            ) : searchError ? (
-              <>
-                <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-                <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
-              </>
-            ) : grepHits.length === 0 ? (
-              <>
-                <PanelEmptyState label={t("explorer.content_no_match")} sublabel={searchQuery.trim()} />
-                <UnreadableNotice count={searchUnreadable} />
-              </>
-            ) : (
-              <>
-                <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
-                  <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{grepHits.length}</span>
-                </div>
-                <UnreadableNotice count={searchUnreadable} />
-                {grepHits.map((group) => (
-                  <div key={group.path} style={{ marginBottom: 6 }}>
-                    <div style={{ padding: "3px var(--sp-2)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <FileIcon tint={fileKindTint(group.rel)} />
-                      <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={group.rel}>{compactRelativePath(group.rel)}</span>
-                      <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center", flexShrink: 0 }}>{group.lines.length}</span>
-                    </div>
-                    {group.lines.map((ln) => (
-                      <button
-                        key={ln.line}
-                        data-explorer-item
-                        // Content hits open the owning file tab. Keeping local
-                        // and SSH results on the same workspace surface avoids
-                        // sending remote paths to a local external editor.
-                        onClick={() => openFile(group.path, ln.line)}
-                        title={group.rel}
-                        className="hover-bg"
-                        style={{ width: "100%", padding: "2px var(--sp-2) 2px 30px", borderRadius: "var(--r-btn)", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 8, textAlign: "left", marginBottom: 1 }}
-                      >
-                        <span style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-6)", fontFamily: "var(--font-mono)", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{ln.line}</span>
-                        <span style={{ fontSize: "var(--fs-secondary)", color: "var(--c-text-2)", fontFamily: "var(--font-mono)", whiteSpace: "pre", overflow: "hidden" }}>{ln.text}</span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-                {(grepTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />}
-              </>
-            )
-          ) : (
-          searchLoading && searchHits.length === 0 ? (
-            <PanelLoadingState label={t("explorer.searching")} />
-          ) : searchError ? (
-            <>
-              <PanelEmptyState label={t("explorer.search_failed")} sublabel={searchQuery.trim()} />
-              <SearchRetryButton label={t("common.retry")} onRetry={search.retrySearch} />
-            </>
-          ) : searchHits.length === 0 ? (
-            <>
-              <PanelEmptyState label={t("explorer.no_match")} sublabel={searchQuery.trim()} />
-              <UnreadableNotice count={searchUnreadable} />
-            </>
-          ) : (
-            <>
-              <div style={{ padding: "3px 6px 7px", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", fontFamily: "var(--font-mono)" }}>{t("explorer.results")}</span>
-                <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-5)", background: "var(--c-bg-3)", borderRadius: "var(--r-pill)", padding: "0 6px", fontFamily: "var(--font-mono)", minWidth: 18, textAlign: "center" }}>{searchHits.length}</span>
-              </div>
-              <UnreadableNotice count={searchUnreadable} />
-              {searchHits.map((hit) => {
-                const isExpanded = activeFilePath === hit.path;
-                return (
-                  <div key={hit.path}>
-                    <button
-                      data-explorer-item
-                      onClick={() => hit.isDir ? openSearchDir(hit.path) : openFile(hit.path)}
-                      className="hover-bg"
-                      style={{
-                        width: "100%", height: 30, padding: "0 var(--sp-2)", borderRadius: "var(--r-btn)", border: "none",
-                        background: isExpanded ? "var(--c-accent-bg-light)" : "transparent",
-                        cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textAlign: "left", marginBottom: 2,
-                      }}
-                    >
-                      {hit.isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(hit.name)} />}
-                      <span style={{ fontSize: "var(--fs-secondary)", color: isExpanded ? "var(--c-text-primary)" : "var(--c-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={hit.rel}>{compactRelativePath(hit.rel)}</span>
-                      {hit.isDir && <TreeChevron />}
-                    </button>
-                  </div>
-                );
-              })}
-              {(searchTruncated || searchLoading) && <SearchLimitControl canLoadMore={searchLimit < searchMaxLimit} loading={searchLoading} onLoadMore={search.loadMoreSearchResults} />}
-            </>
-          )
-          )
-        ) : remoteDisconnected && !hasCachedRemoteListing ? (
+        {remoteDisconnected && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell">
             <PanelEmptyState
               label={t("explorer.remote_unavailable")}
@@ -1630,13 +1604,14 @@ export function FileExplorer({
               aria-multiselectable={binding ? "true" : undefined}
               data-tree-row-count={listingRowCount}
               data-tree-mounted-count={mountedTreeIndexes.length}
-              style={virtualizeListing ? { position: "relative", height: listingRowCount * LISTING_ROW_HEIGHT } : undefined}
+              data-virtual={virtualizeListing}
+              style={virtualizeListing ? { height: listingRowCount * LISTING_ROW_HEIGHT } : undefined}
             >
               {mountedTreeIndexes.map((index) => renderTreeRow(visibleTreeRows[index], index))}
             </div>
           </>
         )}
-      </div>
+      </div>}
 
       {active && properties?.bindingKey === treeRequestContext && binding && (
         <Modal
@@ -1647,7 +1622,7 @@ export function FileExplorer({
           style={{ width: 480 }}
         >
           <RemoteMetadataPanel binding={binding} path={properties.path} host={remoteHost ?? sessionId} />
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 12px 12px" }}>
+          <div className="explorer-metadata-footer">
             <button type="button" className="ui-button" onClick={() => setProperties(null)}>{t("common.close")}</button>
           </div>
         </Modal>
@@ -1655,13 +1630,13 @@ export function FileExplorer({
 
       {active && mutationComposer && !remoteDisconnected && (
         <>
-          <div aria-hidden="true" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
+          <div aria-hidden="true" className="explorer-mutation-backdrop" />
           <div
             ref={mutationComposerRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="remote-mutation-name-title"
-            style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: 420, maxWidth: "calc(100vw - 32px)", padding: 18, zIndex: "var(--z-overlay)", background: "var(--c-bg-white)", borderRadius: "var(--r-overlay)", boxShadow: "var(--shadow-overlay)", display: "grid", gap: 12 }}
+            className="explorer-mutation-dialog"
           >
             <strong id="remote-mutation-name-title">{t(`explorer.mutation.${mutationComposer.kind}`)}</strong>
             <label>
@@ -1678,11 +1653,11 @@ export function FileExplorer({
               />
             </label>
             {mutationComposer.error && (
-              <p role="alert" style={{ margin: 0, color: "var(--c-error)", fontSize: "var(--fs-meta)" }}>
+              <p role="alert">
                 {mutationComposer.error}
               </p>
             )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <div className="explorer-mutation-footer">
               <button type="button" className="ui-button" onClick={() => { setMutationComposer(null); restoreMenuFocus(); }} disabled={mutationBusy}>{t("common.cancel")}</button>
               <button type="button" className="ui-button ui-button--primary" onClick={() => { void prepareNamedMutation(); }} disabled={mutationBusy || !mutationComposer.value.trim()}>{t("common.continue")}</button>
             </div>
