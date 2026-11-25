@@ -381,6 +381,7 @@
   "diff.empty.remote_unavailable_hint": "Reconnect SSH to read Git status.",
   "diff.loading": "Loading git status…",
   "diff.empty.clean": "Working tree clean",
+  "diff.status.incomplete": "Some changes aren’t shown because Git status output exceeded the size limit.",
   "diff.section.staged": "Staged",
   "diff.section.unstaged": "Unstaged",
   "diff.section.untracked": "Untracked",

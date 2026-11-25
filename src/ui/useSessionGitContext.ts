@@ -123,6 +123,7 @@ export function useSessionGitContext({
           gitFreshness: snapshot.freshness,
           gitError: snapshot.error,
           gitRemoteState: snapshot.repo?.upstream,
+          gitStatusIncomplete: snapshot.unavailableFields.some(({ field }) => field === "status"),
           branch: snapshot.repo?.status.branch ?? (gitState === "notGit" ? "" : previous?.branch ?? ""),
           changes: snapshot.repo ? { files: snapshot.repo.status.files } : (gitState === "notGit" ? undefined : previous?.changes),
           workspace: resolvedWorkspace ?? (gitState === "notGit" ? undefined : previous?.workspace),

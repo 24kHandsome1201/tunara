@@ -565,6 +565,7 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
   const summary = useMemo(() => composeChangesSummary(files, t), [files, t]);
   const remoteDisconnected = isRemote && session.ptyId === undefined;
   const notGit = session.gitState === "notGit" || (!isRemote && !repoPath);
+  const statusIncomplete = isRemote && session.gitStatusIncomplete;
   const loading = session.gitState !== "repo" && session.gitState !== "notGit" && !session.changes;
 
   const [remote, setRemote] = useState<RemoteState | null>(null);
@@ -646,14 +647,17 @@ export function DiffPanel({ session, onClose, embedded }: DiffPanelProps) {
       )}
 
       <div data-diff-scroll-root style={{ flex: 1, overflowY: "auto" }} className="scroll-fade-y">
+        {!remoteDisconnected && statusIncomplete && (
+          <div role="status" style={{ padding: "8px 12px", color: "var(--c-text-4)" }}>{t("diff.status.incomplete")}</div>
+        )}
         {remoteDisconnected ? (
           <PanelEmptyState label={t("diff.empty.remote_unavailable")} sublabel={t("diff.empty.remote_unavailable_hint")} />
-        ) : loading ? (
+        ) : loading && !statusIncomplete ? (
           <PanelLoadingState label={t("diff.loading")} />
         ) : notGit ? (
           <PanelEmptyState label={t("diff.empty.not_git")} sublabel={displayPath} />
         ) : !hasChanges ? (
-          <PanelEmptyState icon={checkIcon} label={t("diff.empty.clean")} />
+          statusIncomplete ? null : <PanelEmptyState icon={checkIcon} label={t("diff.empty.clean")} />
         ) : (
           <div style={{ padding: "6px" }}>
             {(() => {

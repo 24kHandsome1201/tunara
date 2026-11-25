@@ -110,6 +110,7 @@ export interface Session {
   gitFreshness?: "fresh" | "stale";
   gitError?: RemoteGitErrorV1;
   gitRemoteState?: RemoteState;
+  gitStatusIncomplete?: boolean;
   // 不携带展示用 summary 字符串：本地化的统计行由 DiffPanel 按当前语言
   // 从 files 现算，后端/状态层不再固化任何 UI 语言。
   changes?: {

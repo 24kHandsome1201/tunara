@@ -320,6 +320,7 @@ pub struct RemoteGitSnapshotRequestV1 {
 #[derive(Clone)]
 struct SnapshotCacheEntry {
     status: StatusResult,
+    status_incomplete: bool,
     upstream: RemoteState,
     workspace: Option<WorkspaceContext>,
     observed_at: u64,
@@ -579,14 +580,16 @@ fn cached_snapshot_response(
     freshness: SnapshotFreshness,
     error: Option<RemoteGitErrorKind>,
 ) -> RemoteGitSnapshotV1 {
-    let unavailable_fields = if entry.workspace.is_none() {
-        vec![UnavailableFieldV1 {
+    let mut unavailable_fields = Vec::new();
+    if entry.status_incomplete {
+        unavailable_fields.push(status_unavailable());
+    }
+    if entry.workspace.is_none() {
+        unavailable_fields.push(UnavailableFieldV1 {
             field: "workspace",
             kind: RemoteGitErrorKind::Unknown,
-        }]
-    } else {
-        Vec::new()
-    };
+        });
+    }
     RemoteGitSnapshotV1 {
         request_id: request.request_id.clone(),
         generation: request.generation,
@@ -600,6 +603,13 @@ fn cached_snapshot_response(
         }),
         unavailable_fields,
         error: error.map(wire_error),
+    }
+}
+
+fn status_unavailable() -> UnavailableFieldV1 {
+    UnavailableFieldV1 {
+        field: "status",
+        kind: RemoteGitErrorKind::Unknown,
     }
 }
 
@@ -710,6 +720,22 @@ fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), Strin
     Ok((status, upstream))
 }
 
+async fn read_status_snapshot<Fut>(
+    mut run: impl FnMut(bool) -> Fut,
+) -> Result<(StatusResult, RemoteState, bool), String>
+where
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    match parse_status_snapshot(&run(true).await?) {
+        Ok((status, upstream)) => Ok((status, upstream, false)),
+        Err(error) if error == STATUS_TOO_LARGE => {
+            let (status, upstream) = parse_status_snapshot(&run(false).await?)?;
+            Ok((status, upstream, true))
+        }
+        Err(error) => Err(error),
+    }
+}
+
 fn parse_numstat(raw: &str) -> Option<HashMap<&str, (usize, usize)>> {
     if !raw.is_empty() && !raw.ends_with('\0') {
         return None;
@@ -793,19 +819,16 @@ pub async fn ssh_remote_git_snapshot_v1(
         let session = state.get_for_ssh_binding(&request.binding).ok_or_else(|| "stale binding".to_string())?;
         let ssh = match session.as_ref() { Session::Ssh(ssh) => ssh, _ => return Err("stale binding".into()) };
         let cwd = remote_git_cwd(&request.cwd)?;
-        let command = remote_status_command(&request.cwd, true)?;
-        crate::modules::perf_counters::git_process();
-        let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
-        if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) { return Err("cancelled".into()); }
-        let (mut status, upstream) = match parse_status_snapshot(&raw) {
-            Err(error) if error == STATUS_TOO_LARGE => {
-                let command = remote_status_command(&request.cwd, false)?;
+        let (mut status, upstream, status_incomplete) = read_status_snapshot(|include_untracked| {
+            let (cwd, cancelled, generation_cancelled) = (&request.cwd, &cancelled, &generation_cancelled);
+            async move {
+                let command = remote_status_command(cwd, include_untracked)?;
                 crate::modules::perf_counters::git_process();
                 let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
-                parse_status_snapshot(&raw)?
+                if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) { return Err("cancelled".into()); }
+                Ok(raw)
             }
-            result => result?,
-        };
+        }).await?;
         if status.files.iter().any(|file| file.stage == "untracked") {
             let command = remote_untracked_counts_command(&request.cwd)?;
             crate::modules::perf_counters::git_process();
@@ -821,7 +844,7 @@ pub async fn ssh_remote_git_snapshot_v1(
             ssh.exec_cancellable(&workspace_command, MAX_STATUS_BYTES + 1, cancelled.clone()).await.ok().and_then(|raw| parse_remote_workspace(&raw, &request.repository_key).ok())
         };
         if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) || !generation_is_latest(&key, request.generation) || state.get_for_ssh_binding(&request.binding).is_none() { return Err("cancelled".into()); }
-        Ok(SnapshotCacheEntry { status, upstream, workspace, observed_at: observed_now(), inserted: Instant::now() })
+        Ok(SnapshotCacheEntry { status, status_incomplete, upstream, workspace, observed_at: observed_now(), inserted: Instant::now() })
     }.await;
     let finish_request_id = request.request_id.clone();
     let response = match result {
@@ -871,12 +894,13 @@ pub async fn ssh_remote_git_snapshot_v1(
                     | RemoteGitErrorKind::Unknown
             );
             if stale_allowed {
-                if let Some(entry) = snapshot_cache()
+                if let Some(mut entry) = snapshot_cache()
                     .lock()
                     .ok()
                     .and_then(|cache| cache.get(&key).cloned())
                     .filter(|entry| entry.inserted.elapsed() < Duration::from_secs(30))
                 {
+                    entry.status_incomplete |= error == STATUS_TOO_LARGE;
                     cancel_state.finish_operation("remoteGit", &finish_request_id, &cancelled);
                     return Ok(cached_snapshot_response(
                         &request,
@@ -893,7 +917,11 @@ pub async fn ssh_remote_git_snapshot_v1(
                 observed_at: observed_now(),
                 freshness: SnapshotFreshness::Fresh,
                 repo: None,
-                unavailable_fields: Vec::new(),
+                unavailable_fields: if error == STATUS_TOO_LARGE {
+                    vec![status_unavailable()]
+                } else {
+                    Vec::new()
+                },
                 error: Some(wire_error(kind)),
             })
         }
@@ -1529,21 +1557,30 @@ mod tests {
         }
 
         fn snapshot_with_shell(&self, prefix: &str) -> Result<StatusResult, String> {
-            let read_status = |include_untracked| {
-                let command =
-                    remote_status_command(self.0.to_str().unwrap(), include_untracked).unwrap();
-                parse_status_snapshot(&self.run_shell(&format!("{prefix} {command}")))
-            };
-            let (mut status, _) = match read_status(true) {
-                Err(error) if error == STATUS_TOO_LARGE => read_status(false)?,
-                result => result?,
-            };
+            self.status_with_counts(prefix).map(|(status, _)| status)
+        }
+
+        fn status_with_counts(&self, prefix: &str) -> Result<(StatusResult, bool), String> {
+            let (mut status, _, incomplete) = tauri::async_runtime::block_on(
+                read_status_snapshot(|include_untracked| async move {
+                    let command =
+                        remote_status_command(self.0.to_str().unwrap(), include_untracked).unwrap();
+                    let mut raw = self.run_shell(&format!("{prefix} {command}"));
+                    if let Some((end, _)) = raw
+                        .char_indices()
+                        .find(|(index, _)| *index > MAX_SNAPSHOT_BYTES)
+                    {
+                        raw.truncate(end);
+                    }
+                    Ok(raw)
+                }),
+            )?;
             if status.files.iter().any(|file| file.stage == "untracked") {
                 let counts = self
                     .run_shell(&remote_untracked_counts_command(self.0.to_str().unwrap()).unwrap());
                 apply_untracked_counts(&mut status, &counts);
             }
-            Ok(status)
+            Ok((status, incomplete))
         }
 
         fn run_shell(&self, command: &str) -> String {
@@ -1764,7 +1801,7 @@ mod tests {
             std::fs::write(nested.join(format!("{i:04}-{}", "x".repeat(230))), "").unwrap();
         }
 
-        let status = repo.snapshot();
+        let (status, incomplete) = repo.status_with_counts("").unwrap();
         let changes: Vec<_> = status
             .files
             .iter()
@@ -1781,6 +1818,15 @@ mod tests {
             changes,
             [("staged", "staged", 1, 1), ("unstaged", "unstaged", 1, 1)]
         );
+        assert!(incomplete);
+
+        for file in ["staged", "unstaged"] {
+            std::fs::write(repo.0.join(file), "old\n").unwrap();
+        }
+        repo.git(&["add", "staged"]);
+        let (status, incomplete) = repo.status_with_counts("").unwrap();
+        assert!(status.files.is_empty());
+        assert!(incomplete);
     }
 
     #[test]
