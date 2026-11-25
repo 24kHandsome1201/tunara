@@ -44,13 +44,19 @@ export function parseSshCommand(raw: string): SshCommand | null {
         if (flag === "i") identityFile ??= value;
         if (flag === "J") jump ??= value;
         if (flag === "o") {
-          const option = value.match(/^([^\s=]+)(?:\s*=\s*|\s+)(.+)$/);
-          switch (option?.[1].toLowerCase()) {
-            case "port": portText ??= option[2]; break;
-            case "user": user ??= option[2]; break;
-            case "identityfile": identityFile ??= option[2]; break;
-            case "certificatefile": certificateFile ??= option[2]; break;
-            case "proxyjump": jump ??= option[2]; break;
+          const option = value.match(/^(port|user|identityfile|certificatefile|proxyjump)(?:\s*=\s*|\s+)(.+)$/i);
+          if (option) {
+            const [, key, rawOptionValue] = option;
+            const quotedWords = /["']/.test(rawOptionValue) ? tokenizeShellWords(rawOptionValue, true) : [rawOptionValue];
+            if (quotedWords?.length !== 1 || !quotedWords[0]) return null;
+            const optionValue = quotedWords[0];
+            switch (key.toLowerCase()) {
+              case "port": portText ??= optionValue; break;
+              case "user": user ??= optionValue; break;
+              case "identityfile": identityFile ??= optionValue; break;
+              case "certificatefile": certificateFile ??= optionValue; break;
+              case "proxyjump": jump ??= optionValue; break;
+            }
           }
         }
         break;

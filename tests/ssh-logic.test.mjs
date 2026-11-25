@@ -130,6 +130,15 @@ test("SSH commands accept flags either side of the target, attached values, quot
   assert.deepEqual(parseSshCommand("ssh -o User=alice lab -q uptime -p 2222")?.target, { user: "alice", host: "lab", port: undefined });
 });
 
+test("SSH commands unquote config values inside a quoted -o argument", () => {
+  const options = parseSshCommand(`ssh -o 'Port="2222"' -o "User='deploy'" -o 'IdentityFile="~/.ssh/my key"' -o 'CertificateFile="~/.ssh/my cert"' -o 'ProxyJump="bastion"' host`);
+  assert.deepEqual(options?.target, { user: "deploy", host: "host", port: 2222 });
+  assert.equal(options?.identityFile, "~/.ssh/my key");
+  assert.equal(options?.certificateFile, "~/.ssh/my cert");
+  assert.equal(options?.jump, "bastion");
+  assert.equal(parseSshCommand(`ssh -o 'Port="2222' host`), null);
+});
+
 test("SSH command fragments and invalid explicit ports do not become literal targets", () => {
   for (const raw of ["ssh", "ssh ", "ssh -i key", "ssh -p", "ssh host -i ''", 'ssh "host', "ssh host;foo", "alice@host"]) {
     assert.equal(parseSshCommand(raw), null, raw);
