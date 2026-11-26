@@ -3,10 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionsStore, createRemoteSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { errorToast } from "../lib/error-toast";
-import { CloseIcon, PanelEmptyState } from "../shared";
+import { CaretDown, CaretRight, FileText, Gear, HardDrives, Icon, Terminal } from "../icons";
+import { CloseIcon, DestructiveConfirmNotice, PanelEmptyState } from "../shared";
 import { useT } from "@/modules/i18n";
 import {
-  saveHost,
   removeHost,
   normalizeSshPort,
   parseSshPort,
@@ -18,17 +18,14 @@ import {
   sshProfileEntries,
   type SshAuthMethod,
   type SshHostProfile,
-  type SshImportDiagnosticV1,
   type SshProfileRouteResolutionV1,
-  type SshProfileRouteV1,
   type SshProfileSourceV1,
-  type SshProfilesPanelActionsV1,
   type SshProfilesPanelModelV1,
 } from "@/modules/ssh/hosts-bridge";
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
 import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { normalizePostConnectCommand } from "@/modules/ssh/hosts-model";
-import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort, withSshTargetPort } from "@/modules/ssh/connect-target";
+import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, profileMatchesTarget, sshAliasProfileMatch, sshTargetHasInvalidPort, withSshTargetPort } from "@/modules/ssh/connect-target";
 import { isSshCommandInput, matchingSshJumpProfiles, parseSshCommand, sshCommandMatchTarget } from "@/modules/ssh/connect-command";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
@@ -37,7 +34,6 @@ import { diagnosticsForSession } from "@/modules/ssh/diagnostics-store";
 import type { RemoteInfo } from "../types";
 import { useFocusTrap } from "./useFocusTrap";
 import { useDestructiveConfirm } from "../lib/destructive-confirm";
-import { DestructiveConfirmNotice } from "../shared";
 
 interface SshConnectProps {
   onClose: () => void;
@@ -52,20 +48,8 @@ const EMPTY_PANEL_MODEL: SshProfilesPanelModelV1 = {
   configDiagnostics: [],
 };
 
-const fieldStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  fontSize: "var(--fs-body)",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "var(--fs-secondary)",
-  color: "var(--c-text-4)",
-  marginBottom: 4,
-};
-
 function SuggestionRow({
+  id,
   profile,
   source,
   alsoInConfig,
@@ -76,6 +60,7 @@ function SuggestionRow({
   deletePending,
   deleteArmedAt = 0,
 }: {
+  id: string;
   profile: SshHostProfile;
   source: SshProfileSourceV1;
   alsoInConfig?: boolean;
@@ -89,41 +74,29 @@ function SuggestionRow({
   const t = useT();
   return (
     <div
+      id={id}
       role="option"
       aria-selected={selected}
       data-source={source}
-      className="ssh-profile-item"
+      className="ssh-profile-item ssh-connect-option"
       data-selected={selected || active}
-      style={{ display: "flex", flexDirection: "column", borderRadius: "var(--r-btn)", background: active ? "var(--c-accent-bg-soft)" : "transparent" }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div className="ssh-connect-option-main">
         <button
           type="button"
           onClick={onSelect}
-          className="hover-bg ssh-profile-row"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
-            gap: 2,
-            padding: "7px 8px",
-            border: "none",
-            borderRadius: "var(--r-btn)",
-            background: "transparent",
-            color: "var(--c-text-primary)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
+          className="hover-bg ssh-connect-option-select"
         >
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-body)", fontWeight: 600 }}>
-            {profile.label || `${profile.user}@${profile.host}`}
+          <span className="ssh-profile-icon"><Icon icon={HardDrives} size={14} /></span>
+          <span className="ssh-connect-option-copy">
+            <span>{profile.label || `${profile.user}@${profile.host}`}</span>
+            <span className="ssh-connect-endpoint">
+              {formatSshTarget(profile.user, profile.host, profile.port)}
+              {alsoInConfig ? " · ~/.ssh/config" : ""}
+            </span>
           </span>
-          <span style={{ color: "var(--c-text-5)", fontSize: "var(--fs-meta)", fontFamily: "var(--font-mono)" }}>
-            {formatSshTarget(profile.user, profile.host, profile.port)}
-            {source === "sshConfig" || alsoInConfig ? " · ~/.ssh/config" : ""}
-          </span>
+          {source === "saved" && <span className="ssh-profile-source">{t("ssh.source.saved")}</span>}
+          <Icon icon={CaretRight} size={12} />
         </button>
         {onDelete && (
           <button
@@ -132,14 +105,14 @@ function SuggestionRow({
             title={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
             aria-label={deletePending ? t("destructive.confirm_again") : t("ssh.profile.delete")}
             className="hover-close ssh-profile-delete"
-            style={{ width: 28, height: 28, flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", color: deletePending ? "var(--c-error)" : "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}
+            data-pending={deletePending}
           >
             <CloseIcon />
           </button>
         )}
       </div>
       {deleteArmedAt > 0 && (
-        <div style={{ padding: "0 8px 6px" }}>
+        <div className="ssh-connect-delete-notice">
           <DestructiveConfirmNotice confirmedAt={deleteArmedAt} label={t("destructive.confirm_again")} />
         </div>
       )}
@@ -166,10 +139,10 @@ function FileField({
 }) {
   return (
     <div>
-      <label htmlFor={id} style={labelStyle}>{label}</label>
-      <div style={{ display: "flex", gap: 6 }}>
-        <input id={id} className="ui-control" style={fieldStyle} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} spellCheck={false} autoCapitalize="off" />
-        <button type="button" className="ui-button" onClick={onPick} style={{ flexShrink: 0, padding: "0 11px", fontSize: "var(--fs-secondary)" }}>{chooseLabel}</button>
+      <label htmlFor={id} className="ssh-connect-control-label">{label}</label>
+      <div className="ssh-connect-file-field">
+        <input id={id} className="ui-control" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} spellCheck={false} autoCapitalize="off" />
+        <button type="button" className="ui-button" onClick={onPick}>{chooseLabel}</button>
       </div>
     </div>
   );
@@ -223,7 +196,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
     || Boolean(prefill?.route)
     || Boolean(prefill?.authMethod && prefill.authMethod !== "auto"),
   );
-  const [highlight, setHighlight] = useState(-1);
+  const [configBrowseTarget, setConfigBrowseTarget] = useState<string | null>(null);
+  const configOpen = configBrowseTarget !== null;
+  const [highlight, setHighlight] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
 
   useFocusTrap(containerRef);
@@ -262,6 +237,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   }, [localAccount, needsLocalAccount]);
 
   const resetConnectionForm = () => {
+    if (configOpen) setConfigBrowseTarget("");
     setSelectedProfile(null);
     setRouteResolution(null);
     setTarget("");
@@ -281,11 +257,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setInjectIntegration(true);
     setAutoReconnect(false);
     setPostConnectCommand("");
-    setHighlight(-1);
+    setHighlight(null);
     requestAnimationFrame(() => targetRef.current?.focus());
   };
 
-  const refreshConfig = async (announce: boolean) => {
+  const refreshConfig = async () => {
     const generation = ++configGeneration.current;
     setLoadingConfig(true);
     setPanelModel((current) => ({ ...current, configProfiles: [], configSkipped: 0, configDiagnostics: [] }));
@@ -295,10 +271,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
       if (generation !== configGeneration.current) return;
       setPanelModel((current) => toProfilesPanelModel(current.savedProfiles, result));
       useUIStore.getState().bumpSshProfilesEpoch();
-      if (announce) setFormError("");
+      setFormError("");
     } catch {
-      if (generation !== configGeneration.current) return;
-      if (announce) setFormError(t("ssh.config.load_failed"));
+      if (generation === configGeneration.current) setFormError(t("ssh.config.load_failed"));
     } finally {
       if (generation === configGeneration.current) setLoadingConfig(false);
     }
@@ -321,6 +296,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
+    if (configOpen) setConfigBrowseTarget(source === "sshConfig" ? null : "");
+    if (source === "sshConfig" || resolution.status === "ready") {
+      requestAnimationFrame(() => targetRef.current?.focus());
+    }
     setSelectedProfile({ id: profileId, source });
     setRouteResolution(resolution);
     setPassword("");
@@ -328,7 +307,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setJumpPassword("");
     setJumpKeyPassphrase("");
     setJumpProfileId("");
-    setHighlight(-1);
+    setHighlight(null);
     if (resolution.status === "rejected") {
       setAdvancedOpen(true);
       return;
@@ -350,7 +329,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setAutoReconnect(profile.autoReconnect ?? false);
     setPostConnectCommand(profile.postConnectCommand ?? "");
     setAdvancedOpen(true);
-    requestAnimationFrame(() => targetRef.current?.focus());
   };
 
   const deleteProfile = (id: string) => {
@@ -441,14 +419,15 @@ export function SshConnect({ onClose }: SshConnectProps) {
     ? t(`ssh.route.${effectiveResolution.code}`)
     : null);
 
-  const suggestions = useMemo(() => {
-    // Saved and config rows are capped separately so one source cannot crowd out the other.
-    const entries = sshProfileEntries(panelModel);
-    return [
-      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), command?.destination ?? target),
-      ...filterSshProfileEntries(entries.filter((entry) => entry.source === "sshConfig"), command?.destination ?? target),
-    ];
-  }, [panelModel, command, target]);
+  const entries = useMemo(() => sshProfileEntries(panelModel), [panelModel]);
+  const configEntries = entries.filter((entry) => entry.source === "sshConfig");
+  const suggestionQuery = command?.destination ?? target;
+  const savedSuggestions = filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), suggestionQuery);
+  const configAlias = sshAliasProfileMatch(configHosts, suggestionQuery);
+  const configMatches = configEntries.filter(({ profile }) => profile === configAlias || profileMatchesTarget(profile, suggestionQuery));
+  const configOptions = configBrowseTarget === target ? configEntries : configMatches;
+  const suggestions = configOpen ? [...configOptions, ...savedSuggestions] : savedSuggestions;
+  const highlightedEntry = suggestions.find((entry) => entry.key === highlight);
 
   const methodReady = authMethod === "key"
     ? identityFile.trim().length > 0
@@ -462,7 +441,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
         ? jumpPassword.length > 0
         : true
   ));
-  const matchedProfile = exactSshProfileMatch(allProfiles, matchTarget);
+  const matchedProfile = selectedProfile
+    ? (selectedProfile.source === "saved" ? hosts : configHosts).find((profile) => profile.id === selectedProfile.id)
+    : exactSshProfileMatch(allProfiles, matchTarget);
   const alias = selectedProfile ? undefined : sshAliasProfileMatch(allProfiles, matchTarget);
   const resolvedUser = user || (commandInput ? alias?.user : undefined) || matchedProfile?.user || (commandInput ? localAccount : "");
   const resolvedHost = host || matchedProfile?.host || "";
@@ -621,9 +602,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setKeyPassphrase("");
     setJumpPassword("");
     setJumpKeyPassphrase("");
-    const selectedSaved = selectedProfile?.source === "saved"
-      ? hosts.find((candidate) => candidate.id === selectedProfile.id)
-      : aliasSource === "saved" ? alias : undefined;
+    const selectedSaved = selectedProfile?.source === "saved" ? match : aliasSource === "saved" ? alias : undefined;
     const pendingSavedHost = sshHostProfileFromSuccessfulConnect(
       remote,
       (!commandInput || !selectedSaved ? match?.label : undefined) || `${nextUser}@${nextHost}`,
@@ -641,41 +620,58 @@ export function SshConnect({ onClose }: SshConnectProps) {
     onClose();
   };
 
-  const actions: SshProfilesPanelActionsV1 = {
-    onConnect: (_route: SshProfileRouteV1) => { void connect(); },
-    onSave: async (profile) => {
-      try {
-        const savedProfiles = await saveHost(profile);
-        setPanelModel((current) => ({ ...current, savedProfiles }));
-        useUIStore.getState().bumpSshProfilesEpoch();
-      } catch {
-        setFormError(t("ssh.profile.save_failed"));
-      }
-    },
-    onRemove: deleteProfile,
-    onRefreshConfig: () => refreshConfig(true),
-    onOpenConfigDiagnostic: (_diagnostic: SshImportDiagnosticV1) => {
-      setAdvancedOpen(true);
-      if (diagnosticsRef.current) diagnosticsRef.current.open = true;
-      diagnosticsRef.current?.focus();
-    },
+  const openConfigDiagnostic = () => {
+    setAdvancedOpen(true);
+    if (diagnosticsRef.current) diagnosticsRef.current.open = true;
+    diagnosticsRef.current?.focus();
+  };
+
+  const toggleConfigPicker = () => {
+    const typedEndpoint = !commandInput && parsedTarget?.user
+      ? formatSshTarget(parsedTarget.user, parsedTarget.host.toLowerCase(), parsedTarget.port)
+      : null;
+    const knownEndpoint = typedEndpoint !== null && allProfiles.some(({ user, host, port }) => (
+      typedEndpoint === formatSshTarget(user, host.toLowerCase(), port)
+    ));
+    const selectedEndpoint = selectedProfile && routeResolution?.status === "ready";
+    setConfigBrowseTarget(configOpen ? null : knownEndpoint || selectedEndpoint ? target : "");
+    setHighlight(null);
   };
 
   const moveHighlight = (delta: number) => {
-    if (suggestions.length === 0) return;
-    setHighlight((current) => {
-      const next = current + delta;
-      if (next < 0) return suggestions.length - 1;
-      if (next >= suggestions.length) return 0;
-      return next;
-    });
+    const currentIndex = suggestions.findIndex((entry) => entry.key === highlight);
+    const nextIndex = currentIndex < 0 ? (delta > 0 ? 0 : -1) : currentIndex + delta;
+    const configMatch = configMatches[delta > 0 ? 0 : configMatches.length - 1];
+    const nextEntry = !configOpen && configMatch && (nextIndex < 0 || nextIndex >= suggestions.length)
+      ? configMatch
+      : suggestions[(nextIndex + suggestions.length) % suggestions.length];
+    if (!nextEntry) return;
+    if (!configOpen && nextEntry.source === "sshConfig") setConfigBrowseTarget("");
+    setHighlight(nextEntry.key);
+    requestAnimationFrame(() => document.getElementById(`ssh-connect-option-${nextEntry.key}`)?.scrollIntoView({ block: "nearest" }));
   };
 
   const sessionDiagnostics = diagnosticsForSession(prefill?.reconnectSessionId ?? "");
+  const selectSuggestion = (entry: (typeof suggestions)[number]) => fillFrom(entry.profile.id, entry.source, entry.configProfile);
+  const renderSuggestion = (entry: (typeof suggestions)[number]) => (
+    <SuggestionRow
+      key={entry.key}
+      id={`ssh-connect-option-${entry.key}`}
+      profile={entry.profile}
+      source={entry.source}
+      alsoInConfig={Boolean(entry.configProfile)}
+      selected={selectedProfile?.id === entry.profile.id && selectedProfile.source === entry.source}
+      active={highlight === entry.key}
+      onSelect={() => selectSuggestion(entry)}
+      onDelete={entry.source === "saved" ? () => deleteProfile(entry.profile.id) : undefined}
+      deletePending={isPending(`ssh-profile:${entry.profile.id}`)}
+      deleteArmedAt={armedAt(`ssh-profile:${entry.profile.id}`)}
+    />
+  );
 
   return (
     <>
-      <div aria-hidden="true" onClick={cancelConnect} className="overlay-backdrop" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
+      <div aria-hidden="true" onClick={cancelConnect} className="ssh-connect-backdrop overlay-backdrop" />
       <div
         ref={containerRef}
         role="dialog"
@@ -694,14 +690,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
             return;
           }
           const targetEl = event.target;
-          if (targetEl === targetRef.current && event.key === "ArrowDown") {
+          if (targetEl === targetRef.current && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
             event.preventDefault();
-            moveHighlight(1);
-            return;
-          }
-          if (targetEl === targetRef.current && event.key === "ArrowUp") {
-            event.preventDefault();
-            moveHighlight(-1);
+            moveHighlight(event.key === "ArrowDown" ? 1 : -1);
             return;
           }
           const excludesSubmit = targetEl instanceof HTMLButtonElement
@@ -710,99 +701,91 @@ export function SshConnect({ onClose }: SshConnectProps) {
             || (targetEl instanceof HTMLInputElement && ["checkbox", "radio"].includes(targetEl.type));
           if (event.key === "Enter" && !excludesSubmit) {
             event.preventDefault();
-            if (targetEl === targetRef.current && highlight >= 0 && suggestions[highlight]) {
-              fillFrom(suggestions[highlight].profile.id, suggestions[highlight].source, suggestions[highlight].configProfile);
+            if (targetEl === targetRef.current && highlightedEntry) {
+              selectSuggestion(highlightedEntry);
               return;
             }
             if (canConnect) void connect();
           }
         }}
-        style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: 480,
-          maxWidth: "calc(100vw - 32px)",
-          maxHeight: "calc(100dvh - 32px)",
-          background: "var(--c-bg-white)",
-          borderRadius: "var(--r-overlay)",
-          boxShadow: "var(--shadow-overlay)",
-          zIndex: "var(--z-overlay)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
       >
-        <div className="ssh-connect-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--c-border-2)", flexShrink: 0 }}>
-          <span id="ssh-connect-title" style={{ display: "block", fontSize: "var(--fs-title)", fontWeight: 650, color: "var(--c-text-primary)" }}>
-            {prefill?.reconnectSessionId ? t("common.reconnect") : t("ssh.title")}
-          </span>
-          <span id="ssh-connect-subtitle" className="sr-only">{t("ssh.target_placeholder")}</span>
-          <button type="button" onClick={cancelConnect} aria-label={t("common.close")} className="hover-bg" style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="ssh-connect-header">
+          <span className="ssh-connect-header-icon"><Icon icon={HardDrives} size={22} /></span>
+          <div>
+            <h2 id="ssh-connect-title">{prefill?.reconnectSessionId ? t("common.reconnect") : t("ssh.title")}</h2>
+            <p id="ssh-connect-subtitle">{t("ssh.subtitle")}</p>
+          </div>
+          <button type="button" onClick={cancelConnect} aria-label={t("common.close")} className="hover-bg">
             <CloseIcon />
           </button>
         </div>
 
-        <div style={{ padding: "16px 18px 8px", display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflow: "auto" }}>
-          <label htmlFor="ssh-connect-host" style={labelStyle}>{t("common.host")}</label>
-          <input
-            ref={targetRef}
-            id="ssh-connect-host"
-            className="ui-control"
-            style={fieldStyle}
-            value={target}
-            placeholder={t("ssh.target_placeholder")}
-            aria-invalid={showPortErrorNearTarget}
-            aria-describedby={showPortErrorNearTarget ? "ssh-connect-port-error" : undefined}
-            onChange={(event) => {
-              const value = event.target.value;
-              const nextCommand = parseSshCommand(value);
-              const nextTarget = isSshCommandInput(value) ? nextCommand?.target : parseSshTarget(value);
-              setTarget(value);
-              if (nextTarget?.port !== undefined) {
-                if (!nextCommand || nextTarget.port !== parsedTarget?.port || !commandInput) {
-                  setPort(String(nextTarget.port));
-                  if (nextCommand) setPortEdited(false);
-                }
-              } else if (parsedTarget?.port !== undefined) {
-                setPort("22");
-              }
-              if (nextCommand?.identityFile !== command?.identityFile) {
-                setIdentityFile(nextCommand?.identityFile ?? "");
-                if (nextCommand?.identityFile) {
-                  setAuthMethod("auto");
-                  setAdvancedOpen(true);
-                }
-              }
-              if (nextCommand?.certificateFile !== command?.certificateFile) {
-                setCertificateFile(nextCommand?.certificateFile ?? "");
-                if (nextCommand?.certificateFile) {
-                  setAuthMethod("auto");
-                  setAdvancedOpen(true);
-                }
-              }
-              if (nextCommand?.jump !== command?.jump) {
-                setJumpProfileId(null);
-                setRouteResolution(null);
-                setJumpAuthMethod(null);
-                setJumpIdentityFile(null);
-                setJumpCertificateFile(null);
-                if (nextCommand?.jump) setAdvancedOpen(true);
-              }
-              setHighlight(-1);
-              setSelectedProfile(null);
-              setPassword("");
-              setKeyPassphrase("");
-              setJumpPassword("");
-              setJumpKeyPassphrase("");
-            }}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoComplete="off"
-            aria-autocomplete="list"
-            aria-controls="ssh-connect-suggestions"
-          />
+        <div className="ssh-connect-content">
+          <div className="ssh-connect-target">
+            <label htmlFor="ssh-connect-host">{t("ssh.target_label")}</label>
+            <div className="ssh-connect-target-input">
+              <Icon icon={Terminal} size={17} />
+              <input
+                ref={targetRef}
+                id="ssh-connect-host"
+                className="ui-control"
+                value={target}
+                placeholder={t("ssh.target_placeholder")}
+                aria-invalid={showPortErrorNearTarget}
+                aria-describedby={showPortErrorNearTarget ? "ssh-connect-target-hint ssh-connect-port-error" : "ssh-connect-target-hint"}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  const nextCommand = parseSshCommand(value);
+                  const nextTarget = isSshCommandInput(value) ? nextCommand?.target : parseSshTarget(value);
+                  if (configOpen) setConfigBrowseTarget("");
+                  setTarget(value);
+                  if (nextTarget?.port !== undefined) {
+                    if (!nextCommand || nextTarget.port !== parsedTarget?.port || !commandInput) {
+                      setPort(String(nextTarget.port));
+                      if (nextCommand) setPortEdited(false);
+                    }
+                  } else if (parsedTarget?.port !== undefined) {
+                    setPort("22");
+                  }
+                  if (nextCommand?.identityFile !== command?.identityFile) {
+                    setIdentityFile(nextCommand?.identityFile ?? "");
+                    if (nextCommand?.identityFile) {
+                      setAuthMethod("auto");
+                      setAdvancedOpen(true);
+                    }
+                  }
+                  if (nextCommand?.certificateFile !== command?.certificateFile) {
+                    setCertificateFile(nextCommand?.certificateFile ?? "");
+                    if (nextCommand?.certificateFile) {
+                      setAuthMethod("auto");
+                      setAdvancedOpen(true);
+                    }
+                  }
+                  if (nextCommand?.jump !== command?.jump) {
+                    setJumpProfileId(null);
+                    setRouteResolution(null);
+                    setJumpAuthMethod(null);
+                    setJumpIdentityFile(null);
+                    setJumpCertificateFile(null);
+                    if (nextCommand?.jump) setAdvancedOpen(true);
+                  }
+                  setHighlight(null);
+                  setSelectedProfile(null);
+                  setPassword("");
+                  setKeyPassphrase("");
+                  setJumpPassword("");
+                  setJumpKeyPassphrase("");
+                }}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-controls={configOpen && configOptions.length > 0 ? "ssh-connect-config-options ssh-connect-suggestions" : "ssh-connect-suggestions"}
+                aria-activedescendant={highlightedEntry ? `ssh-connect-option-${highlightedEntry.key}` : undefined}
+              />
+            </div>
+            <p id="ssh-connect-target-hint">{t("ssh.target_hint")}</p>
+          </div>
           {showPortErrorNearTarget && (
             <span id="ssh-connect-port-error" role="alert" className="ssh-connect-message" data-tone="warning">
               {t("ssh.port_invalid")}
@@ -811,31 +794,45 @@ export function SshConnect({ onClose }: SshConnectProps) {
           {formError && <p role="alert" className="ssh-connect-message" data-tone="error">{formError}</p>}
           {routeError && <p role="alert" className="ssh-connect-message" data-tone="warning">{routeError}</p>}
 
-          <div id="ssh-connect-suggestions" role="listbox" aria-label={t("ssh.source.saved")} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {suggestions.map((entry, index) => (
-              <SuggestionRow
-                key={entry.key}
-                profile={entry.profile}
-                source={entry.source}
-                alsoInConfig={Boolean(entry.configProfile)}
-                selected={selectedProfile?.id === entry.profile.id && selectedProfile.source === entry.source}
-                active={highlight === index}
-                onSelect={() => fillFrom(entry.profile.id, entry.source, entry.configProfile)}
-                onDelete={entry.source === "saved" ? () => { void actions.onRemove(entry.profile.id); } : undefined}
-                deletePending={isPending(`ssh-profile:${entry.profile.id}`)}
-                deleteArmedAt={armedAt(`ssh-profile:${entry.profile.id}`)}
-              />
-            ))}
-            {target.trim() && suggestions.length === 0 && !loadingConfig && (
+          <section className="ssh-connect-hosts" aria-labelledby="ssh-connect-hosts-title">
+            <div className="ssh-connect-hosts-heading">
+              <h3 id="ssh-connect-hosts-title">{t("ssh.choose_host")}</h3>
+              <button type="button" className="hover-bg ssh-connect-browse" aria-expanded={configOpen} aria-controls="ssh-connect-config-picker" onClick={toggleConfigPicker}>
+                <Icon icon={FileText} size={13} />
+                {t("ssh.config.browse")}
+                <Icon icon={configOpen ? CaretDown : CaretRight} size={11} />
+              </button>
+            </div>
+            <div id="ssh-connect-config-picker" hidden={!configOpen}>
+              {configOpen && (configOptions.length > 0 ? (
+                <div id="ssh-connect-config-options" className="ssh-connect-options ssh-connect-config-options" role="listbox" aria-label={t("ssh.source.config")}>
+                  {configOptions.map(renderSuggestion)}
+                </div>
+              ) : (
+                <PanelEmptyState label={t(loadingConfig ? "ssh.config.loading" : configEntries.length > 0 ? "ssh.search_empty" : "ssh.config.empty")} compact />
+              ))}
+            </div>
+            <div id="ssh-connect-suggestions" className="ssh-connect-options" role="listbox" aria-label={t("ssh.source.saved")}>
+              {savedSuggestions.map(renderSuggestion)}
+            </div>
+            {target.trim() && savedSuggestions.length === 0 && configMatches.length === 0 && !configOpen && !loadingConfig && (
               <PanelEmptyState label={t("ssh.search_empty")} compact />
             )}
-          </div>
+          </section>
 
-          {advancedOpen && (
-            <div className="ssh-connect-form" style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
+          <div>
+            <button type="button" className="hover-bg ssh-connect-advanced" aria-expanded={advancedOpen} aria-controls="ssh-connect-advanced-fields" aria-labelledby="ssh-connect-advanced-label" aria-describedby="ssh-connect-advanced-hint" onClick={() => setAdvancedOpen((current) => !current)}>
+              <Icon icon={Gear} size={17} />
+              <span className="ssh-connect-advanced-copy">
+                <span id="ssh-connect-advanced-label">{t("ssh.advanced")}</span>
+                <span id="ssh-connect-advanced-hint">{t("ssh.advanced_hint")}</span>
+              </span>
+              <Icon icon={advancedOpen ? CaretDown : CaretRight} size={12} />
+            </button>
+            <div id="ssh-connect-advanced-fields" className="ssh-connect-advanced-fields" hidden={!advancedOpen}>{advancedOpen && <>
               <div>
-                <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); if (!commandInput) setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
+                <label htmlFor="ssh-connect-port" className="ssh-connect-control-label">{t("ssh.port")}</label>
+                <input id="ssh-connect-port" className="ui-control" value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); if (!commandInput) setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
                 {portFieldInvalid && (
                   <span id="ssh-connect-port-field-error" role="alert" className="ssh-connect-message" data-tone="warning">
                     {t("ssh.port_invalid")}
@@ -843,7 +840,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 )}
               </div>
               <fieldset className="ssh-connect-fieldset">
-                <legend style={labelStyle}>{t("ssh.auth.method")}</legend>
+                <legend className="ssh-connect-control-label">{t("ssh.auth.method")}</legend>
                 <div role="radiogroup" aria-label={t("ssh.auth.method")} className="ssh-connect-choice-grid">
                   {AUTH_METHODS.map((method) => (
                     <label key={method} className="hover-bg ssh-connect-choice" data-selected={authMethod === method ? "true" : undefined}>
@@ -855,23 +852,23 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </fieldset>
               {authMethod === "password" && (
                 <div>
-                  <label htmlFor="ssh-connect-password" style={labelStyle}>{t("ssh.password")}</label>
-                  <input id="ssh-connect-password" className="ui-control" style={fieldStyle} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
+                  <label htmlFor="ssh-connect-password" className="ssh-connect-control-label">{t("ssh.password")}</label>
+                  <input id="ssh-connect-password" className="ui-control" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
                 </div>
               )}
               {(authMethod === "key" || authMethod === "auto") && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                <div className="ssh-connect-key-fields">
                   <FileField id="ssh-connect-identity" label={t("ssh.identityFile")} value={identityFile} placeholder={t("ssh.identity_placeholder")} onChange={setIdentityFile} onPick={() => { void pickFile(t("ssh.identity_picker.title"), identityFile, setIdentityFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                   <div>
-                    <label htmlFor="ssh-connect-passphrase" style={labelStyle}>{t("ssh.keyPassphrase")}</label>
-                    <input id="ssh-connect-passphrase" className="ui-control" style={fieldStyle} type="password" value={keyPassphrase} onChange={(event) => setKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
+                    <label htmlFor="ssh-connect-passphrase" className="ssh-connect-control-label">{t("ssh.keyPassphrase")}</label>
+                    <input id="ssh-connect-passphrase" className="ui-control" type="password" value={keyPassphrase} onChange={(event) => setKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
                   </div>
                   <FileField id="ssh-connect-certificate" label={t("ssh.certificateFile")} value={certificateFile} placeholder={t("ssh.certificate_placeholder")} onChange={setCertificateFile} onPick={() => { void pickFile(t("ssh.certificate_picker.title"), certificateFile, setCertificateFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                 </div>
               )}
               <div>
-                <label htmlFor="ssh-jump-profile" style={labelStyle}>{t("ssh.route.selector")}</label>
-                <select id="ssh-jump-profile" className="ui-control" value={jumpProfileId} style={fieldStyle} onChange={(event) => { setJumpProfileId(event.target.value); setRouteResolution(null); }}>
+                <label htmlFor="ssh-jump-profile" className="ssh-connect-control-label">{t("ssh.route.selector")}</label>
+                <select id="ssh-jump-profile" className="ui-control" value={jumpProfileId} onChange={(event) => { setJumpProfileId(event.target.value); setRouteResolution(null); }}>
                   <option value="">{t("ssh.route.direct")}</option>
                   {jumpOptions.map((profile, index) => <option key={`${profile.id}:${index}`} value={profile.id}>{profile.label}</option>)}
                 </select>
@@ -879,7 +876,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               {jumpProfile && (
                 <fieldset className="ssh-connect-fieldset ssh-connect-fieldset--boxed">
                   <legend>{t("ssh.route.jump_legend")}</legend>
-                  <p style={{ fontSize: "var(--fs-meta)" }}>{jumpProfile.user}@{jumpProfile.host}:{jumpProfile.port}</p>
+                  <p className="ssh-connect-jump-endpoint">{jumpProfile.user}@{jumpProfile.host}:{jumpProfile.port}</p>
                   <div role="radiogroup" aria-label={t("ssh.route.jump_auth_method")} className="ssh-connect-choice-grid">
                     {AUTH_METHODS.map((method) => (
                       <label key={`jump:${method}`} className="hover-bg ssh-connect-choice ssh-connect-choice--compact" data-selected={jumpAuthMethod === method ? "true" : undefined}>
@@ -888,12 +885,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
                       </label>
                     ))}
                   </div>
-                  {jumpAuthMethod === "password" && <label htmlFor="ssh-jump-password">{t("ssh.route.jump_password")}<input id="ssh-jump-password" className="ui-control" type="password" style={fieldStyle} value={jumpPassword} onChange={(event) => setJumpPassword(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
+                  {jumpAuthMethod === "password" && <label htmlFor="ssh-jump-password">{t("ssh.route.jump_password")}<input id="ssh-jump-password" className="ui-control" type="password" value={jumpPassword} onChange={(event) => setJumpPassword(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
                   {(jumpAuthMethod === "key" || jumpAuthMethod === "auto") && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 8 }}>
+                    <div className="ssh-connect-key-fields">
                       <FileField id="ssh-jump-identity" label={t("ssh.identityFile")} value={jumpIdentityFile} onChange={setJumpIdentityFile} onPick={() => { void pickFile(t("ssh.identity_picker.title"), jumpIdentityFile, setJumpIdentityFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                       <label htmlFor="ssh-jump-passphrase">{t("ssh.route.jump_passphrase")}</label>
-                      <input id="ssh-jump-passphrase" className="ui-control" type="password" style={fieldStyle} value={jumpKeyPassphrase} onChange={(event) => setJumpKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
+                      <input id="ssh-jump-passphrase" className="ui-control" type="password" value={jumpKeyPassphrase} onChange={(event) => setJumpKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
                       <FileField id="ssh-jump-certificate" label={t("ssh.certificateFile")} value={jumpCertificateFile} onChange={setJumpCertificateFile} onPick={() => { void pickFile(t("ssh.certificate_picker.title"), jumpCertificateFile, setJumpCertificateFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                     </div>
                   )}
@@ -909,43 +906,38 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </label>
               <label htmlFor="ssh-post-connect-command" className="ssh-connect-field-label">
                 {t("ssh.postConnectCommand")}
-                <input id="ssh-post-connect-command" className="ui-control" style={fieldStyle} value={postConnectCommand} onChange={(event) => setPostConnectCommand(event.target.value)} placeholder="tmux attach" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={512} />
+                <input id="ssh-post-connect-command" className="ui-control" value={postConnectCommand} onChange={(event) => setPostConnectCommand(event.target.value)} placeholder="tmux attach" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={512} />
                 <span className="ssh-connect-hint">{t("ssh.postConnectCommandHint")}</span>
               </label>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer", paddingBlock: 5, marginBlock: -4 }}>
+              <div className="ssh-connect-config-summary">
+                <button type="button" onClick={refreshConfig} disabled={loadingConfig} className="hover-bg">
                   {loadingConfig ? t("ssh.config.loading") : t("ssh.config.refresh")}
                 </button>
-                <span role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
+                <span role="status">
                   {t("ssh.config.summary", { available: configHosts.length, skipped: configSkipped })}
                 </span>
               </div>
               {(configDiagnostics.length > 0 || configSkipped > 0 || sessionDiagnostics.length > 0) && (
                 <details ref={diagnosticsRef} tabIndex={-1} aria-label={t("ssh.config.diagnostics")} className="ssh-config-diagnostics">
                   <summary>{t("ssh.config.diagnostics")}</summary>
-                  <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.support_matrix")}</p>
-                  <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.never_execute")}</p>
+                  <p>{t("ssh.config.support_matrix")}</p>
+                  <p>{t("ssh.config.never_execute")}</p>
                   {configDiagnostics.map((item, index) => (
-                    <button type="button" onClick={() => actions.onOpenConfigDiagnostic(item)} key={`${item.source}:${item.line ?? ""}:${index}`} style={{ display: "block", border: 0, background: "transparent", padding: 0, color: "inherit", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", textAlign: "left" }}>
+                    <button type="button" onClick={openConfigDiagnostic} key={`${item.source}:${item.line ?? ""}:${index}`}>
                       {[item.severity, item.source + (item.line == null ? "" : `:${item.line}`), item.alias, item.code, item.directive].filter((part): part is string => Boolean(part)).join(" · ")}
                     </button>
                   ))}
                 </details>
               )}
-            </div>
-          )}
+            </>}</div>
+          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 18px", borderTop: "1px solid var(--c-border-2)", flexShrink: 0 }}>
-          <button type="button" className="hover-bg" onClick={() => setAdvancedOpen((openAdvanced) => !openAdvanced)} style={{ border: "none", background: "transparent", color: "var(--c-text-5)", fontSize: "var(--fs-meta)", cursor: "pointer", padding: "6px 0", margin: "-6px 0" }}>
-            {t("ssh.advanced")}
-          </button>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={cancelConnect} className="ui-button" style={{ padding: "6px 16px", fontSize: "var(--fs-body)" }}>{t("common.cancel")}</button>
-            <button type="button" onClick={() => { void connect(); }} disabled={!canConnect} className="ui-button ui-button--primary" style={{ padding: "6px 18px", fontSize: "var(--fs-body)", fontWeight: 500 }}>
+        <div className="ssh-connect-footer">
+            <button type="button" onClick={cancelConnect} className="ui-button">{t("common.cancel")}</button>
+            <button type="button" onClick={() => { void connect(); }} disabled={!canConnect} className="ui-button ui-button--primary">
               {connecting ? t("ssh.connecting") : prefill?.reconnectSessionId ? t("common.reconnect") : t("ssh.connect")}
             </button>
-          </div>
         </div>
       </div>
     </>
