@@ -442,7 +442,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const suggestionQuery = command?.destination ?? target;
   const savedSuggestions = filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), suggestionQuery);
   const configMatches = filterSshProfileEntries(configEntries, suggestionQuery);
-  const suggestions = configOpen ? [...configEntries, ...savedSuggestions] : savedSuggestions;
+  const suggestions = configOpen ? [...configMatches, ...savedSuggestions] : savedSuggestions;
   const highlightedEntry = suggestions.find((entry) => entry.key === highlight);
 
   const methodReady = authMethod === "key"

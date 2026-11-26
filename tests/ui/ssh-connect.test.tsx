@@ -154,6 +154,31 @@ describe("SSH connection sheet", () => {
     expect(remove).toHaveBeenCalledWith({ id: "saved" });
   });
 
+  test("arrow navigation in the open config picker only selects matches for the typed alias", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return {
+        imported: [
+          { id: "staging", label: "staging", host: "staging.example", port: 22, user: "deploy", identity_file: "" },
+          { id: "prod", label: "production", host: "prod.example", port: 2222, user: "ops", identity_file: "" },
+        ],
+        skipped: 0,
+      };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    browseConfig();
+    const config = await screen.findByRole("listbox", { name: "SSH config" });
+    const input = hostInput();
+    fireEvent.change(input, { target: { value: "production" } });
+    expect(within(config).getByRole("option", { name: /staging/ })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("ops@prod.example:2222");
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
   test("connects from one target field without showing auth chooser first", async () => {
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);
