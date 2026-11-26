@@ -698,6 +698,36 @@ select.ui-control {
 .ssh-connect-advanced { width: 100%; border: 1px solid var(--c-border-2); background: var(--c-bg-1); }
 .ssh-connect-advanced > svg { color: var(--c-text-4); }
 .ssh-connect-advanced-fields:not([hidden]) { display: grid; gap: 12px; padding-block-start: 12px; }
+.ssh-connect-advanced-fields .ui-control { width: 100%; padding: 8px 10px; font-size: var(--fs-body); }
+.ssh-connect-control-label { display: block; font-size: var(--fs-secondary); color: var(--c-text-4); margin-bottom: 4px; }
+.ssh-connect-file-field { display: flex; gap: 6px; }
+.ssh-connect-file-field > .ui-button { flex-shrink: 0; padding: 0 11px; font-size: var(--fs-secondary); }
+.ssh-connect-delete-notice { padding: 0 8px 6px; }
+.ssh-connect-key-fields { display: flex; flex-direction: column; gap: 9px; }
+.ssh-connect-fieldset--boxed > .ssh-connect-key-fields { margin-top: 8px; }
+.ssh-connect-jump-endpoint { font-size: var(--fs-meta); }
+.ssh-connect-config-summary { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-meta); color: var(--c-text-5); }
+.ssh-connect-config-summary > button {
+  border: none;
+  background: transparent;
+  color: var(--c-text-4);
+  font-size: var(--fs-meta);
+  cursor: pointer;
+  padding-block: 5px;
+  margin-block: -4px;
+}
+.ssh-connect-config-summary > button:disabled { cursor: wait; }
+.ssh-connect-advanced-fields .ssh-config-diagnostics > p { font-size: var(--fs-meta); line-height: 1.45; }
+.ssh-connect-advanced-fields .ssh-config-diagnostics > button {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  text-align: left;
+}
 .ssh-connect-footer {
   display: flex;
   justify-content: flex-end;

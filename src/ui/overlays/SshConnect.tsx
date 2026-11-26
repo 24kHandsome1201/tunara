@@ -53,19 +53,6 @@ const EMPTY_PANEL_MODEL: SshProfilesPanelModelV1 = {
   configDiagnostics: [],
 };
 
-const fieldStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  fontSize: "var(--fs-body)",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "var(--fs-secondary)",
-  color: "var(--c-text-4)",
-  marginBottom: 4,
-};
-
 function SuggestionRow({
   id,
   profile,
@@ -130,7 +117,7 @@ function SuggestionRow({
         )}
       </div>
       {deleteArmedAt > 0 && (
-        <div style={{ padding: "0 8px 6px" }}>
+        <div className="ssh-connect-delete-notice">
           <DestructiveConfirmNotice confirmedAt={deleteArmedAt} label={t("destructive.confirm_again")} />
         </div>
       )}
@@ -157,10 +144,10 @@ function FileField({
 }) {
   return (
     <div>
-      <label htmlFor={id} style={labelStyle}>{label}</label>
-      <div style={{ display: "flex", gap: 6 }}>
-        <input id={id} className="ui-control" style={fieldStyle} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} spellCheck={false} autoCapitalize="off" />
-        <button type="button" className="ui-button" onClick={onPick} style={{ flexShrink: 0, padding: "0 11px", fontSize: "var(--fs-secondary)" }}>{chooseLabel}</button>
+      <label htmlFor={id} className="ssh-connect-control-label">{label}</label>
+      <div className="ssh-connect-file-field">
+        <input id={id} className="ui-control" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} spellCheck={false} autoCapitalize="off" />
+        <button type="button" className="ui-button" onClick={onPick}>{chooseLabel}</button>
       </div>
     </div>
   );
@@ -240,6 +227,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const commandInput = isSshCommandInput(target);
   const command = useMemo(() => parseSshCommand(target), [target]);
   const parsedTarget = commandInput ? command?.target : parseSshTarget(target);
+  const hasTargetOverrides = Boolean(parsedTarget?.user || parsedTarget?.port !== undefined);
   const matchTarget = command ? sshCommandMatchTarget(command) : target;
   const host = parsedTarget?.host ?? "";
   const user = parsedTarget?.user ?? "";
@@ -313,7 +301,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     });
   }, [t]);
 
-  const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile, overrides?: { user: string; port?: number } | null) => {
+  const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
     setConfigBrowseTarget(null);
     if (source === "sshConfig") {
@@ -333,10 +321,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
       return;
     }
     const { target: profile, jump } = resolution.route;
-    const nextPort = overrides?.port ?? profile.port;
-    setTarget(formatSshTarget(overrides?.user || profile.user, profile.host, nextPort));
-    setPort(String(nextPort));
-    setPortEdited(overrides?.port !== undefined);
+    setTarget(formatSshTarget(profile.user, profile.host, profile.port));
+    setPort(String(profile.port));
+    setPortEdited(false);
     setAuthMethod(profile.authMethod ?? "auto");
     // A saved row that shadows a config entry keeps that entry's IdentityFile when it has none.
     const keyFallback = profile.identityFile ? undefined : fallback;
@@ -465,7 +452,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   ));
   const matchedProfile = exactSshProfileMatch(allProfiles, matchTarget);
   const alias = selectedProfile ? undefined : sshAliasProfileMatch(allProfiles, matchTarget);
-  const resolvedUser = user || (commandInput ? alias?.user : undefined) || matchedProfile?.user || (commandInput ? localAccount : "");
+  const resolvedUser = user || alias?.user || matchedProfile?.user || (commandInput ? localAccount : "");
   const resolvedHost = host || matchedProfile?.host || "";
   const canConnect = resolvedHost.length > 0
     && resolvedUser.length > 0
@@ -527,7 +514,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         setAdvancedOpen(true);
       } else {
         fillFrom(alias.id, aliasSource);
-        if (commandInput) {
+        if (commandInput || hasTargetOverrides) {
           setTarget(target);
           setSelectedProfile(null);
           if (portEdited || parsedTarget?.port !== undefined) {
@@ -690,7 +677,14 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   const sessionDiagnostics = diagnosticsForSession(prefill?.reconnectSessionId ?? "");
   const selectSuggestion = (entry: (typeof suggestions)[number]) => {
-    fillFrom(entry.profile.id, entry.source, entry.configProfile, entry.profile === configAlias ? parsedTarget : undefined);
+    if (entry.profile === configAlias && hasTargetOverrides) {
+      setConfigBrowseTarget(null);
+      setConfigOpen(false);
+      setHighlight(null);
+      targetRef.current?.focus();
+      return;
+    }
+    fillFrom(entry.profile.id, entry.source, entry.configProfile);
   };
   const renderSuggestion = (entry: (typeof suggestions)[number]) => (
     <SuggestionRow
@@ -875,8 +869,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
             </button>
             <div id="ssh-connect-advanced-fields" className="ssh-connect-advanced-fields" hidden={!advancedOpen}>{advancedOpen && <>
               <div>
-                <label htmlFor="ssh-connect-port" style={labelStyle}>{t("ssh.port")}</label>
-                <input id="ssh-connect-port" className="ui-control" style={fieldStyle} value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); if (!commandInput) setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
+                <label htmlFor="ssh-connect-port" className="ssh-connect-control-label">{t("ssh.port")}</label>
+                <input id="ssh-connect-port" className="ui-control" value={port} inputMode="numeric" aria-invalid={portFieldInvalid} aria-describedby={portFieldInvalid ? "ssh-connect-port-field-error" : undefined} onChange={(event) => { const next = event.target.value; setPort(next); setPortEdited(true); if (!commandInput) setTarget((current) => withSshTargetPort(current, next)); setPassword(""); setKeyPassphrase(""); }} />
                 {portFieldInvalid && (
                   <span id="ssh-connect-port-field-error" role="alert" className="ssh-connect-message" data-tone="warning">
                     {t("ssh.port_invalid")}
@@ -884,7 +878,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 )}
               </div>
               <fieldset className="ssh-connect-fieldset">
-                <legend style={labelStyle}>{t("ssh.auth.method")}</legend>
+                <legend className="ssh-connect-control-label">{t("ssh.auth.method")}</legend>
                 <div role="radiogroup" aria-label={t("ssh.auth.method")} className="ssh-connect-choice-grid">
                   {AUTH_METHODS.map((method) => (
                     <label key={method} className="hover-bg ssh-connect-choice" data-selected={authMethod === method ? "true" : undefined}>
@@ -896,23 +890,23 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </fieldset>
               {authMethod === "password" && (
                 <div>
-                  <label htmlFor="ssh-connect-password" style={labelStyle}>{t("ssh.password")}</label>
-                  <input id="ssh-connect-password" className="ui-control" style={fieldStyle} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
+                  <label htmlFor="ssh-connect-password" className="ssh-connect-control-label">{t("ssh.password")}</label>
+                  <input id="ssh-connect-password" className="ui-control" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="off" spellCheck={false} />
                 </div>
               )}
               {(authMethod === "key" || authMethod === "auto") && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                <div className="ssh-connect-key-fields">
                   <FileField id="ssh-connect-identity" label={t("ssh.identityFile")} value={identityFile} placeholder={t("ssh.identity_placeholder")} onChange={setIdentityFile} onPick={() => { void pickFile(t("ssh.identity_picker.title"), identityFile, setIdentityFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                   <div>
-                    <label htmlFor="ssh-connect-passphrase" style={labelStyle}>{t("ssh.keyPassphrase")}</label>
-                    <input id="ssh-connect-passphrase" className="ui-control" style={fieldStyle} type="password" value={keyPassphrase} onChange={(event) => setKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
+                    <label htmlFor="ssh-connect-passphrase" className="ssh-connect-control-label">{t("ssh.keyPassphrase")}</label>
+                    <input id="ssh-connect-passphrase" className="ui-control" type="password" value={keyPassphrase} onChange={(event) => setKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
                   </div>
                   <FileField id="ssh-connect-certificate" label={t("ssh.certificateFile")} value={certificateFile} placeholder={t("ssh.certificate_placeholder")} onChange={setCertificateFile} onPick={() => { void pickFile(t("ssh.certificate_picker.title"), certificateFile, setCertificateFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                 </div>
               )}
               <div>
-                <label htmlFor="ssh-jump-profile" style={labelStyle}>{t("ssh.route.selector")}</label>
-                <select id="ssh-jump-profile" className="ui-control" value={jumpProfileId} style={fieldStyle} onChange={(event) => { setJumpProfileId(event.target.value); setRouteResolution(null); }}>
+                <label htmlFor="ssh-jump-profile" className="ssh-connect-control-label">{t("ssh.route.selector")}</label>
+                <select id="ssh-jump-profile" className="ui-control" value={jumpProfileId} onChange={(event) => { setJumpProfileId(event.target.value); setRouteResolution(null); }}>
                   <option value="">{t("ssh.route.direct")}</option>
                   {jumpOptions.map((profile, index) => <option key={`${profile.id}:${index}`} value={profile.id}>{profile.label}</option>)}
                 </select>
@@ -920,7 +914,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
               {jumpProfile && (
                 <fieldset className="ssh-connect-fieldset ssh-connect-fieldset--boxed">
                   <legend>{t("ssh.route.jump_legend")}</legend>
-                  <p style={{ fontSize: "var(--fs-meta)" }}>{jumpProfile.user}@{jumpProfile.host}:{jumpProfile.port}</p>
+                  <p className="ssh-connect-jump-endpoint">{jumpProfile.user}@{jumpProfile.host}:{jumpProfile.port}</p>
                   <div role="radiogroup" aria-label={t("ssh.route.jump_auth_method")} className="ssh-connect-choice-grid">
                     {AUTH_METHODS.map((method) => (
                       <label key={`jump:${method}`} className="hover-bg ssh-connect-choice ssh-connect-choice--compact" data-selected={jumpAuthMethod === method ? "true" : undefined}>
@@ -929,12 +923,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
                       </label>
                     ))}
                   </div>
-                  {jumpAuthMethod === "password" && <label htmlFor="ssh-jump-password">{t("ssh.route.jump_password")}<input id="ssh-jump-password" className="ui-control" type="password" style={fieldStyle} value={jumpPassword} onChange={(event) => setJumpPassword(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
+                  {jumpAuthMethod === "password" && <label htmlFor="ssh-jump-password">{t("ssh.route.jump_password")}<input id="ssh-jump-password" className="ui-control" type="password" value={jumpPassword} onChange={(event) => setJumpPassword(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
                   {(jumpAuthMethod === "key" || jumpAuthMethod === "auto") && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 8 }}>
+                    <div className="ssh-connect-key-fields">
                       <FileField id="ssh-jump-identity" label={t("ssh.identityFile")} value={jumpIdentityFile} onChange={setJumpIdentityFile} onPick={() => { void pickFile(t("ssh.identity_picker.title"), jumpIdentityFile, setJumpIdentityFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                       <label htmlFor="ssh-jump-passphrase">{t("ssh.route.jump_passphrase")}</label>
-                      <input id="ssh-jump-passphrase" className="ui-control" type="password" style={fieldStyle} value={jumpKeyPassphrase} onChange={(event) => setJumpKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
+                      <input id="ssh-jump-passphrase" className="ui-control" type="password" value={jumpKeyPassphrase} onChange={(event) => setJumpKeyPassphrase(event.target.value)} autoComplete="off" spellCheck={false} />
                       <FileField id="ssh-jump-certificate" label={t("ssh.certificateFile")} value={jumpCertificateFile} onChange={setJumpCertificateFile} onPick={() => { void pickFile(t("ssh.certificate_picker.title"), jumpCertificateFile, setJumpCertificateFile); }} chooseLabel={t("ssh.identity_picker.choose")} />
                     </div>
                   )}
@@ -950,24 +944,24 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </label>
               <label htmlFor="ssh-post-connect-command" className="ssh-connect-field-label">
                 {t("ssh.postConnectCommand")}
-                <input id="ssh-post-connect-command" className="ui-control" style={fieldStyle} value={postConnectCommand} onChange={(event) => setPostConnectCommand(event.target.value)} placeholder="tmux attach" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={512} />
+                <input id="ssh-post-connect-command" className="ui-control" value={postConnectCommand} onChange={(event) => setPostConnectCommand(event.target.value)} placeholder="tmux attach" autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={512} />
                 <span className="ssh-connect-hint">{t("ssh.postConnectCommandHint")}</span>
               </label>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg" style={{ border: "none", background: "transparent", color: "var(--c-text-4)", fontSize: "var(--fs-meta)", cursor: loadingConfig ? "wait" : "pointer", paddingBlock: 5, marginBlock: -4 }}>
+              <div className="ssh-connect-config-summary">
+                <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg">
                   {loadingConfig ? t("ssh.config.loading") : t("ssh.config.refresh")}
                 </button>
-                <span role="status" style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
+                <span role="status">
                   {t("ssh.config.summary", { available: configHosts.length, skipped: configSkipped })}
                 </span>
               </div>
               {(configDiagnostics.length > 0 || configSkipped > 0 || sessionDiagnostics.length > 0) && (
                 <details ref={diagnosticsRef} tabIndex={-1} aria-label={t("ssh.config.diagnostics")} className="ssh-config-diagnostics">
                   <summary>{t("ssh.config.diagnostics")}</summary>
-                  <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.support_matrix")}</p>
-                  <p style={{ fontSize: "var(--fs-meta)", lineHeight: 1.45 }}>{t("ssh.config.never_execute")}</p>
+                  <p>{t("ssh.config.support_matrix")}</p>
+                  <p>{t("ssh.config.never_execute")}</p>
                   {configDiagnostics.map((item, index) => (
-                    <button type="button" onClick={() => actions.onOpenConfigDiagnostic(item)} key={`${item.source}:${item.line ?? ""}:${index}`} style={{ display: "block", border: 0, background: "transparent", padding: 0, color: "inherit", fontFamily: "var(--font-mono)", fontSize: "var(--fs-meta)", textAlign: "left" }}>
+                    <button type="button" onClick={() => actions.onOpenConfigDiagnostic(item)} key={`${item.source}:${item.line ?? ""}:${index}`}>
                       {[item.severity, item.source + (item.line == null ? "" : `:${item.line}`), item.alias, item.code, item.directive].filter((part): part is string => Boolean(part)).join(" · ")}
                     </button>
                   ))}
