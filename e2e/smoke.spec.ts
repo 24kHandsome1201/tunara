@@ -1,3 +1,4 @@
+import { TauriEvent } from "@tauri-apps/api/event";
 import { expect, focusedTerminalSessionId, openLocalTerminal, terminalSessionIds, test } from "./fixtures";
 
 test.use({ locale: "en-US" });
@@ -19,7 +20,7 @@ test("terminal insets leave the workspace statusbar unobscured", async ({ page, 
   await expect(bar.getByRole("button", { name: "Split top/bottom" })).toBeVisible();
   await expect.poll(() => bar.evaluate((element) => {
     const root = document.querySelector("#root")!;
-    const mount = document.querySelector("[data-terminal-canvas=true]")!;
+    const mount = document.querySelector(".xterm")!.parentElement!;
     const screen = mount.querySelector(".xterm-screen")!;
     const rootContentBottom = root.getBoundingClientRect().bottom - parseFloat(getComputedStyle(root).borderBottomWidth);
     const barRect = element.getBoundingClientRect();
@@ -32,6 +33,31 @@ test("terminal insets leave the workspace statusbar unobscured", async ({ page, 
       }),
     };
   })).toEqual({ barFitsWindow: true, screenFitsMount: true, controlsUnobscured: true });
+});
+
+test("the terminal gutter accepts file drops and opens the context menu", async ({ page, backend }) => {
+  await openLocalTerminal(page, backend);
+  const canvas = page.locator("[data-terminal-canvas=true]");
+  const gutter = await canvas.evaluate((element) => {
+    const canvasRect = element.getBoundingClientRect();
+    const terminalRect = element.querySelector(".xterm")!.getBoundingClientRect();
+    const x = Math.round((canvasRect.left + terminalRect.left) / 2);
+    const y = Math.round((canvasRect.top + terminalRect.top) / 2);
+    return { x, y };
+  });
+  await page.mouse.click(gutter.x, gutter.y, { button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Safe paste" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await page.evaluate(async ({ event, x, y }) => {
+    const invoke = window.__TAURI_INTERNALS__.invoke as (cmd: string, args: unknown) => Promise<unknown>;
+    await invoke("plugin:event|emit", {
+      event,
+      payload: { paths: ["/home/e2e/a file.txt"], position: { x: x * devicePixelRatio, y: y * devicePixelRatio } },
+    });
+  }, { event: TauriEvent.DRAG_DROP, ...gutter });
+  await expect.poll(() => backend.ptyWrites(1)).toBe(" '/home/e2e/a file.txt'");
 });
 
 test("empty workspace has an accessible title and stacks its launch cards in a narrow window", async ({ page }) => {
