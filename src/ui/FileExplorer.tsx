@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
-/** Fixed semantic tree-row height shared by navigation, DnD and virtualization. */
+/** Fixed row height shared by navigation, DnD and virtualization. */
 const LISTING_ROW_HEIGHT = 32;
 /** 滚动容器上内边距 6px + 表头 24px + 表头下边距 3px。 */
 const LISTING_TOP_INSET = 33;
@@ -60,13 +60,14 @@ import {
   joinPath,
   nextOperationId,
   parentPath,
+  sortExplorerEntries,
+  usableExplorerEntries,
   type SortDirection,
   type SortKey,
 } from "./file-explorer/helpers";
 import { downloadFailureKey } from "./file-explorer/transfer-failures";
 import { queueLocalTransferPaths } from "./file-explorer/upload-preflight";
 import { useExplorerSearch } from "./file-explorer/use-explorer-search";
-import { useTreeListing, type ExplorerTreeNode, type ExplorerTreeRow } from "./file-explorer/use-tree-listing";
 import { mountedTreeRowIndexes } from "./file-explorer/tree-virtual";
 import { useDirectUpload } from "./file-explorer/use-direct-upload";
 import { SearchViewport } from "./file-explorer/search-viewport";
@@ -79,6 +80,7 @@ export { sortExplorerEntries, formatModifiedTime } from "./file-explorer/helpers
 
 const GREP_HEADER_HEIGHT = 24;
 const GREP_LINE_HEIGHT = 22;
+type ListingNode = { path: string; entry: DirEntry };
 
 type SearchRow = { key: string; height: number; focusable: boolean } & (
   | { kind: "name"; hit: SearchHit }
@@ -139,7 +141,7 @@ export function FileExplorer({
     });
   };
 
-  function sendPathToTerminal(node: ExplorerTreeNode) {
+  function sendPathToTerminal(node: ListingNode) {
     const text = formatExplorerTerminalPath(node.path, node.entry.kind === "dir");
     if (text && pasteIntoActiveShellPrompt(sessionId, text)) return;
     useUIStore.getState().addToast({
@@ -225,18 +227,20 @@ export function FileExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- home only needs resolving once per explorer
   }, [isRemote]);
   const currentPath = useUIStore((state) => state.explorerPaths[sessionId] ?? (isRemote ? "" : rootDir));
+  const history = useUIStore((state) => state.explorerHistory[sessionId]);
   const setCurrentPath = useCallback((next: string | ((current: string) => string)) => {
-    useUIStore.setState((state) => {
-      const current = state.explorerPaths[sessionId] ?? (isRemote ? "" : rootDir);
-      const path = typeof next === "function" ? next(current) : next;
-      return path === current ? state : { explorerPaths: { ...state.explorerPaths, [sessionId]: path } };
-    });
+    useUIStore.getState().setExplorerPath(sessionId, next, isRemote ? "" : rootDir);
   }, [sessionId, isRemote, rootDir]);
   const previousCwdFollow = useRef({ rootDir, followTerminalCwd });
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [cachedListingKey, setCachedListingKey] = useState<string | null>(null);
   const listingCacheKey = `${isRemote ? "remote" : "local"}\0${sessionId}\0${currentPath}`;
   const hasCachedListing = cachedListingKey === listingCacheKey;
+  useEffect(() => {
+    if (active && !isRemote && hasCachedListing) {
+      useUIStore.getState().rememberExplorerStart(sessionId, currentPath);
+    }
+  }, [active, isRemote, hasCachedListing, sessionId, currentPath]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
@@ -295,6 +299,7 @@ export function FileExplorer({
   );
   const treeListRef = useRef<HTMLDivElement>(null);
   const focusFirstSearchResultRef = useRef<() => boolean>(null);
+  const focusAfterNavigationRef = useRef<string | null>(null);
   const [pendingListingFocus, setPendingListingFocus] = useState<number | null>(null);
   const [listingFocusIndex, setListingFocusIndex] = useState(0);
   const explorerRef = useRef<HTMLDivElement>(null);
@@ -303,7 +308,7 @@ export function FileExplorer({
   const [dropHighlightPath, setDropHighlightPath] = useState<string | null>(null);
   const [dropMessage, setDropMessage] = useState("");
   const [mutationPrepareError, setMutationPrepareError] = useState("");
-  const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ExplorerTreeNode; value: string; bindingKey: string; error?: string } | null>(null);
+  const [mutationComposer, setMutationComposer] = useState<{ kind: "mkdir" | "rename"; node: ListingNode; value: string; bindingKey: string; error?: string } | null>(null);
   const [properties, setProperties] = useState<{ path: string; bindingKey: string } | null>(null);
   const [mutationRequest, setMutationRequest] = useState<MutationRequestV1 | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
@@ -319,42 +324,33 @@ export function FileExplorer({
   const treeRequestContextRef = useRef(treeRequestContext);
   // Render-time assignment closes the window before passive effect cleanup.
   treeRequestContextRef.current = treeRequestContext;
-  const {
-    visibleTreeNodes,
-    visibleTreeRows,
-    nodeIndexByPath,
-    rowIndexByPath,
-    expandDirectory,
-    refreshDirectory,
-    collapsePath,
-    isConfirmedMissingFile,
-    refreshExpandedDirectories,
-    beginListingEpoch,
-    resetExpansion,
-  } = useTreeListing({
-    entries,
-    currentPath,
-    sort,
-    includeHidden,
-    isRemote,
-    remotePtyId,
-    remoteDisconnected,
-    sessionId,
-    transportGeneration,
-    treeRequestContext,
-    treeRequestContextRef,
-  });
-  const selectionContext = useRef(treeRequestContext);
+  const listingNodes = useMemo<ListingNode[]>(() => {
+    if (!hasCachedListing) return [];
+    const usable = usableExplorerEntries(entries);
+    return [
+      ...sortExplorerEntries(usable.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
+      ...sortExplorerEntries(usable.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
+    ].map((entry) => ({ entry, path: joinPath(currentPath, entry.name) }));
+  }, [hasCachedListing, entries, currentPath, sort]);
+  const nodeIndexByPath = useMemo(() => new Map(listingNodes.map(({ path }, index) => [path, index])), [listingNodes]);
+  const isConfirmedMissingFile = useCallback((path: string) => (
+    parentPath(path) === (currentPath.replace(/\/+$/, "") || "/")
+      && listingNodes[nodeIndexByPath.get(path) ?? -1]?.entry.kind !== "file"
+  ), [currentPath, listingNodes, nodeIndexByPath]);
+  const selectionContext = JSON.stringify([sessionId, remotePtyId, transportGeneration, includeHidden]);
+  const previousSelectionContext = useRef(selectionContext);
   useEffect(() => {
-    if (selectionContext.current === treeRequestContext) return;
-    selectionContext.current = treeRequestContext;
+    if (previousSelectionContext.current === selectionContext) return;
+    previousSelectionContext.current = selectionContext;
     if (!remoteDisconnected) {
       setSelectedDownloads(new Map());
       setSelectingDownloads(false);
     }
+  }, [selectionContext, remoteDisconnected]);
+  useEffect(() => {
     selectionAnchorRef.current = null;
     setBatchDownloadPreparing(false);
-  }, [treeRequestContext, remoteDisconnected]);
+  }, [treeRequestContext]);
   const downloadListingRef = useRef<typeof isConfirmedMissingFile | null>(null);
   downloadListingRef.current = hasCachedListing ? isConfirmedMissingFile : null;
   useEffect(() => {
@@ -418,11 +414,10 @@ export function FileExplorer({
           setUploadReloadKey((n) => n + 1);
         } else if (directory === "/" || targetDir.startsWith(`${directory}/`)) {
           invalidateRemoteSearchCache(binding.physicalPtyId);
-          refreshDirectory(targetDir);
         }
       }
     });
-  }, [binding, currentPath, refreshDirectory]);
+  }, [binding, currentPath]);
   const activeTransferNotice = useTransferStore((s) =>
     (s.aggregateBySession.get(sessionId)?.queued ?? 0) + (s.aggregateBySession.get(sessionId)?.running ?? 0)
     + s.recoveries.filter((item) => item.record.session === sessionId).length,
@@ -594,7 +589,6 @@ export function FileExplorer({
     if (!sourceChanged) return;
     setHomeDir(null);
     setBaseDir(rootDir);
-    setCurrentPath(useUIStore.getState().explorerPaths[sessionId] ?? rootDir);
     // Follow-cwd applies later OSC 7 updates. Including rootDir here would
     // clear search and reset local/remote explorers on every shell cd.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
@@ -621,15 +615,12 @@ export function FileExplorer({
   const listingContext = useMemo(() => ({ treeRequestContext, browsingContext }), [treeRequestContext, browsingContext]);
   const loadedListingContext = useRef<typeof listingContext | null>(null);
   const lastUploadReloadKey = useRef(uploadReloadKey);
-  const revalidateExpandedDirectories = useEffectEvent(refreshExpandedDirectories);
   useEffect(() => {
-    // An upload only changes the root entries; keep unrelated expanded folders and reads.
     const backgroundRefresh = loadedListingContext.current === listingContext;
     const reopened = backgroundRefresh && lastUploadReloadKey.current === uploadReloadKey;
     lastUploadReloadKey.current = uploadReloadKey;
     const reconnected = isRemote && !remoteDisconnected && !backgroundRefresh
       && loadedListingContext.current?.browsingContext === browsingContext;
-    if (!backgroundRefresh) beginListingEpoch();
     if (baseDir === null) return;
     if (!isRemote && !currentPath.startsWith("/")) {
       // A fresh local session reports `~` until OSC 7 arrives. Resolve it to
@@ -672,8 +663,6 @@ export function FileExplorer({
         if (!cancelled && treeRequestContextRef.current === treeRequestContext) {
           setEntries(e);
           setCachedListingKey(listingCacheKey);
-          if (reopened || reconnected) revalidateExpandedDirectories();
-          else if (!backgroundRefresh) resetExpansion();
           loadedListingContext.current = listingContext;
           setError(false);
           setLoading(false);
@@ -681,10 +670,6 @@ export function FileExplorer({
       })
       .catch(() => {
         if (!cancelled && treeRequestContextRef.current === treeRequestContext && (!backgroundRefresh || reopened)) {
-          if (reopened) {
-            beginListingEpoch();
-            resetExpansion();
-          }
           setEntries([]);
           setCachedListingKey(null);
           setError(true);
@@ -692,22 +677,20 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, beginListingEpoch, resetExpansion, setCurrentPath]);
+  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, setCurrentPath]);
 
-  const canGoUp = currentPath !== "/";
   const breadcrumbRoot = remoteExplorerListingRoot();
-  const dropListingNodes = useMemo<DropListingNode[]>(() => visibleTreeRows.map((row) => row.kind === "node"
-    ? { path: row.path, parentPath: row.parentPath, kind: row.entry.kind }
-    : { path: row.parentPath, parentPath: row.parentPath, kind: "dir" }), [visibleTreeRows]);
+  const dropListingNodes = useMemo<DropListingNode[]>(() => listingNodes.map(({ path, entry }) => ({
+    path, parentPath: null, kind: entry.kind,
+  })), [listingNodes]);
   listingDropRef.current = { currentPath, nodes: dropListingNodes };
   const selectableDownloadNodes = useMemo(() => binding
-    ? visibleTreeNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
-    : [], [binding, visibleTreeNodes, downloadLimits]);
+    ? listingNodes.filter((node) => node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes)
+    : [], [binding, listingNodes, downloadLimits]);
 
   const contentKey = isSearching ? `search:${searchMode}:${searchQuery}` : currentPath;
   const hasCachedRemoteListing = remoteDisconnected && hasCachedListing;
-  const listingNodeCount = visibleTreeNodes.length;
-  const listingRowCount = visibleTreeRows.length;
+  const listingRowCount = listingNodes.length;
   const { view: listScroll, measure: measureTree } = useExplorerViewport(treeListRef, contentKey);
   const virtualizeListing = !isSearching && listingRowCount > 100;
   const listingSlice = virtualizeListing
@@ -721,17 +704,17 @@ export function FileExplorer({
   const focusedPath = focusedPathRef.current;
   const rovingFocusPath = focusedPath && nodeIndexByPath.has(focusedPath)
     ? focusedPath
-    : visibleTreeNodes[Math.max(0, Math.min(listingFocusIndex, listingNodeCount - 1))]?.path;
+    : listingNodes[Math.max(0, Math.min(listingFocusIndex, listingRowCount - 1))]?.path;
   const mountedTreeIndexes = virtualizeListing
     ? mountedTreeRowIndexes(listingRowCount, listingSlice, [
-        rowIndexByPath.get(rovingFocusPath ?? "") ?? -1,
-        rowIndexByPath.get(dropHighlightPath ?? "") ?? -1,
-        rowIndexByPath.get(menuReturnPath ?? "") ?? -1,
+        nodeIndexByPath.get(rovingFocusPath ?? "") ?? -1,
+        nodeIndexByPath.get(dropHighlightPath ?? "") ?? -1,
+        nodeIndexByPath.get(menuReturnPath ?? "") ?? -1,
       ])
     : Array.from({ length: listingRowCount }, (_, index) => index);
   useEffect(() => {
-    setListingFocusIndex((current) => Math.max(0, Math.min(current, listingNodeCount - 1)));
-  }, [listingNodeCount]);
+    setListingFocusIndex((current) => Math.max(0, Math.min(current, listingRowCount - 1)));
+  }, [listingRowCount]);
 
   useEffect(() => {
     setListingFocusIndex(0);
@@ -745,25 +728,14 @@ export function FileExplorer({
   }, [nodeIndexByPath, isSearching]);
 
   useLayoutEffect(() => {
-    const focusedPath = focusedPathRef.current;
-    if (!focusedPath || isSearching || nodeIndexByPath.has(focusedPath)) return;
-    let ancestor = parentPath(focusedPath);
-    while (ancestor !== focusedPath) {
-      const index = nodeIndexByPath.get(ancestor);
-      if (index !== undefined) {
-        focusedPathRef.current = ancestor;
-        setListingFocusIndex(index);
-        setPendingListingFocus(index);
-        return;
-      }
-      if (ancestor === "/") break;
-      const next = parentPath(ancestor);
-      if (next === ancestor) break;
-      ancestor = next;
+    if (focusAfterNavigationRef.current !== currentPath || loading || (!hasCachedListing && !error)) return;
+    focusAfterNavigationRef.current = null;
+    if (active && document.activeElement === document.body) {
+      const listing = treeListRef.current;
+      const target = listing?.querySelector<HTMLElement>("[data-explorer-item], [role=alert] button") ?? listing;
+      target?.focus({ preventScroll: true });
     }
-    focusedPathRef.current = null;
-    setListingFocusIndex(0);
-  }, [isSearching, nodeIndexByPath]);
+  }, [active, currentPath, error, hasCachedListing, loading]);
 
   useLayoutEffect(() => {
     if (pendingListingFocus === null) return;
@@ -786,14 +758,32 @@ export function FileExplorer({
     setReloadKey((n) => n + 1);
   }
 
-  function goUp() {
-    setNavDir("out");
-    setCurrentPath(parentPath(currentPath));
+  function prepareNavigation(path: string, direction: "in" | "out", focusListing: boolean) {
+    if (remoteDisconnected) return false;
+    search.setQuery("");
+    if (path === currentPath) return false;
+    focusAfterNavigationRef.current = focusListing ? path : null;
+    focusedPathRef.current = null;
+    setListingFocusIndex(0);
+    setPendingListingFocus(null);
+    setNavDir(direction);
+    return true;
+  }
+
+  function navigateTo(path: string, direction: "in" | "out" = "in", focusListing = false) {
+    if (prepareNavigation(path, direction, focusListing)) setCurrentPath(path);
+  }
+
+  function goHistory(offset: -1 | 1) {
+    const path = history?.paths[history.index + offset];
+    if (path && prepareNavigation(path, offset === -1 ? "out" : "in", false)) {
+      useUIStore.getState().stepExplorerHistory(sessionId, offset);
+    }
   }
 
   function focusTreeIndex(index: number) {
-    const target = Math.max(0, Math.min(index, visibleTreeNodes.length - 1));
-    const node = visibleTreeNodes[target];
+    const target = Math.max(0, Math.min(index, listingNodes.length - 1));
+    const node = listingNodes[target];
     if (!node) return;
     focusedPathRef.current = node.path;
     setListingFocusIndex(target);
@@ -803,9 +793,8 @@ export function FileExplorer({
       mounted.focus();
       return;
     }
-    const rowIndex = rowIndexByPath.get(node.path);
-    if (!list || rowIndex === undefined) return;
-    const rowTop = LISTING_TOP_INSET + rowIndex * LISTING_ROW_HEIGHT;
+    if (!list) return;
+    const rowTop = LISTING_TOP_INSET + target * LISTING_ROW_HEIGHT;
     list.scrollTop = Math.max(0, rowTop - Math.max(0, list.clientHeight - LISTING_ROW_HEIGHT));
     measureTree();
     setPendingListingFocus(target);
@@ -841,7 +830,7 @@ export function FileExplorer({
     }
   }
 
-  async function prepareDelete(node: ExplorerTreeNode) {
+  async function prepareDelete(node: ListingNode) {
     if (!binding || mutationBusy) return;
     const requestContext = treeRequestContextRef.current;
     setMutationBusy(true);
@@ -892,7 +881,7 @@ export function FileExplorer({
         const source = await sshStatV1(binding, mutationComposer.node.path);
         if (treeRequestContextRef.current !== requestContext) return;
         if (!source.parentPrecondition) throw new Error("parent metadata unavailable");
-        const destinationPath = joinPath(mutationComposer.node.parentPath ?? currentPath, name);
+        const destinationPath = joinPath(currentPath, name);
         const destination = await observedExpectation(destinationPath);
         if (treeRequestContextRef.current !== requestContext) return;
         setMutationRequest({
@@ -918,7 +907,7 @@ export function FileExplorer({
     }
   }
 
-  function treeMenuItems(node: ExplorerTreeNode): MenuEntry[] {
+  function treeMenuItems(node: ListingNode): MenuEntry[] {
     const isDir = node.entry.kind === "dir";
     if (isDir) {
       return isRemote
@@ -954,20 +943,20 @@ export function FileExplorer({
           { id: "file:rename", label: t("explorer.mutation.rename"), icon: "rename", action: () => { suppressMenuFocusRef.current = true; setMutationComposer({ kind: "rename", node, value: node.entry.name, bindingKey: treeRequestContext, error: undefined }); } },
           { id: "file:delete", label: t("explorer.mutation.delete"), icon: "close", danger: true, action: () => { suppressMenuFocusRef.current = true; void prepareDelete(node); } },
           { id: "file:metadata", label: t("explorer.properties"), icon: "search", action: () => { suppressMenuFocusRef.current = true; setProperties({ path: node.path, bindingKey: treeRequestContext }); } },
-          { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
+          { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, node.entry.name) },
           { id: "file:download", label: node.entry.size > downloadLimits.maxFileBytes ? t("explorer.download.too_large", { limit: formatSize(downloadLimits.maxFileBytes) }) : t("explorer.download"), icon: "download", disabled: node.entry.size > downloadLimits.maxFileBytes || !binding || !!downloadChooserPendingRef.current, action: () => { void downloadRemoteFile(node.path, node.entry.name); } },
           { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
         ]
       : [
           { id: "file:open-tunara", label: t("explorer.open_in_tunara"), icon: "editor", action: () => openFile(node.path) },
-          { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, node.parentPath ?? currentPath, node.entry.name) },
+          { id: "file:open-terminal", label: t("explorer.open_in_terminal"), icon: "terminal", action: () => useSessionsStore.getState().openFileInTerminal(sessionId, currentPath, node.entry.name) },
           { id: "file:open-vscode", label: t("explorer.open_in_vscode"), icon: "editor", action: () => { void openInEditorWithToast("vscode", node.path, { sessionId }); } },
           ...(externalEditor === "vscode" ? [] : [{ id: "file:open-editor", label: t("sidebar.dir.open_in_editor"), icon: "editor" as const, action: () => openEditor(node.path) }]),
           { id: "file:copy-path", label: t("sidebar.dir.copy_path"), icon: "copy", action: () => { void copyPathWithFeedback(node.path); } },
         ];
   }
 
-  function toggleDownloadSelection(node: ExplorerTreeNode, range: boolean) {
+  function toggleDownloadSelection(node: ListingNode, range: boolean) {
     if (!binding || node.entry.kind !== "file" || node.entry.size > downloadLimits.maxFileBytes) return;
     const nextSource = { path: node.path, name: node.entry.name, size: node.entry.size };
     let rejected: "files" | "total" | null = null;
@@ -1010,10 +999,11 @@ export function FileExplorer({
       });
       return;
     }
-    const next = new Map<string, BatchDownloadSource>();
-    let total = 0;
+    const next = new Map(selectedDownloads);
+    let total = [...next.values()].reduce((sum, file) => sum + file.size, 0);
     let rejected: "files" | "total" | null = null;
     for (const node of selectableDownloadNodes) {
+      if (next.has(node.path)) continue;
       if (next.size >= downloadLimits.maxFiles) { rejected = "files"; break; }
       if (total + node.entry.size > downloadLimits.maxTotalBytes) { rejected = "total"; break; }
       next.set(node.path, { path: node.path, name: node.entry.name, size: node.entry.size });
@@ -1083,11 +1073,8 @@ export function FileExplorer({
     selectionAnchorRef.current = null;
   }
 
-  function renderTreeNode(row: Extract<ExplorerTreeRow, { kind: "node" }>, rowIndex: number) {
-    const node = row;
-    const listingIndex = nodeIndexByPath.get(node.path) ?? -1;
+  function renderListingRow(node: ListingNode, listingIndex: number) {
     const isDir = node.entry.kind === "dir";
-    const expanded = row.expanded;
     const active = activeFilePath === node.path;
     const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
@@ -1110,14 +1097,12 @@ export function FileExplorer({
         key={node.path}
         role="treeitem"
         aria-label={node.entry.name}
-        aria-level={node.level}
-        aria-expanded={isDir ? expanded : undefined}
-        aria-setsize={node.setSize}
-        aria-posinset={node.posInSet}
+        aria-setsize={listingRowCount}
+        aria-posinset={listingIndex + 1}
         aria-selected={batchSelectable ? batchSelected : batchSelected || active}
         data-explorer-item
         data-listing-index={listingIndex}
-        data-tree-row-index={rowIndex}
+        data-tree-row-index={listingIndex}
         data-tree-path={node.path}
         data-drop-target={dropHighlightPath === node.path ? "true" : undefined}
         data-file-path={!isDir ? node.path : undefined}
@@ -1130,25 +1115,12 @@ export function FileExplorer({
         onClick={(event) => {
           const target = event.target as HTMLElement;
           if (target.closest("button, input")) return;
-          const originItem = target.closest("[role=treeitem]");
-          if (originItem && originItem !== event.currentTarget) return;
           if (batchSelectable && (event.ctrlKey || event.metaKey || event.shiftKey)) {
             toggleDownloadSelection(node, event.shiftKey);
             return;
           }
-          if (isDir) {
-            // A second click in a double-click enters the folder; the first
-            // click still expands so nested children stay visible in the tree.
-            if (event.detail > 1 && !remoteDisconnected) {
-              setNavDir("in");
-              setCurrentPath(node.path);
-              return;
-            }
-            if (expanded) collapsePath(node.path);
-            else expandDirectory(node.path);
-            return;
-          }
-          openFile(node.path);
+          if (isDir) navigateTo(node.path, "in", true);
+          else openFile(node.path);
         }}
         onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY, event.currentTarget); }}
         onKeyDown={(event) => {
@@ -1160,10 +1132,11 @@ export function FileExplorer({
             openMenu(rect.left + 8, rect.top + rect.height / 2, event.currentTarget);
             return;
           }
-          if (event.key === "Enter") {
+          if (event.key === "Enter" || (event.key === "ArrowRight" && isDir)) {
             event.preventDefault(); event.stopPropagation();
             if (remoteDisconnected) return;
-            if (isDir) { setNavDir("in"); setCurrentPath(node.path); } else openFile(node.path);
+            if (isDir) navigateTo(node.path, "in", true);
+            else openFile(node.path);
             return;
           }
           if (event.key === " " && batchSelectable) {
@@ -1174,25 +1147,9 @@ export function FileExplorer({
           if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
             event.preventDefault(); event.stopPropagation();
             const target = event.key === "Home" ? 0
-              : event.key === "End" ? visibleTreeNodes.length - 1
+              : event.key === "End" ? listingNodes.length - 1
                 : listingIndex + (event.key === "ArrowDown" ? 1 : -1);
             focusTreeIndex(target);
-            return;
-          }
-          if (event.key === "ArrowRight" && isDir) {
-            event.preventDefault(); event.stopPropagation();
-            if (!expanded) expandDirectory(node.path);
-            else if (visibleTreeNodes[listingIndex + 1]?.parentPath === node.path) focusTreeIndex(listingIndex + 1);
-            return;
-          }
-          if (event.key === "ArrowLeft") {
-            if (isDir && expanded) {
-              event.preventDefault(); event.stopPropagation();
-              collapsePath(node.path);
-            } else if (node.parentPath) {
-              event.preventDefault(); event.stopPropagation();
-              focusTreeIndex(nodeIndexByPath.get(node.parentPath) ?? -1);
-            }
             return;
           }
           if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -1204,23 +1161,22 @@ export function FileExplorer({
               : nextText;
             typeaheadRef.current.text = query;
             typeaheadRef.current.timer = window.setTimeout(() => { typeaheadRef.current.text = ""; }, 500);
-            for (let offset = 1; offset <= visibleTreeNodes.length; offset += 1) {
-              const index = (listingIndex + offset) % visibleTreeNodes.length;
-              if (visibleTreeNodes[index].entry.name.toLocaleLowerCase().startsWith(query)) { focusTreeIndex(index); break; }
+            for (let offset = 1; offset <= listingNodes.length; offset += 1) {
+              const index = (listingIndex + offset) % listingNodes.length;
+              if (listingNodes[index].entry.name.toLocaleLowerCase().startsWith(query)) { focusTreeIndex(index); break; }
             }
           }
         }}
         className="explorer-tree-node"
         style={{
           height: LISTING_ROW_HEIGHT,
-          transform: virtualizeListing ? `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)` : undefined,
+          transform: virtualizeListing ? `translateY(${listingIndex * LISTING_ROW_HEIGHT}px)` : undefined,
         }}
       >
         <div
           className="hover-bg explorer-listing-grid explorer-listing-row"
           data-selectable={selectionMode ? "true" : undefined}
           data-active={batchSelected || active}
-          style={{ paddingLeft: 8 + (node.level - 1) * 16 }}
         >
         {selectionMode && (
           <input
@@ -1237,25 +1193,9 @@ export function FileExplorer({
           />
         )}
         <span className="explorer-listing-name">
-          {isDir ? (
-            <button
-              type="button"
-              tabIndex={-1}
-              className="explorer-tree-toggle hover-bg"
-              aria-label={expanded ? t("dir_group.collapse_named", { name: node.entry.name }) : t("dir_group.expand_named", { name: node.entry.name })}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (expanded) collapsePath(node.path);
-                else expandDirectory(node.path);
-              }}
-            >
-              <FolderIcon />
-              <TreeChevron expanded={expanded} />
-            </button>
-          ) : (
-            <span aria-hidden="true" className="explorer-entry-icon"><FileIcon tint={fileKindTint(node.entry.name)} /></span>
-          )}
+          <span aria-hidden="true" className="explorer-entry-icon">
+            {isDir ? <FolderIcon /> : <FileIcon tint={fileKindTint(node.entry.name)} />}
+          </span>
           <ExplorerEntryName name={node.entry.name} />
         </span>
         <span className="explorer-listing-modified">{formatModifiedTime(node.entry.mtime)}</span>
@@ -1293,34 +1233,6 @@ export function FileExplorer({
     );
   }
 
-  function renderTreeRow(row: ExplorerTreeRow, rowIndex: number) {
-    if (row.kind === "node") return renderTreeNode(row, rowIndex);
-    return (
-      <div
-        key={`${row.parentPath}:load-error`}
-        data-tree-row-index={rowIndex}
-        className="explorer-tree-error"
-        style={{
-          height: LISTING_ROW_HEIGHT,
-          paddingLeft: 8 + (row.level - 1) * 16,
-          transform: virtualizeListing ? `translateY(${rowIndex * LISTING_ROW_HEIGHT}px)` : undefined,
-        }}
-      >
-        <span role="alert">
-          {t("explorer.read_dir_failed")}
-        </span>
-        {!remoteDisconnected && <button type="button" tabIndex={-1} className="ui-button" onClick={() => expandDirectory(row.parentPath)}>
-          {t("common.retry")}
-        </button>}
-      </div>
-    );
-  }
-
-  function openSearchDir(path: string) {
-    search.setQuery("");
-    setNavDir("in");
-    setCurrentPath(path);
-  }
 
   function openFile(path: string, line?: number) {
     if (remoteDisconnected) return;
@@ -1371,7 +1283,7 @@ export function FileExplorer({
       <button
         data-explorer-item
         data-active={activeFilePath === file.path}
-        onClick={() => isDir ? openSearchDir(file.path) : openFile(file.path)}
+        onClick={() => isDir ? navigateTo(file.path) : openFile(file.path)}
         className="hover-bg explorer-search-hit"
         style={{ height: LISTING_ROW_HEIGHT - 2 }}
       >
@@ -1434,12 +1346,14 @@ export function FileExplorer({
       <ExplorerNav
         t={t}
         disabled={remoteDisconnected}
-        canGoUp={canGoUp}
-        onGoUp={goUp}
+        canGoBack={!!history && history.index > 0}
+        canGoForward={!!history && history.index + 1 < history.paths.length}
+        onGoBack={() => goHistory(-1)}
+        onGoForward={() => goHistory(1)}
         currentPath={currentPath}
         breadcrumbRoot={breadcrumbRoot}
         breadcrumbHome={isRemote ? homeDir : localHomeDir}
-        onNavigate={(path) => { setNavDir("out"); setCurrentPath(path); }}
+        onNavigate={navigateTo}
         onRefresh={refresh}
       />
       <ExplorerSearchRow
@@ -1498,7 +1412,7 @@ export function FileExplorer({
           homeDir={homeDir}
           favoritePaths={hostPrefs.favoritePaths}
           recentPaths={hostPrefs.recentPaths}
-          onJumpToPath={(path) => { setNavDir("in"); setCurrentPath(path); }}
+          onJumpToPath={navigateTo}
           remoteDisconnected={remoteDisconnected}
           uploadBusy={upload !== null}
           onUploadFile={() => { void uploadToRemoteDirectory(currentPath); }}
@@ -1563,6 +1477,7 @@ export function FileExplorer({
       {!isSearching && <div
         key={contentKey}
         ref={treeListRef}
+        tabIndex={-1}
         onScroll={measureTree}
         data-nav={navDir}
         className="no-scrollbar scroll-fade-y"
@@ -1575,7 +1490,7 @@ export function FileExplorer({
               compact={false}
             />
           </div>
-        ) : loading && !hasCachedRemoteListing ? (
+        ) : (loading || (!hasCachedListing && !error)) && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell"><PanelLoadingState label={t("explorer.loading")} /></div>
         ) : error && !hasCachedRemoteListing ? (
           <div className="explorer-state-shell">
@@ -1587,7 +1502,7 @@ export function FileExplorer({
               onRetry: refresh,
             }} />
           </div>
-        ) : entries.length === 0 ? (
+        ) : listingRowCount === 0 ? (
           <div className="explorer-state-shell">
             <PanelEmptyState icon={folderEmptyIcon} label={t("explorer.dir_empty")} compact={false} />
           </div>
@@ -1641,7 +1556,7 @@ export function FileExplorer({
               data-virtual={virtualizeListing}
               style={virtualizeListing ? { height: listingRowCount * LISTING_ROW_HEIGHT } : undefined}
             >
-              {mountedTreeIndexes.map((index) => renderTreeRow(visibleTreeRows[index], index))}
+              {mountedTreeIndexes.map((index) => renderListingRow(listingNodes[index], index))}
             </div>
           </>
         )}

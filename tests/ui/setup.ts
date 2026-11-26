@@ -25,6 +25,7 @@ beforeEach(() => {
     inspectorTab: "files",
     inspectorPreviewOpenedSessionIds: {},
     explorerPaths: {},
+    explorerHistory: {},
   });
 });
 
