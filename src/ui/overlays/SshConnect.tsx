@@ -313,7 +313,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     });
   }, [t]);
 
-  const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile) => {
+  const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile, overrides?: { user: string; port?: number } | null) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
     setConfigBrowseTarget(null);
     if (source === "sshConfig") {
@@ -333,9 +333,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
       return;
     }
     const { target: profile, jump } = resolution.route;
-    setTarget(formatSshTarget(profile.user, profile.host, profile.port));
-    setPort(String(profile.port));
-    setPortEdited(false);
+    const nextPort = overrides?.port ?? profile.port;
+    setTarget(formatSshTarget(overrides?.user || profile.user, profile.host, nextPort));
+    setPort(String(nextPort));
+    setPortEdited(overrides?.port !== undefined);
     setAuthMethod(profile.authMethod ?? "auto");
     // A saved row that shadows a config entry keeps that entry's IdentityFile when it has none.
     const keyFallback = profile.identityFile ? undefined : fallback;
@@ -688,6 +689,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
   };
 
   const sessionDiagnostics = diagnosticsForSession(prefill?.reconnectSessionId ?? "");
+  const selectSuggestion = (entry: (typeof suggestions)[number]) => {
+    fillFrom(entry.profile.id, entry.source, entry.configProfile, entry.profile === configAlias ? parsedTarget : undefined);
+  };
   const renderSuggestion = (entry: (typeof suggestions)[number]) => (
     <SuggestionRow
       key={entry.key}
@@ -697,7 +701,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       alsoInConfig={Boolean(entry.configProfile)}
       selected={selectedProfile?.id === entry.profile.id && selectedProfile.source === entry.source}
       active={highlight === entry.key}
-      onSelect={() => fillFrom(entry.profile.id, entry.source, entry.configProfile)}
+      onSelect={() => selectSuggestion(entry)}
       onDelete={entry.source === "saved" ? () => { void actions.onRemove(entry.profile.id); } : undefined}
       deletePending={isPending(`ssh-profile:${entry.profile.id}`)}
       deleteArmedAt={armedAt(`ssh-profile:${entry.profile.id}`)}
@@ -742,7 +746,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
           if (event.key === "Enter" && !excludesSubmit) {
             event.preventDefault();
             if (targetEl === targetRef.current && highlightedEntry) {
-              fillFrom(highlightedEntry.profile.id, highlightedEntry.source, highlightedEntry.configProfile);
+              selectSuggestion(highlightedEntry);
               return;
             }
             if (canConnect) void connect();

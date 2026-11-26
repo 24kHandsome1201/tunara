@@ -205,7 +205,11 @@ describe("SSH connection sheet", () => {
     expect(input.value).toBe("ops@host-13.example");
   });
 
-  test.each(["root@production", "production:2200"])("shows the configured host for decorated alias %s", async (alias) => {
+  test.each([
+    ["root@production", "root@prod.example:2222", "root", 2222],
+    ["production:2200", "ops@prod.example:2200", "ops", 2200],
+    ["root@production:22", "root@prod.example", "root", 22],
+  ])("shows and completes decorated alias %s without losing overrides", async (alias, endpoint, user, port) => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") return [];
       if (command === "ssh_hosts_import_config") return {
@@ -222,6 +226,14 @@ describe("SSH connection sheet", () => {
     fireEvent.change(input, { target: { value: alias } });
     expect(screen.getByRole("option", { name: /production/ })).toBeTruthy();
     expect(input.value).toBe(alias);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe(endpoint);
+    expect(screen.getByDisplayValue(String(port)).id).toBe("ssh-connect-port");
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user, port });
   });
 
   test("browses other config hosts after selecting a host or entering its endpoint", async () => {
