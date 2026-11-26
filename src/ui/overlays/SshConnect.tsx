@@ -706,7 +706,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   return (
     <>
-      <div aria-hidden="true" onClick={cancelConnect} className="overlay-backdrop" style={{ position: "fixed", inset: 0, background: "var(--backdrop-color)", zIndex: "var(--z-overlay)" }} />
+      <div aria-hidden="true" onClick={cancelConnect} className="ssh-connect-backdrop overlay-backdrop" />
       <div
         ref={containerRef}
         role="dialog"
@@ -748,22 +748,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
             if (canConnect) void connect();
           }
         }}
-        style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: 544,
-          maxWidth: "calc(100vw - 32px)",
-          maxHeight: "calc(100dvh - 32px)",
-          background: "var(--c-bg-white)",
-          borderRadius: "var(--r-overlay)",
-          boxShadow: "var(--shadow-overlay)",
-          zIndex: "var(--z-overlay)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
       >
         <div className="ssh-connect-header">
           <span className="ssh-connect-header-icon"><Icon icon={HardDrives} size={22} /></span>
@@ -771,7 +755,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
             <h2 id="ssh-connect-title">{prefill?.reconnectSessionId ? t("common.reconnect") : t("ssh.title")}</h2>
             <p id="ssh-connect-subtitle">{t("ssh.subtitle")}</p>
           </div>
-          <button type="button" onClick={cancelConnect} aria-label={t("common.close")} className="hover-bg" style={{ width: 26, height: 26, border: "none", background: "transparent", cursor: "pointer", color: "var(--c-text-4)", borderRadius: "var(--r-btn)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button type="button" onClick={cancelConnect} aria-label={t("common.close")} className="hover-bg">
             <CloseIcon />
           </button>
         </div>
@@ -990,8 +974,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
         </div>
 
         <div className="ssh-connect-footer">
-            <button type="button" onClick={cancelConnect} className="ui-button" style={{ padding: "6px 16px", fontSize: "var(--fs-body)" }}>{t("common.cancel")}</button>
-            <button type="button" onClick={() => { void connect(); }} disabled={!canConnect} className="ui-button ui-button--primary" style={{ padding: "6px 18px", fontSize: "var(--fs-body)", fontWeight: 500 }}>
+            <button type="button" onClick={cancelConnect} className="ui-button">{t("common.cancel")}</button>
+            <button type="button" onClick={() => { void connect(); }} disabled={!canConnect} className="ui-button ui-button--primary">
               {connecting ? t("ssh.connecting") : prefill?.reconnectSessionId ? t("common.reconnect") : t("ssh.connect")}
             </button>
         </div>

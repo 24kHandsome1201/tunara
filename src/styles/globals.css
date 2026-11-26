@@ -550,7 +550,29 @@ select.ui-control {
 /* SSH connection management separates the profile library from the editable
    connection form. The form owns vertical scrolling; source rows stay compact
    enough to compare endpoints without hiding their origin or route. */
-.ssh-connect-dialog { container: ssh-connect-dialog / inline-size; }
+.ssh-connect-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop-color);
+  z-index: var(--z-overlay);
+}
+.ssh-connect-dialog {
+  container: ssh-connect-dialog / inline-size;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 544px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  background: var(--c-bg-white);
+  border-radius: var(--r-overlay);
+  box-shadow: var(--shadow-overlay);
+  z-index: var(--z-overlay);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .ssh-connect-header {
   display: flex;
   align-items: flex-start;
@@ -570,7 +592,20 @@ select.ui-control {
   color: var(--c-accent-text);
   background: var(--c-accent-bg-light);
 }
-.ssh-connect-header > button { margin-inline-start: auto; flex-shrink: 0; }
+.ssh-connect-header > button {
+  margin-inline-start: auto;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--c-text-4);
+  border-radius: var(--r-btn);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .ssh-connect-header h2 { margin: 0 0 3px; font-size: calc(var(--fs-title) * 1.5); }
 .ssh-connect-header p,
 .ssh-connect-target p { margin: 0; color: var(--c-text-4); font-size: var(--fs-secondary); }
@@ -672,6 +707,8 @@ select.ui-control {
   background: var(--c-bg-1);
   flex-shrink: 0;
 }
+.ssh-connect-footer > .ui-button { padding: 6px 16px; font-size: var(--fs-body); }
+.ssh-connect-footer > .ui-button--primary { padding: 6px 18px; font-weight: 500; }
 .ssh-connect-fieldset { margin: 0; padding: 0; border: none; min-width: 0; }
 .ssh-connect-fieldset--boxed { padding: 10px; border: 1px solid var(--c-border-2); border-radius: var(--r-btn); }
 .ssh-connect-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
