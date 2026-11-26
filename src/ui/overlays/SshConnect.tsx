@@ -227,7 +227,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const commandInput = isSshCommandInput(target);
   const command = useMemo(() => parseSshCommand(target), [target]);
   const parsedTarget = commandInput ? command?.target : parseSshTarget(target);
-  const hasTargetOverrides = Boolean(parsedTarget?.user || parsedTarget?.port !== undefined);
   const matchTarget = command ? sshCommandMatchTarget(command) : target;
   const host = parsedTarget?.host ?? "";
   const user = parsedTarget?.user ?? "";
@@ -450,9 +449,11 @@ export function SshConnect({ onClose }: SshConnectProps) {
         ? jumpPassword.length > 0
         : true
   ));
-  const matchedProfile = exactSshProfileMatch(allProfiles, matchTarget);
+  const matchedProfile = selectedProfile
+    ? (selectedProfile.source === "saved" ? hosts : configHosts).find((profile) => profile.id === selectedProfile.id)
+    : exactSshProfileMatch(allProfiles, matchTarget);
   const alias = selectedProfile ? undefined : sshAliasProfileMatch(allProfiles, matchTarget);
-  const resolvedUser = user || alias?.user || matchedProfile?.user || (commandInput ? localAccount : "");
+  const resolvedUser = user || (commandInput ? alias?.user : undefined) || matchedProfile?.user || (commandInput ? localAccount : "");
   const resolvedHost = host || matchedProfile?.host || "";
   const canConnect = resolvedHost.length > 0
     && resolvedUser.length > 0
@@ -514,7 +515,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
         setAdvancedOpen(true);
       } else {
         fillFrom(alias.id, aliasSource);
-        if (commandInput || hasTargetOverrides) {
+        if (commandInput) {
           setTarget(target);
           setSelectedProfile(null);
           if (portEdited || parsedTarget?.port !== undefined) {
@@ -609,9 +610,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setKeyPassphrase("");
     setJumpPassword("");
     setJumpKeyPassphrase("");
-    const selectedSaved = selectedProfile?.source === "saved"
-      ? hosts.find((candidate) => candidate.id === selectedProfile.id)
-      : aliasSource === "saved" ? alias : undefined;
+    const selectedSaved = selectedProfile?.source === "saved" ? match : aliasSource === "saved" ? alias : undefined;
     const pendingSavedHost = sshHostProfileFromSuccessfulConnect(
       remote,
       (!commandInput || !selectedSaved ? match?.label : undefined) || `${nextUser}@${nextHost}`,
@@ -676,16 +675,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   };
 
   const sessionDiagnostics = diagnosticsForSession(prefill?.reconnectSessionId ?? "");
-  const selectSuggestion = (entry: (typeof suggestions)[number]) => {
-    if (entry.profile === configAlias && hasTargetOverrides) {
-      setConfigBrowseTarget(null);
-      setConfigOpen(false);
-      setHighlight(null);
-      targetRef.current?.focus();
-      return;
-    }
-    fillFrom(entry.profile.id, entry.source, entry.configProfile);
-  };
+  const selectSuggestion = (entry: (typeof suggestions)[number]) => fillFrom(entry.profile.id, entry.source, entry.configProfile);
   const renderSuggestion = (entry: (typeof suggestions)[number]) => (
     <SuggestionRow
       key={entry.key}

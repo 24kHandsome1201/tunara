@@ -205,11 +205,7 @@ describe("SSH connection sheet", () => {
     expect(input.value).toBe("ops@host-13.example");
   });
 
-  test.each([
-    ["root@production", "root", 2222],
-    ["production:2200", "ops", 2200],
-    ["root@production:22", "root", 22],
-  ])("shows and accepts decorated alias %s without rewriting it", async (alias, user, port) => {
+  test.each(["root@production", "production:2200", "root@production:22"])("shows the configured host for %s and applies its defaults when picked", async (alias) => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") return [];
       if (command === "ssh_hosts_import_config") return {
@@ -228,15 +224,15 @@ describe("SSH connection sheet", () => {
     expect(input.value).toBe(alias);
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(input.value).toBe(alias);
+    expect(input.value).toBe("ops@prod.example:2222");
     expect(screen.getByRole("button", { name: "Browse ~/.ssh/config" }).getAttribute("aria-expanded")).toBe("false");
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user, port });
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user: "ops", port: 2222 });
   });
 
-  test("accepting a pasted SSH alias command does not schedule a saved endpoint for replacement", async () => {
+  test.each([false, true])("a pasted SSH alias command does not replace a saved endpoint matched by its overrides (picked: %s)", async (pickProfile) => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") return [
         { id: "saved", label: "Saved root", host: "prod.example", port: 2200, user: "root", identity_file: "", auth_method: "agent" },
@@ -254,16 +250,22 @@ describe("SSH connection sheet", () => {
     const typed = "ssh -p 2200 root@production";
     const input = hostInput();
     fireEvent.change(input, { target: { value: typed } });
-    fireEvent.click(within(config).getByRole("button", { name: /production/ }));
+    if (pickProfile) fireEvent.click(within(config).getByRole("button", { name: /production/ }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     const [session] = useSessionsStore.getState().sessions;
-    expect(session.remote).toMatchObject({ host: "prod.example", user: "root", port: 2200 });
-    expect(session.pendingSavedHost).toBeUndefined();
-    expect(input.value).toBe(typed);
+    if (pickProfile) {
+      expect(session.remote).toMatchObject({ host: "prod.example", user: "ops", port: 2222 });
+      expect(session.pendingSavedHost?.id).not.toBe("saved");
+      expect(input.value).toBe("ops@prod.example:2222");
+    } else {
+      expect(session.remote).toMatchObject({ host: "prod.example", user: "root", port: 2200 });
+      expect(session.pendingSavedHost).toBeUndefined();
+      expect(input.value).toBe(typed);
+    }
   });
 
-  test("keeps typed alias overrides when connecting requires a password", async () => {
+  test("uses the picked profile's defaults when it requires a password", async () => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") return [];
       if (command === "ssh_hosts_import_config") return {
@@ -282,13 +284,13 @@ describe("SSH connection sheet", () => {
     const connect = screen.getByRole("button", { name: "Connect" });
     fireEvent.click(connect);
 
-    expect(input.value).toBe("root@production:2200");
+    expect(input.value).toBe("ops@prod.example:2222");
     fireEvent.change(screen.getByLabelText("Password", { selector: "input[type=password]" }), { target: { value: "test password" } });
     fireEvent.click(connect);
-    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user: "root", port: 2200, authMethod: "password" });
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user: "ops", port: 2222, authMethod: "password" });
   });
 
-  test("uses the configured port when an accepted port override is replaced with a bare alias", async () => {
+  test("uses the configured port when a picked endpoint is replaced with a bare alias", async () => {
     mockIPC((command) => {
       if (command === "ssh_hosts_load") return [];
       if (command === "ssh_hosts_import_config") return {
@@ -309,6 +311,56 @@ describe("SSH connection sheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user: "ops", port: 2222 });
+  });
+
+  test.each(["saved.example", "prod.example"])("connects to the picked config row over the same-named saved host %s", async (savedHost) => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "saved", label: "production", host: savedHost, port: 2244, user: "ops", identity_file: "" },
+      ];
+      if (command === "ssh_hosts_import_config") return {
+        imported: [{ id: "prod", label: "production", host: "prod.example", port: 22, user: "ops", identity_file: "" }],
+        skipped: 0,
+      };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    browseConfig();
+    const config = await screen.findByRole("listbox", { name: "SSH config" });
+    fireEvent.change(hostInput(), { target: { value: "root@production" } });
+    fireEvent.click(within(config).getByRole("button", { name: /production/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(useSessionsStore.getState().sessions[0].remote).toMatchObject({ host: "prod.example", user: "ops", port: 22 });
+  });
+
+  test("keyboard selection replaces the previous host's key and jump settings", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "jump", label: "Bastion", host: "jump.example", port: 22, user: "ops", identity_file: "" },
+        { id: "old", label: "Old host", host: "old.example", port: 22, user: "ops", identity_file: "/keys/old", proxy_jump_profile_id: "jump" },
+      ];
+      if (command === "ssh_hosts_import_config") return {
+        imported: [{ id: "prod", label: "production", host: "prod.example", port: 2222, user: "ops", identity_file: "/keys/new" }],
+        skipped: 0,
+      };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Old host/ }));
+    expect(screen.getByDisplayValue("/keys/old")).toBeTruthy();
+    expect(screen.getByDisplayValue("Bastion")).toBeTruthy();
+    const input = hostInput();
+    fireEvent.change(input, { target: { value: "production:2200" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.queryByDisplayValue("/keys/old")).toBeNull();
+    expect(screen.getByDisplayValue("/keys/new")).toBeTruthy();
+    expect(screen.queryByDisplayValue("Bastion")).toBeNull();
+    expect(input.value).toBe("ops@prod.example:2222");
   });
 
   test("browses other config hosts after selecting a host or entering its endpoint", async () => {
