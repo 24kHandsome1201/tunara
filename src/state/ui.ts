@@ -61,6 +61,7 @@ export interface AppearanceSettings {
   cursorBlink: boolean;
   fontSize: number;
   fontFamily: string;
+  defaultTerminalFolder: string;
   fontLigatures: boolean;
   nerdFontFallback: boolean;
   scrollback: number;
@@ -104,6 +105,7 @@ export const DEFAULT_SETTINGS: Readonly<AppearanceSettings> = {
   cursorBlink: true,
   fontSize: 14,
   fontFamily: "JetBrains Mono",
+  defaultTerminalFolder: "",
   fontLigatures: false,
   nerdFontFallback: true,
   scrollback: DEFAULT_SCROLLBACK,
@@ -163,6 +165,10 @@ function sanitizeFontFamily(value: unknown): string {
     : DEFAULT_SETTINGS.fontFamily;
 }
 
+function sanitizeDefaultTerminalFolder(value: unknown): string {
+  return typeof value === "string" && !value.includes("\0") ? value : "";
+}
+
 function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings {
   const raw = config?.appearance;
   return {
@@ -174,6 +180,7 @@ function sanitizeConfig(config: RawTunaraConfig | undefined): AppearanceSettings
     cursorStyle: isCursorStyle(raw?.cursor_style) ? raw.cursor_style : DEFAULT_SETTINGS.cursorStyle,
     cursorBlink: typeof raw?.cursor_blink === "boolean" ? raw.cursor_blink : DEFAULT_SETTINGS.cursorBlink,
     fontSize: clampNumber(raw?.font_size, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize),
+    defaultTerminalFolder: sanitizeDefaultTerminalFolder(raw?.default_terminal_folder),
     fontFamily: sanitizeFontFamily(raw?.font_family),
     fontLigatures: typeof raw?.font_ligatures === "boolean" ? raw.font_ligatures : DEFAULT_SETTINGS.fontLigatures,
     nerdFontFallback: typeof raw?.nerd_font_fallback === "boolean" ? raw.nerd_font_fallback : DEFAULT_SETTINGS.nerdFontFallback,
@@ -206,6 +213,7 @@ function settingsToRawConfig(s: AppearanceSettings): RawTunaraConfig {
       cursor_blink: s.cursorBlink,
       font_size: s.fontSize,
       font_family: s.fontFamily,
+      default_terminal_folder: s.defaultTerminalFolder,
       font_ligatures: s.fontLigatures,
       nerd_font_fallback: s.nerdFontFallback,
       scrollback: s.scrollback,
@@ -337,7 +345,11 @@ interface UIState extends AppearanceSettings {
   explorerFollowCwd: boolean;
   /** Last browsed directory per session; survives Inspector tab unmounts, not app restarts. */
   explorerPaths: Record<string, string>;
+  explorerHistory: Record<string, { paths: string[]; index: number }>;
 
+  rememberExplorerStart: (sessionId: string, path: string) => void;
+  setExplorerPath: (sessionId: string, next: string | ((current: string) => string), initial?: string) => void;
+  stepExplorerHistory: (sessionId: string, offset: -1 | 1) => void;
   showTerminal: () => void;
   openSshHosts: () => void;
   setNativeFullscreen: (fullscreen: boolean) => void;
@@ -365,6 +377,7 @@ interface UIState extends AppearanceSettings {
   setCursorBlink: (b: boolean) => void;
   setFontSize: (n: number) => void;
   setFontFamily: (name: string) => void;
+  setDefaultTerminalFolder: (folder: string) => void;
   setFontLigatures: (enabled: boolean) => void;
   setNerdFontFallback: (enabled: boolean) => void;
   setTerminalScreenReaderMode: (enabled: boolean) => void;
@@ -439,8 +452,39 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     commandUsage: {},
     explorerFollowCwd: true,
     explorerPaths: {},
+    explorerHistory: {},
     ...DEFAULT_SETTINGS,
 
+    rememberExplorerStart: (sessionId, path) => set((s) => {
+      if (s.explorerPaths[sessionId] || s.explorerHistory[sessionId]?.paths[0] === path) return s;
+      return { explorerHistory: { ...s.explorerHistory, [sessionId]: { paths: [path], index: 0 } } };
+    }),
+    setExplorerPath: (sessionId, next, initial) => set((s) => {
+      const history = s.explorerHistory[sessionId];
+      const explicitPath = s.explorerPaths[sessionId];
+      const current = explicitPath ?? initial ?? history?.paths[history.index] ?? "";
+      const path = typeof next === "function" ? next(current) : next;
+      if (path === explicitPath) return s;
+      const paths = history?.paths[history.index] === current
+        ? history.paths.slice(0, history.index + 1)
+        : current.startsWith("/") ? [current] : [];
+      if (path !== current && path.startsWith("/")) paths.push(path);
+      const recent = paths.slice(-100);
+      return {
+        explorerPaths: { ...s.explorerPaths, [sessionId]: path },
+        explorerHistory: { ...s.explorerHistory, [sessionId]: { paths: recent, index: recent.length - 1 } },
+      };
+    }),
+    stepExplorerHistory: (sessionId, offset) => set((s) => {
+      const history = s.explorerHistory[sessionId];
+      if (!history) return s;
+      const index = history.index + offset;
+      const path = history.paths[index];
+      return path ? {
+        explorerPaths: { ...s.explorerPaths, [sessionId]: path },
+        explorerHistory: { ...s.explorerHistory, [sessionId]: { ...history, index } },
+      } : s;
+    }),
     showTerminal: () => set({ mainSurface: "terminal" }),
     openSshHosts: () => set({
       mainSurface: "ssh-hosts",
@@ -562,6 +606,7 @@ export const useUIStore = create<UIState>()(subscribeWithSelector((set) => {
     setCursorStyle: (cursorStyle) => set({ cursorStyle: isCursorStyle(cursorStyle) ? cursorStyle : DEFAULT_SETTINGS.cursorStyle }),
     setCursorBlink: (cursorBlink) => set({ cursorBlink: typeof cursorBlink === "boolean" ? cursorBlink : DEFAULT_SETTINGS.cursorBlink }),
     setFontSize: (fontSize) => set({ fontSize: clampNumber(fontSize, MIN_FONT_SIZE, MAX_FONT_SIZE, DEFAULT_SETTINGS.fontSize) }),
+    setDefaultTerminalFolder: (folder) => set({ defaultTerminalFolder: sanitizeDefaultTerminalFolder(folder) }),
     setFontFamily: (fontFamily) => set({ fontFamily: sanitizeFontFamily(fontFamily) }),
     setFontLigatures: (fontLigatures) => set({ fontLigatures: typeof fontLigatures === "boolean" ? fontLigatures : DEFAULT_SETTINGS.fontLigatures }),
     setNerdFontFallback: (nerdFontFallback) => set({ nerdFontFallback: typeof nerdFontFallback === "boolean" ? nerdFontFallback : DEFAULT_SETTINGS.nerdFontFallback }),
@@ -712,7 +757,7 @@ useUIStore.subscribe(
   { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
 );
 
-const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["downloadMaxFiles", "downloadMaxFileBytes", "downloadMaxTotalBytes", "theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "terminalOptionAsMeta", "terminalRenderer", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
+const PERSIST_KEYS: (keyof AppearanceSettings)[] = ["downloadMaxFiles", "downloadMaxFileBytes", "downloadMaxTotalBytes", "theme", "accent", "cursorStyle", "cursorBlink", "fontSize", "fontFamily", "defaultTerminalFolder", "fontLigatures", "nerdFontFallback", "scrollback", "sidebarWidth", "panelWidth", "externalEditor", "bellNotification", "terminalClipboardWrite", "terminalScreenReaderMode", "terminalHostModifier", "terminalOptionAsMeta", "terminalRenderer", "backgroundOpacity", "backgroundBlur", "keybindings", "language", "globalShortcut"];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let configPersistQueue = Promise.resolve();

@@ -7,7 +7,6 @@ import { downloadFailureKey, FileExplorer, parseUploadFailure, sortExplorerEntri
 import { useUIStore } from "@/state/ui";
 import { useSessionsStore } from "@/state/sessions";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
-import { buildExplorerTreeRows, type ExplorerTreeNode } from "@/ui/file-explorer/use-tree-listing";
 import { InspectorPanel } from "@/ui/InspectorPanel";
 import type { Session } from "@/ui/types";
 import { openResource, resourceRefForSession } from "@/modules/resources/resource-ref";
@@ -18,7 +17,49 @@ function openFileActions() {
 }
 
 describe("FileExplorer directory navigation", () => {
-  test("revalidates children on return to Files without collapsing expanded folders", async () => {
+  test("follows the local terminal directory and remembers it when a terminal link opens another folder", async () => {
+    const session: Session = { id: "local", title: "Local", dir: "/tmp/next", branch: "", runState: "idle", updatedAt: 1 };
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    mockIPC((command, payload) => {
+      const { path } = payload as { path: string };
+      if (command === "fs_resolve_dir") return path === "~" ? "/home/dev" : path;
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      return [{ name: `${path.split("/").pop()}.txt`, kind: "file", size: 0, mtime: 0 }];
+    });
+    const { rerender } = render(<FileExplorer sessionId="local" rootDir="/tmp/first" />);
+    await screen.findByRole("treeitem", { name: "first.txt" });
+    rerender(<FileExplorer sessionId="local" rootDir="/tmp/next" />);
+    await screen.findByRole("treeitem", { name: "next.txt" });
+    await act(async () => { await openResource(resourceRefForSession(session, "/tmp/linked"), "directory"); });
+    await screen.findByRole("treeitem", { name: "linked.txt" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("treeitem", { name: "next.txt" })).toBeTruthy();
+  });
+
+  test("opens a terminal link back to the last displayed directory after a hidden cwd change", async () => {
+    const session: Session = { id: "local", title: "Local", dir: "/tmp/next", branch: "", runState: "idle", updatedAt: 1 };
+    useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
+    mockIPC((command, payload) => {
+      const { path } = payload as { path: string };
+      if (command === "fs_resolve_dir") return path === "~" ? "/home/dev" : path;
+      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
+      return [{ name: `${path.split("/").pop()}.txt`, kind: "file", size: 0, mtime: 0 }];
+    });
+    const explorer = (active: boolean, rootDir: string) => (
+      <Activity mode={active ? "visible" : "hidden"}>
+        <FileExplorer active={active} sessionId={session.id} rootDir={rootDir} />
+      </Activity>
+    );
+    const { rerender } = render(explorer(true, "/tmp/first"));
+    await screen.findByRole("treeitem", { name: "first.txt" });
+    rerender(explorer(false, "/tmp/next"));
+    await act(async () => { await openResource(resourceRefForSession(session, "/tmp/first"), "directory"); });
+    rerender(explorer(true, "/tmp/next"));
+    await screen.findByRole("treeitem", { name: "first.txt" });
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Back" }).disabled).toBe(true);
+  });
+
+  test("revalidates the current directory on return to Files", async () => {
     let filename = "before.txt";
     const reads: string[] = [];
     mockIPC((command, payload) => {
@@ -35,45 +76,16 @@ describe("FileExplorer directory navigation", () => {
       </Activity>
     );
     const { rerender } = render(explorer(true));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "docs" }));
     await screen.findByRole("treeitem", { name: /^before\.txt/ });
     rerender(explorer(false));
     reads.length = 0;
     filename = "after.txt";
     await act(async () => rerender(explorer(true)));
-    expect(reads).toEqual(["/srv/app", "/srv/app/docs"]);
-    expect(screen.getByRole("treeitem", { name: /^docs/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(reads).toEqual(["/srv/app/docs"]);
+    expect(screen.getByRole("button", { name: "docs" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("treeitem", { name: /^after\.txt/ })).toBeTruthy();
     expect(screen.queryByRole("treeitem", { name: /^before\.txt/ })).toBeNull();
-  });
-
-  test("can reopen nested folders whose listing was discarded under a collapsed parent", async () => {
-    let filename = "before.txt";
-    mockIPC((command, payload) => {
-      if (command !== "fs_read_dir") return "/home/dev";
-      const { path } = payload as { path: string };
-      if (path === "/srv/app") return [{ name: "docs", kind: "dir", size: 0, mtime: 0 }];
-      if (path === "/srv/app/docs") return [{ name: "drafts", kind: "dir", size: 0, mtime: 0 }];
-      return [{ name: filename, kind: "file", size: 1, mtime: 0 }];
-    });
-    const explorer = (active: boolean) => (
-      <Activity mode={active ? "visible" : "hidden"}>
-        <FileExplorer active={active} sessionId="local" rootDir="/srv/app" />
-      </Activity>
-    );
-    const { rerender } = render(explorer(true));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand drafts" }));
-    await screen.findByRole("treeitem", { name: /^before\.txt/ });
-    fireEvent.click(screen.getByRole("button", { name: "Collapse docs" }));
-    rerender(explorer(false));
-    filename = "after.txt";
-    await act(async () => rerender(explorer(true)));
-    fireEvent.click(screen.getByRole("button", { name: "Expand docs" }));
-    const drafts = await screen.findByRole("treeitem", { name: /^drafts/ });
-    expect(drafts.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(screen.getByRole("button", { name: "Expand drafts" }));
-    await screen.findByRole("treeitem", { name: /^after\.txt/ });
   });
 
   test("replaces the previous listing with a retryable error if the folder moved while Files was hidden", async () => {
@@ -121,7 +133,7 @@ describe("FileExplorer directory navigation", () => {
     useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });
     render(<InspectorPanel session={session} />);
     await waitFor(() => expect(paths[paths.length - 1]).toBe("/srv/app"));
-    fireEvent.click(screen.getByRole("button", { name: "Go to parent" }));
+    fireEvent.click(screen.getByRole("button", { name: "srv" }));
     await waitFor(() => expect(paths[paths.length - 1]).toBe("/srv"));
     if (remote) {
       fireEvent.click(screen.getByRole("button", { name: "More inspector tools" }));
@@ -159,13 +171,13 @@ describe("FileExplorer directory navigation", () => {
     await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe(expectedPaths[0]));
 
     for (const parent of expectedPaths.slice(1)) {
-      const goUp = screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement;
+      const goUp = within(screen.getByRole("navigation", { name: "Directory" })).getByTitle(parent) as HTMLButtonElement;
       expect(goUp.disabled).toBe(false);
       fireEvent.click(goUp);
       await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe(parent));
     }
 
-    expect((screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "/" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getAllByRole("button", { name: "/" })[0].getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("treeitem", { name: "/" })).toBeNull();
   });
@@ -214,7 +226,7 @@ describe("FileExplorer directory navigation", () => {
 
     fireEvent.click(await openFileActions().findByRole("menuitem", { name: "Go to home directory" }));
     await waitFor(() => expect(readPaths).toContain("/root"));
-    expect(screen.getByRole("button", { name: "Go to parent" })).toBeTruthy();
+    expect(within(screen.getByRole("navigation", { name: "Directory" })).getByTitle("/")).toBeTruthy();
   });
 
   test("lets a local explorer browse from its cwd to the filesystem root", async () => {
@@ -232,12 +244,12 @@ describe("FileExplorer directory navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "wfs" }));
     await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/opt/wfs"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Go to parent" }));
+    fireEvent.click(screen.getByRole("button", { name: "opt" }));
     await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/opt"));
-    fireEvent.click(screen.getByRole("button", { name: "Go to parent" }));
+    fireEvent.click(screen.getByRole("button", { name: "/" }));
     await waitFor(() => expect(readPaths[readPaths.length - 1]).toBe("/"));
 
-    expect((screen.getByRole("button", { name: "Go to parent" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "/" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getAllByRole("button", { name: "/" })[0].getAttribute("aria-current")).toBe("page");
   });
 
@@ -366,28 +378,38 @@ describe("FileExplorer directory navigation", () => {
       throw new Error(`unexpected command: ${command}`);
     });
 
-    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" remoteHost="deploy@example" />);
     await screen.findByText("Directory is empty");
 
     const nav = screen.getByRole("navigation", { name: "Directory" });
-    expect(within(nav).getByRole("button", { name: "Go to parent" })).toBeTruthy();
+    expect(within(nav).getByRole("button", { name: "Back" })).toBeTruthy();
     expect(within(nav).getByRole("button", { name: "Refresh file list" })).toBeTruthy();
     expect(within(nav).queryByRole("button", { name: "Follow terminal directory" })).toBeNull();
     expect(within(nav).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
     expect(within(nav).queryByRole("button", { name: "Upload file…" })).toBeNull();
 
+    const toggle = screen.getByRole("button", { name: "Show file search" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("search", { name: "Search files" })).toBeNull();
+    fireEvent.click(toggle);
     const search = screen.getByRole("search", { name: "Search files" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-controls")).toBe(search.id);
     expect(within(search).getByPlaceholderText("Search this folder")).toBeTruthy();
     expect(within(search).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
     expect(within(search).queryByRole("button", { name: "Refresh file list" })).toBeNull();
 
     const tools = screen.getByRole("toolbar", { name: "Remote file tools" });
+    expect(within(tools).getByTitle("deploy@example").textContent).toBe("deploy@example");
+    expect(within(tools).getByRole("button", { name: "Hide file search" })).toBe(toggle);
+    expect(tools.nextElementSibling).toBe(nav);
+    expect(nav.nextElementSibling).toBe(search);
     expect(within(tools).getByRole("group", { name: "Remote locations" })).toBeTruthy();
     expect(within(tools).getByRole("group", { name: "File transfers" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Favorite and recent directories" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Upload file…" })).toBeTruthy();
     expect(within(tools).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
-    expect(within(tools).queryByRole("button", { name: "Go to parent" })).toBeNull();
+    expect(within(tools).queryByRole("button", { name: "Back" })).toBeNull();
     const menu = openFileActions();
     expect(menu.getByRole("menuitem", { name: "Stop following terminal CWD" })).toBeTruthy();
     expect(menu.getByRole("menuitem", { name: "Favorite this directory" })).toBeTruthy();
@@ -418,7 +440,7 @@ describe("FileExplorer directory navigation", () => {
     expect(row?.children).toHaveLength(4);
     expect(header?.querySelector(".explorer-listing-modified")).toBeTruthy();
     expect(row?.querySelector(".explorer-listing-modified")).toBeTruthy();
-    expect(header?.querySelector(".explorer-listing-action")).toBeTruthy();
+    expect(header?.querySelector(".explorer-listing-actions")).toBeTruthy();
     expect(row?.querySelector("button.explorer-listing-action")).toBeTruthy();
   });
 
@@ -501,6 +523,35 @@ describe("FileExplorer directory navigation", () => {
     expect(within(screen.getByRole("search", { name: "Search files" })).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
     expect(screen.queryByRole("toolbar", { name: "Remote file tools" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Upload file…" })).toBeNull();
+  });
+
+  test("manages focus and clears the query when toggling remote search", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir" || command === "ssh_fs_search") return [];
+      return null;
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    await screen.findByText("Directory is empty");
+    const toggle = screen.getByRole("button", { name: "Show file search" });
+    fireEvent.click(toggle);
+    const input = screen.getByRole("textbox", { name: "Search this folder" });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "notes" } });
+    input.blur();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input).toHaveProperty("value", "");
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("search")).toBeNull();
+    expect(document.activeElement).toBe(toggle);
+    fireEvent.click(toggle);
+    fireEvent.change(input, { target: { value: "notes" } });
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("search")).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("textbox", { name: "Search this folder" })).toHaveProperty("value", "");
   });
 
   test("jumps to a favorite remote directory from the places menu", async () => {
@@ -709,11 +760,10 @@ describe("FileExplorer workspace files", () => {
   });
 
   test.each([
-    { folder: "/srv/app", generation: "current", openFolder: false, refreshes: true },
-    { folder: "/srv/app", generation: "current", openFolder: true, refreshes: true },
-    { folder: "/srv/app/other", generation: "current", openFolder: false, refreshes: false },
-    { folder: "/srv/app", generation: "previous", openFolder: false, refreshes: false },
-  ])("refreshes Files only for a completed upload in its folder and transport ($folder, $generation, expanded=$openFolder)", async ({ folder, generation, openFolder, refreshes }) => {
+    { folder: "/srv/app", generation: "current", refreshes: true },
+    { folder: "/srv/app/other", generation: "current", refreshes: false },
+    { folder: "/srv/app", generation: "previous", refreshes: false },
+  ])("refreshes Files only for a completed upload in its folder and transport ($folder, $generation)", async ({ folder, generation, refreshes }) => {
     useTransferStore.getState().replaceItemsForTest([]);
     let reads = 0;
     let uploaded = false;
@@ -724,30 +774,18 @@ describe("FileExplorer workspace files", () => {
         resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
       };
     });
-    mockIPC((command, payload) => {
+    mockIPC((command) => {
       if (command === "ssh_fs_home") return "/home/alice";
       if (command === "ssh_fs_read_dir") {
         reads += 1;
-        if ((payload as { path: string }).path === "/srv/app/docs") {
-          return [{ name: "guide.txt", kind: "file", size: 2, mtime: 0 }];
-        }
-        return [
-          ...(openFolder ? [{ name: "docs", kind: "dir", size: 0, mtime: 0 }] : []),
-          ...(uploaded && folder === "/srv/app" ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
-        ];
+        return uploaded ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : [];
       }
       if (command === "ssh_transfer_upload") return upload;
       throw new Error(`unexpected command: ${command}`);
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
-    if (openFolder) {
-      const docs = await screen.findByRole("treeitem", { name: /^docs/ });
-      fireEvent.keyDown(docs, { key: "ArrowRight" });
-      await screen.findByRole("treeitem", { name: /^guide\.txt/ });
-    } else {
-      await screen.findByText("Directory is empty");
-    }
+    await screen.findByText("Directory is empty");
     const initialReads = reads;
     const transferId = useTransferStore.getState().enqueue({
       binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: generation },
@@ -756,87 +794,15 @@ describe("FileExplorer workspace files", () => {
       destination: `${folder}/report.txt`,
       conflict: "rename",
     });
-    const status = () => useTransferStore.getState().itemsById.get(transferId)?.status;
-    await waitFor(() => expect(status()).toBe("running"));
-    expect(reads).toBe(initialReads);
-
+    await waitFor(() => expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("running"));
     await act(async () => finishUpload());
-    expect(status()).toBe("completed");
-    if (refreshes) expect(await screen.findByRole("treeitem", { name: /report\.txt/ })).toBeTruthy();
+    expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("completed");
+    if (refreshes) expect(await screen.findByRole("treeitem", { name: "report.txt" })).toBeTruthy();
     else expect(screen.getByText("Directory is empty")).toBeTruthy();
-    if (openFolder) expect(screen.getByRole("treeitem", { name: /^guide\.txt/ })).toBeTruthy();
     expect(reads).toBe(initialReads + Number(refreshes));
   });
 
-  test("refreshes only the target expanded subdirectory after a queued SSH upload", async () => {
-    useTransferStore.getState().replaceItemsForTest([]);
-    const readsByPath = new Map<string, number>();
-    let uploaded = false;
-    let finishUpload!: () => void;
-    const upload = new Promise((resolve) => {
-      finishUpload = () => {
-        uploaded = true;
-        resolve({ outcome: { status: "completed", bytesTransferred: 2 } });
-      };
-    });
-    mockIPC((command, payload) => {
-      if (command === "ssh_fs_home") return "/home/alice";
-      if (command === "ssh_fs_read_dir") {
-        const path = (payload as { path: string }).path;
-        readsByPath.set(path, (readsByPath.get(path) ?? 0) + 1);
-        if (path === "/srv/app") {
-          return [
-            { name: "docs", kind: "dir", size: 0, mtime: 0 },
-            { name: "src", kind: "dir", size: 0, mtime: 0 },
-          ];
-        }
-        if (path === "/srv/app/docs") {
-          return [{ name: "guide.txt", kind: "file", size: 2, mtime: 0 }];
-        }
-        if (path === "/srv/app/src") {
-          return [
-            { name: "notes.md", kind: "file", size: 2, mtime: 0 },
-            ...(uploaded ? [{ name: "report.txt", kind: "file", size: 2, mtime: 0 }] : []),
-          ];
-        }
-        return [];
-      }
-      if (command === "ssh_transfer_upload") return upload;
-      throw new Error(`unexpected command: ${command}`);
-    });
-
-    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
-    const docs = await screen.findByRole("treeitem", { name: /^docs$/ });
-    fireEvent.keyDown(docs, { key: "ArrowRight" });
-    await screen.findByRole("treeitem", { name: /^guide\.txt$/ });
-    const src = await screen.findByRole("treeitem", { name: /^src$/ });
-    fireEvent.keyDown(src, { key: "ArrowRight" });
-    await screen.findByRole("treeitem", { name: /^notes\.md$/ });
-
-    const beforeRoot = readsByPath.get("/srv/app") ?? 0;
-    const beforeDocs = readsByPath.get("/srv/app/docs") ?? 0;
-    const beforeSrc = readsByPath.get("/srv/app/src") ?? 0;
-
-    const transferId = useTransferStore.getState().enqueue({
-      binding: { logicalSessionId: "remote", physicalPtyId: 52, transportGeneration: "current" },
-      direction: "upload",
-      source: "/home/alice/report.txt",
-      destination: "/srv/app/src/report.txt",
-      conflict: "rename",
-    });
-    const status = () => useTransferStore.getState().itemsById.get(transferId)?.status;
-    await waitFor(() => expect(status()).toBe("running"));
-
-    await act(async () => finishUpload());
-    expect(status()).toBe("completed");
-    expect(await screen.findByRole("treeitem", { name: /^report\.txt$/ })).toBeTruthy();
-    expect(screen.getByRole("treeitem", { name: /^guide\.txt$/ })).toBeTruthy();
-    expect(readsByPath.get("/srv/app/src")).toBe(beforeSrc + 1);
-    expect(readsByPath.get("/srv/app")).toBe(beforeRoot);
-    expect(readsByPath.get("/srv/app/docs")).toBe(beforeDocs);
-  });
-
-  test("invalidates a collapsed subdirectory cache on upload and fetches fresh entries when re-expanded", async () => {
+  test("reads fresh entries when revisiting a directory after an upload", async () => {
     useTransferStore.getState().replaceItemsForTest([]);
     let srcReads = 0;
     let uploaded = false;
@@ -869,7 +835,8 @@ describe("FileExplorer workspace files", () => {
     const src = await screen.findByRole("treeitem", { name: /^src$/ });
     fireEvent.keyDown(src, { key: "ArrowRight" });
     await screen.findByRole("treeitem", { name: /^notes\.md$/ });
-    fireEvent.keyDown(src, { key: "ArrowLeft" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await screen.findByRole("treeitem", { name: "src" });
     expect(screen.queryByRole("treeitem", { name: /^notes\.md$/ })).toBeNull();
     expect(srcReads).toBe(1);
 
@@ -885,7 +852,7 @@ describe("FileExplorer workspace files", () => {
     expect(useTransferStore.getState().itemsById.get(transferId)?.status).toBe("completed");
     expect(srcReads).toBe(1);
 
-    fireEvent.keyDown(src, { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
     expect(await screen.findByRole("treeitem", { name: /^report\.txt$/ })).toBeTruthy();
     expect(srcReads).toBe(2);
   });
@@ -906,6 +873,7 @@ describe("FileExplorer workspace files", () => {
     const remoteView = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
     await screen.findByRole("treeitem", { name: /^notes\.md$/ });
 
+    fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     const searchInput = screen.getByPlaceholderText("Search this folder");
     fireEvent.change(searchInput, { target: { value: ".env" } });
     await screen.findByText("No matching files");
@@ -1224,7 +1192,7 @@ describe("FileExplorer workspace files", () => {
     fireEvent.keyDown(file, { key: "F10", shiftKey: true });
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete remote item" }));
     const deleteDialog = await screen.findByRole("dialog", { name: "Delete remote item" });
-    expect(screen.getByText("deploy@example.com")).toBeTruthy();
+    expect(within(deleteDialog).getByText("deploy@example.com")).toBeTruthy();
     expect(screen.getByText("/srv/app/report.txt")).toBeTruthy();
     fireEvent.keyDown(deleteDialog, { key: "Escape" });
     await waitFor(() => expect(document.activeElement).toBe(file));
@@ -1358,7 +1326,7 @@ describe("FileExplorer workspace files", () => {
       </Activity>
     );
     const { rerender } = render(explorer(true));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand docs" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "docs" }));
     await screen.findByRole("treeitem", { name: /^keep\.txt/ });
     fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select keep.txt for download" }));
@@ -1367,15 +1335,11 @@ describe("FileExplorer workspace files", () => {
     if (action === "refresh") {
       await act(async () => fireEvent.click(screen.getByRole("button", { name: "Refresh file list" })));
     } else {
-      fireEvent.click(screen.getByRole("button", { name: "Collapse docs" }));
       rerender(explorer(false));
       await act(async () => rerender(explorer(true)));
     }
-    const actions = openFileActions();
-    expect(actions.getByRole("menuitem", { name: "Download selected files (2)" })).toBeTruthy();
-    fireEvent.keyDown(actions.getByRole("menuitem", { name: "Download selected files (2)" }), { key: "Escape" });
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Expand docs" })));
     expect((await screen.findByRole("checkbox", { name: "Select keep.txt for download" }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByRole("checkbox", { name: "Select removed.txt for download" })).toBeNull();
     expect(openFileActions().getByRole("menuitem", { name: "Download selected files (1)" })).toBeTruthy();
   });
 
@@ -1384,9 +1348,12 @@ describe("FileExplorer workspace files", () => {
     const downloads: Array<{ remotePath: string; localPath: string; binding: { transportGeneration: string } }> = [];
     mockIPC((command, payload) => {
       const path = (payload as { path?: string }).path;
-      if (command === "ssh_fs_read_dir") return [
-        { name: "report.txt", kind: "file", size: 8, mtime: 0 },
+      if (command === "ssh_fs_read_dir" && path === "/srv/app") return [
+        { name: "docs", kind: "dir", size: 0, mtime: 0 },
         { name: "notes.txt", kind: "file", size: 12, mtime: 0 },
+      ];
+      if (command === "ssh_fs_read_dir" && path === "/srv/app/docs") return [
+        { name: "report.txt", kind: "file", size: 8, mtime: 0 },
         { name: "huge.bin", kind: "file", size: 100 * 1024 * 1024 + 1, mtime: 0 },
       ];
       if (command === "plugin:dialog|open") return "/home/alice/Downloads";
@@ -1401,8 +1368,11 @@ describe("FileExplorer workspace files", () => {
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={55} transportGeneration="download-generation" />);
-    await screen.findByRole("treeitem", { name: /^report\.txt/ });
+    const docs = await screen.findByRole("treeitem", { name: "docs" });
     fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select notes.txt for download" }));
+    fireEvent.click(docs);
+    await screen.findByRole("checkbox", { name: "Select report.txt for download" });
     fireEvent.click(screen.getByRole("checkbox", { name: "Select all downloadable files" }));
 
     expect(screen.getByRole("checkbox", { name: "Select report.txt for download" }).getAttribute("aria-checked")).not.toBe("false");
@@ -1413,7 +1383,7 @@ describe("FileExplorer workspace files", () => {
     expect(screen.queryByRole("checkbox", { name: "Select all downloadable files" })).toBeNull();
     expect(downloads.map(({ remotePath, localPath, binding }) => [remotePath, localPath, binding.transportGeneration])).toEqual([
       ["/srv/app/notes.txt", "/home/alice/Downloads/notes.txt", "download-generation"],
-      ["/srv/app/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
+      ["/srv/app/docs/report.txt", "/home/alice/Downloads/report (1).txt", "download-generation"],
     ]);
     expect(useTransferStore.getState().materializeItems().every(({ batchId }) => typeof batchId === "string")).toBe(true);
   });
@@ -1624,147 +1594,82 @@ describe("FileExplorer workspace files", () => {
     ], "modified", "desc").map((entry) => entry.name)).toEqual(["alpha.txt", "zeta.txt"]);
   });
 
-  test("builds semantic preorder rows with load failures adjacent to their expanded directory", () => {
-    const nodes: ExplorerTreeNode[] = [
-      { entry: { name: "src", kind: "dir", size: 0, mtime: 0 }, path: "/repo/src", parentPath: null, level: 1, posInSet: 1, setSize: 2 },
-      { entry: { name: "index.ts", kind: "file", size: 1, mtime: 0 }, path: "/repo/src/index.ts", parentPath: "/repo/src", level: 2, posInSet: 1, setSize: 1 },
-      { entry: { name: "README.md", kind: "file", size: 1, mtime: 0 }, path: "/repo/README.md", parentPath: null, level: 1, posInSet: 2, setSize: 2 },
-    ];
-
-    expect(buildExplorerTreeRows(nodes, new Set(["/repo/src"]), { "/repo/src": { kind: "readFailed" } }))
-      .toEqual([
-        { ...nodes[0], kind: "node", expanded: true },
-        { kind: "loadError", parentPath: "/repo/src", level: 2 },
-        { ...nodes[1], kind: "node", expanded: false },
-        { ...nodes[2], kind: "node", expanded: false },
-      ]);
-  });
-
-  test("exposes tree hierarchy metadata and supports lazy tree keyboard navigation", async () => {
+  test.each([false, true])("navigates a flat listing with history and an editable path (SSH=%s)", async (remote) => {
     const reads: string[] = [];
     mockIPC((command, payload) => {
-      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
-      const path = (payload as { path: string }).path;
+      if (command === "fs_resolve_dir" || command === "ssh_fs_home") return "/home/dev";
+      if (command !== (remote ? "ssh_fs_read_dir" : "fs_read_dir")) throw new Error(`unexpected command: ${command}`);
+      const { path } = payload as { path: string };
       reads.push(path);
       if (path === "/tmp/repo") return [
-        { name: "src", kind: "dir", size: 0, mtime: 2_000 },
-        { name: "README.md", kind: "file", size: 1, mtime: 1_000 },
+        { name: "src", kind: "dir", size: 0, mtime: 0 },
+        { name: "README.md", kind: "file", size: 1, mtime: 0 },
       ];
-      return [{ name: "index.ts", kind: "file", size: 1, mtime: 1_000 }];
+      if (path === "/tmp/repo/src") return [{ name: "nested", kind: "dir", size: 0, mtime: 0 }];
+      if (path === "/tmp/repo/src/nested") return [{ name: "index.ts", kind: "file", size: 1, mtime: 0 }];
+      return [{ name: "release.txt", kind: "file", size: 1, mtime: 0 }];
     });
 
-    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
-    const tree = await screen.findByRole("tree", { name: "Files and directories" });
-    const src = screen.getByRole("treeitem", { name: /^src/ });
-    const readme = screen.getByRole("treeitem", { name: /^README\.md/ });
-    expect([src.tabIndex, readme.tabIndex]).toEqual([0, -1]);
-    expect(src.getAttribute("aria-level")).toBe("1");
-    expect(src.getAttribute("aria-expanded")).toBe("false");
-    expect(src.getAttribute("aria-setsize")).toBe("2");
-    expect(src.getAttribute("aria-posinset")).toBe("1");
-    expect(reads).toEqual(["/tmp/repo"]);
+    const explorer = <FileExplorer sessionId={remote ? "remote" : "local"} rootDir="/tmp/repo" remotePtyId={remote ? 40 : undefined} />;
+    const { rerender } = render(explorer);
+    let nav = within(screen.getByRole("navigation", { name: "Directory" }));
+    let back = nav.getByRole<HTMLButtonElement>("button", { name: "Back" });
+    let forward = nav.getByRole<HTMLButtonElement>("button", { name: "Forward" });
+    expect(back.disabled).toBe(true);
+    expect(forward.disabled).toBe(true);
+    const src = await screen.findByRole("treeitem", { name: "src" });
+    expect(src.hasAttribute("aria-expanded")).toBe(false);
+    fireEvent.click(src);
+    const nested = await screen.findByRole("treeitem", { name: "nested" });
+    expect(screen.queryByRole("treeitem", { name: "README.md" })).toBeNull();
+    expect(nav.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page");
+    nested.focus();
+    fireEvent.keyDown(nested, { key: "Enter" });
+    const index = await screen.findByRole("treeitem", { name: "index.ts" });
+    expect(document.activeElement).toBe(index);
 
-    src.focus();
-    fireEvent.keyDown(src, { key: "ArrowRight" });
-    const child = await screen.findByRole("treeitem", { name: /^index\.ts/ });
-    expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
-    expect(src.getAttribute("aria-expanded")).toBe("true");
-    expect(child.getAttribute("aria-level")).toBe("2");
-    expect(src.parentElement).toBe(tree);
-    expect(child.parentElement).toBe(tree);
-    expect(tree.querySelector('[role="group"]')).toBeNull();
-    expect(src.style.height).toBe("32px");
-    expect(child.style.height).toBe("32px");
-    expect(tree.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    rerender(null);
+    rerender(explorer);
+    await screen.findByRole("treeitem", { name: "index.ts" });
+    nav = within(screen.getByRole("navigation", { name: "Directory" }));
+    back = nav.getByRole<HTMLButtonElement>("button", { name: "Back" });
+    forward = nav.getByRole<HTMLButtonElement>("button", { name: "Forward" });
+    const edit = nav.getByRole("button", { name: "Edit path" });
+    expect(back.disabled).toBe(false);
+    fireEvent.click(back);
+    await screen.findByRole("treeitem", { name: "nested" });
+    expect(forward.disabled).toBe(false);
+    fireEvent.click(forward);
+    await screen.findByRole("treeitem", { name: "index.ts" });
+    fireEvent.click(nav.getByRole("button", { name: "repo" }));
+    await screen.findByRole("treeitem", { name: "README.md" });
+    fireEvent.click(back);
+    await screen.findByRole("treeitem", { name: "index.ts" });
 
-    fireEvent.keyDown(src, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(child);
-    fireEvent.keyDown(child, { key: "ArrowLeft" });
-    expect(document.activeElement).toBe(src);
-    fireEvent.keyDown(src, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(child);
-    fireEvent.click(screen.getByRole("button", { name: "Collapse src" }));
-    expect(screen.queryByRole("treeitem", { name: /^index\.ts/ })).toBeNull();
-    expect(document.activeElement).toBe(src);
-    expect(tree.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
-    fireEvent.keyDown(src, { key: "End" });
-    expect(document.activeElement).toBe(readme);
-    fireEvent.keyDown(readme, { key: "Home" });
-    expect(document.activeElement).toBe(src);
-  });
+    fireEvent.click(edit);
+    const input = nav.getByRole<HTMLInputElement>("textbox", { name: "Directory path" });
+    expect(input.value).toBe("/tmp/repo/src/nested");
+    fireEvent.change(input, { target: { value: "relative" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.change(input, { target: { value: "/opt/other/../releases" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(nav.getByRole("textbox")).toBe(input);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(nav.queryByRole("textbox")).toBeNull();
+    expect(document.activeElement).toBe(edit);
 
-  test("expands a folder from the chevron without navigating into it", async () => {
-    const reads: string[] = [];
-    mockIPC((command, payload) => {
-      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
-      const path = (payload as { path: string }).path;
-      reads.push(path);
-      if (path === "/tmp/repo") return [
-        { name: "src", kind: "dir", size: 0, mtime: 2_000 },
-        { name: "README.md", kind: "file", size: 1, mtime: 1_000 },
-      ];
-      return [{ name: "index.ts", kind: "file", size: 1, mtime: 1_000 }];
-    });
-
-    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
-    const src = await screen.findByRole("treeitem", { name: /^src/ });
-    expect(src.getAttribute("aria-expanded")).toBe("false");
-
-    fireEvent.click(screen.getByRole("button", { name: "Expand src" }));
-    expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
-    expect(src.getAttribute("aria-expanded")).toBe("true");
-    expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src"]);
-    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
-
-    fireEvent.keyDown(src, { key: "Enter" });
-    await waitFor(() => expect(reads[reads.length - 1]).toBe("/tmp/repo/src"));
-    expect(screen.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page");
-  });
-
-  test("clicking a local folder expands nested children instead of replacing the listing", async () => {
-    const reads: string[] = [];
-    mockIPC((command, payload) => {
-      if (command !== "fs_read_dir") throw new Error(`unexpected command: ${command}`);
-      const path = (payload as { path: string }).path;
-      reads.push(path);
-      if (path === "/tmp/repo") return [
-        { name: "src", kind: "dir", size: 0, mtime: 2_000 },
-        { name: "lib", kind: "dir", size: 0, mtime: 1_500 },
-        { name: "README.md", kind: "file", size: 1, mtime: 1_000 },
-      ];
-      if (path === "/tmp/repo/src") return [
-        { name: "index.ts", kind: "file", size: 1, mtime: 1_000 },
-        { name: "nested", kind: "dir", size: 0, mtime: 1_000 },
-      ];
-      return [{ name: "deep.ts", kind: "file", size: 1, mtime: 1_000 }];
-    });
-
-    render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
-    const src = await screen.findByRole("treeitem", { name: /^src/ });
-    const row = (item: HTMLElement) => {
-      const header = item.querySelector(":scope > .hover-bg");
-      if (!header) throw new Error("missing explorer row");
-      return header;
-    };
-    // The semantic model is flat; clicking a directory row expands it in
-    // preorder without introducing nested role=group containers.
-    fireEvent.click(row(src));
-    expect(await screen.findByRole("treeitem", { name: /^index\.ts/ })).toBeTruthy();
-    const nested = screen.getByRole("treeitem", { name: /^nested/ });
-    expect(src.getAttribute("aria-expanded")).toBe("true");
-    expect(nested.getAttribute("aria-level")).toBe("2");
-    expect(screen.getByRole("treeitem", { name: /^lib/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
-
-    fireEvent.click(row(nested));
-    expect(await screen.findByRole("treeitem", { name: /^deep\.ts/ })).toBeTruthy();
-    expect(nested.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("treeitem", { name: /^deep\.ts/ }).getAttribute("aria-level")).toBe("3");
-    expect(screen.getByRole("button", { name: "repo" }).getAttribute("aria-current")).toBe("page");
-    expect(reads).toEqual(["/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested"]);
-
-    fireEvent.click(row(src), { detail: 2 });
-    await waitFor(() => expect(screen.getByRole("button", { name: "src" }).getAttribute("aria-current")).toBe("page"));
+    fireEvent.click(edit);
+    const path = nav.getByRole("textbox", { name: "Directory path" });
+    fireEvent.change(path, { target: { value: "/opt/releases/" } });
+    fireEvent.keyDown(path, { key: "Enter" });
+    await screen.findByRole("treeitem", { name: "release.txt" });
+    expect(forward.disabled).toBe(true);
+    expect(reads).toEqual([
+      "/tmp/repo", "/tmp/repo/src", "/tmp/repo/src/nested", "/tmp/repo/src/nested", "/tmp/repo/src",
+      "/tmp/repo/src/nested", "/tmp/repo", "/tmp/repo/src/nested", "/opt/releases",
+    ]);
   });
 
   test("retries a rejected nested directory read instead of caching an empty result", async () => {
@@ -1784,7 +1689,9 @@ describe("FileExplorer workspace files", () => {
     src.focus();
     fireEvent.keyDown(src, { key: "ArrowRight" });
     act(() => rejectFirst(new Error("temporary read failure")));
-    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(document.activeElement).toBe(retry);
+    fireEvent.click(retry);
 
     expect(await screen.findByRole("treeitem", { name: /^recovered\.ts/ })).toBeTruthy();
     expect(nestedAttempts).toBe(2);
@@ -1869,7 +1776,7 @@ describe("FileExplorer workspace files", () => {
     }
   });
 
-  test("uses the same bounded virtualizer after expanding a large subtree", async () => {
+  test("keeps virtualization bounded after entering another large directory", async () => {
     const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
     Object.defineProperty(HTMLElement.prototype, "clientHeight", {
       configurable: true,
@@ -1887,12 +1794,11 @@ describe("FileExplorer workspace files", () => {
 
     try {
       render(<FileExplorer sessionId="local" rootDir="/tmp/repo" />);
+      fireEvent.click(await screen.findByRole("treeitem", { name: "src" }));
+      await screen.findByRole("treeitem", { name: /^child-000\.txt/ });
       const tree = await screen.findByRole("tree", { name: "Files and directories" });
-      fireEvent.click(await screen.findByRole("button", { name: "Expand src" }));
-      const child = await screen.findByRole("treeitem", { name: /^child-000\.txt/ });
-      expect(tree.getAttribute("data-tree-row-count")).toBe("301");
-      expect(tree.querySelector('[role="group"]')).toBeNull();
-      expect(child.getAttribute("aria-level")).toBe("2");
+      expect(tree.getAttribute("data-tree-row-count")).toBe("200");
+      expect(screen.queryByRole("treeitem", { name: /root-000/ })).toBeNull();
       expect(tree.querySelectorAll('[role="treeitem"]').length).toBeLessThanOrEqual(50);
     } finally {
       if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
@@ -1946,9 +1852,11 @@ describe("FileExplorer workspace files", () => {
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/tmp/repo" remotePtyId={42} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "match" } });
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
 
+    expect(screen.getByRole("button", { name: "Hide file search" }).getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByRole("button", { name: /^match\.txt/ })).toBeTruthy();
     expect(screen.getByPlaceholderText("Search this folder")).toHaveProperty("value", "match");
     expect(searchAttempts).toBe(2);
@@ -2055,6 +1963,7 @@ describe("FileExplorer workspace files", () => {
     fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select report.txt for download" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "report" } });
     expect(await screen.findByRole("button", { name: "report.txt" })).toBeTruthy();
     const searchActions = openFileActions();

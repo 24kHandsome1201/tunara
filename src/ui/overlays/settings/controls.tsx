@@ -1,5 +1,3 @@
-import type { ThemeType } from "../../types";
-import { getTerminalTheme } from "@/styles/terminalTheme";
 import { platform } from "@tauri-apps/plugin-os";
 
 /** Shared section / row styles for the settings page. */
@@ -108,72 +106,5 @@ export function Stepper({ display, valueMinWidth, onDecrement, onIncrement, decr
       <span style={{ minWidth: valueMinWidth, textAlign: "center", fontSize: "var(--fs-body)", fontFamily: "var(--font-mono)", color: "var(--c-text-primary)", padding: "0 4px" }}>{display}</span>
       <button type="button" onClick={onIncrement} aria-label={incrementLabel} className="hover-bg" style={{ ...btn, borderLeft: "1px solid var(--c-border-2)" }}>+</button>
     </div>
-  );
-}
-
-/** One entry in the System / Light / Dark color scheme picker. */
-export type ColorSchemeId = ThemeType;
-
-export function terminalThemePreviewColors(
-  id: ColorSchemeId,
-  systemIsDark: boolean,
-) {
-  const dark = id === "dark" || (id === "system" && systemIsDark);
-  const terminalPalette = getTerminalTheme(id);
-
-  // Fallbacks mirror the sRGB equivalents of the default tokens.css OKLCH
-  // surfaces so the default-scheme preview matches the real window chrome.
-  return {
-    deepest: dark ? "#0f0b09" : "#fffdfb",
-    sidebar: dark ? "#1c1714" : "#f2ece9",
-    raised: dark ? "#25211e" : "#e9e2de",
-    terminal: terminalPalette.background,
-    text: terminalPalette.foreground,
-    secondaryText: dark ? "#9f9a97" : "#5c5552",
-    border: dark ? "#342f2c" : "#d4ceca",
-  };
-}
-
-export function ColorSchemeCard({ id, label, selected, systemIsDark, onClick }: { id: ColorSchemeId; label: string; selected: boolean; systemIsDark: boolean; onClick: () => void }) {
-  const colors = terminalThemePreviewColors(id, systemIsDark);
-
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      aria-label={label}
-      tabIndex={selected ? 0 : -1}
-      data-color-scheme={id}
-      onClick={onClick}
-      style={{ width: "100%", minWidth: 0, border: selected ? "2px solid var(--c-accent)" : "1px solid var(--c-border-2)", borderRadius: "var(--r-card)", padding: 0, cursor: "pointer", background: "transparent", overflow: "hidden", textAlign: "left" }}
-    >
-      <div aria-hidden="true" data-color-scheme-preview="window" style={{ height: 62, background: colors.deepest, borderBottom: `1px solid ${colors.border}`, display: "flex", flexDirection: "column" }}>
-        <div data-preview-region="titlebar" style={{ height: 10, flexShrink: 0, borderBottom: `1px solid ${colors.border}`, display: "flex", alignItems: "center", padding: "0 5px", gap: 2 }}>
-          <div style={{ width: 12, height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.65 }} />
-          <div style={{ width: 6, height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.35 }} />
-        </div>
-        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-          <div data-preview-region="sidebar" style={{ width: 28, flexShrink: 0, background: colors.sidebar, borderRight: `1px solid ${colors.border}`, padding: "6px 4px", display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ width: "72%", height: 2, borderRadius: 1, background: colors.text, opacity: 0.72 }} />
-            <div style={{ width: "100%", height: 5, borderRadius: 2, background: colors.raised }} />
-            <div style={{ width: "85%", height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.7 }} />
-          </div>
-          <div data-preview-region="terminal" style={{ flex: 1, minWidth: 0, background: colors.terminal, padding: "7px 6px", display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ width: "48%", height: 2, borderRadius: 1, background: colors.text, opacity: 0.9 }} />
-            <div style={{ width: "78%", height: 2, borderRadius: 1, background: colors.text, opacity: 0.55 }} />
-            <div style={{ width: "62%", height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.7 }} />
-          </div>
-          <div data-preview-region="panel" style={{ width: 20, flexShrink: 0, background: colors.sidebar, borderLeft: `1px solid ${colors.border}`, padding: "6px 3px", display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ width: "100%", height: 4, borderRadius: 1, background: colors.raised }} />
-            <div style={{ width: "72%", height: 2, borderRadius: 1, background: colors.secondaryText, opacity: 0.65 }} />
-          </div>
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px" }}>
-        <span aria-hidden="true" style={{ minWidth: 0, fontSize: "var(--fs-secondary)", lineHeight: 1.25, color: "var(--c-text-primary)", fontWeight: selected ? 600 : 400 }}>{label}</span>
-        <div aria-hidden="true" style={{ width: 14, height: 14, marginLeft: 6, borderRadius: "50%", border: selected ? "5px solid var(--c-accent)" : "1.5px solid var(--c-radio-ring)", flexShrink: 0 }} />
-      </div>
-    </button>
   );
 }

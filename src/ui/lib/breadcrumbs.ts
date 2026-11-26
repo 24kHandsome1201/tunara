@@ -14,6 +14,10 @@ export function breadcrumbSegments(currentPath: string, rootDir: string, homeDir
   if (homeDir && homeDir !== "/" && homeDir.startsWith("/") && (currentPath === homeDir || currentPath.startsWith(homeDir + "/"))) {
     const home = breadcrumbSegments(currentPath, homeDir);
     if (home[0]?.targetPath === homeDir) home[0] = { label: "~", targetPath: homeDir };
+    if (currentPath === homeDir) {
+      const parent = homeDir.slice(0, homeDir.lastIndexOf("/")) || "/";
+      home.unshift({ label: "…", targetPath: parent, isCollapsed: true });
+    }
     return home;
   }
   const rootedAtFilesystem = rootDir === "/";

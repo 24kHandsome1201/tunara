@@ -72,11 +72,8 @@ export async function openResource(ref: ResourceRef, disposition: "editor" | "pr
       throw new Error("stale directory resource");
     }
     useSessionsStore.getState().setActive(ref.logicalSessionId);
-    useUIStore.setState((state) => ({
-      panelVisible: true,
-      inspectorTab: "files",
-      explorerPaths: { ...state.explorerPaths, [ref.logicalSessionId]: path },
-    }));
+    useUIStore.getState().setExplorerPath(ref.logicalSessionId, path);
+    useUIStore.setState({ panelVisible: true, inspectorTab: "files" });
     return;
   }
   useSessionsStore.getState().setActive(ref.logicalSessionId);

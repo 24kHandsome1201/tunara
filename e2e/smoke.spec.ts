@@ -8,9 +8,22 @@ test("boots and shows a terminal backed by the mocked PTY", async ({ page, backe
   expect(await backend.callCount("ssh_hosts_load")).toBeGreaterThan(0);
 });
 
-test("empty workspace has an accessible title", async ({ page }) => {
+test("empty workspace has an accessible title and stacks its launch cards in a narrow window", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "No terminals open", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start a terminal", level: 2 })).toBeVisible();
+  const folder = page.getByRole("button", { name: "Open folder", exact: true });
+  const ssh = page.getByRole("button", { name: "Connect SSH", exact: true });
+  const folderWide = await folder.boundingBox();
+  const sshWide = await ssh.boundingBox();
+  expect(folderWide!.width).toBeCloseTo(sshWide!.width);
+  expect(folderWide!.y).toBeCloseTo(sshWide!.y);
+
+  await page.setViewportSize({ width: 640, height: 720 });
+  const folderNarrow = await folder.boundingBox();
+  const sshNarrow = await ssh.boundingBox();
+  expect(folderNarrow!.width).toBeCloseTo(sshNarrow!.width);
+  expect(folderNarrow!.x).toBeCloseTo(sshNarrow!.x);
+  expect(folderNarrow!.y + folderNarrow!.height).toBeLessThan(sshNarrow!.y);
 });
 
 test("Inspector auto-collapses in a narrow window and restores when wide", async ({ page, backend }) => {
@@ -136,19 +149,22 @@ test("Settings opens and every section is reachable", async ({ page, backend }) 
   await page.keyboard.press("Meta+,");
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
-  const nav = dialog.getByRole("navigation");
-  const sections = [
-    ["appearance", "Appearance"],
-    ["terminal", "Terminal"],
-    ["ssh", "Connections & transfers"],
-    ["advanced", "Advanced"],
-    ["about", "About"],
-  ] as const;
-  for (const [id, label] of sections) {
-    const button = nav.getByRole("button", { name: label, exact: true });
-    await button.click();
-    await expect(button).toHaveAttribute("aria-current", "page");
-    await expect(dialog.locator(`#settings-section-${id}`)).toBeInViewport();
+  await expect(dialog.getByRole("heading", { name: "Appearance", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("heading", { name: "Default folder" })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Open config file" })).toBeInViewport();
+  const advanced = dialog.getByRole("button", { name: "Advanced", exact: true });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  const about = dialog.getByRole("heading", { name: "About", exact: true });
+  await expect(about).toBeHidden();
+
+  await dialog.getByRole("button", { name: /Large text/ }).click();
+  await expect(dialog.locator(".settings-preview-terminal")).toHaveCSS("font-size", "18px");
+  await advanced.click();
+  await expect(advanced).toHaveAttribute("aria-expanded", "true");
+  for (const label of ["More appearance options", "Terminal", "Connections & transfers", "CLI tools", "About"]) {
+    const heading = dialog.getByRole("heading", { name: label, exact: true });
+    await heading.scrollIntoViewIfNeeded();
+    await expect(heading).toBeInViewport();
   }
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

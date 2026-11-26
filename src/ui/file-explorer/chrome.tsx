@@ -1,9 +1,9 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { CloseIcon, PanelIconButton, RefreshIcon, SearchIcon, UploadIcon } from "../shared";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { breadcrumbSegments } from "../lib/breadcrumbs";
 import { FileContentIcon, FileNameIcon } from "./icons";
-import { ArrowsDownUp, BookmarkSimple, CaretLeft, DotsThree, Icon } from "@/ui/icons";
+import { ArrowLeft, ArrowRight, ArrowsDownUp, BookmarkSimple, DotsThree, Icon, PencilSimple } from "@/ui/icons";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -36,15 +36,13 @@ function ExplorerChipButton({
   );
 }
 
-function PlacesIcon() {
-  return <Icon icon={BookmarkSimple} size={14} />;
-}
-
 export function ExplorerNav({
   t,
   disabled,
-  canGoUp,
-  onGoUp,
+  canGoBack,
+  canGoForward,
+  onGoBack,
+  onGoForward,
   currentPath,
   breadcrumbRoot,
   breadcrumbHome,
@@ -53,118 +51,200 @@ export function ExplorerNav({
 }: {
   t: Translate;
   disabled: boolean;
-  canGoUp: boolean;
-  onGoUp: () => void;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onGoBack: () => void;
+  onGoForward: () => void;
   currentPath: string;
   breadcrumbRoot: string;
   breadcrumbHome: string | null;
-  onNavigate: (path: string) => void;
+  onNavigate: (path: string, direction?: "in" | "out") => void;
   onRefresh: () => void;
 }) {
+  const [draft, setDraft] = useState<{ path: string; origin: string; invalid: boolean } | null>(null);
+  const editing = !disabled && draft?.origin === currentPath;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const errorId = useId();
+  useLayoutEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+  useEffect(() => {
+    setDraft(null);
+  }, [currentPath, disabled]);
+
+  function finishEditing() {
+    setDraft(null);
+    editButtonRef.current?.focus();
+  }
+
   return (
-    <nav className="explorer-nav" aria-label={t("explorer.chrome.nav")}>
-      <PanelIconButton
-        onClick={() => { if (canGoUp) onGoUp(); }}
-        disabled={disabled || !canGoUp}
-        aria-disabled={disabled || !canGoUp}
-        title={t("explorer.go_up")}
-        aria-label={t("explorer.go_up")}
-      >
-        <Icon icon={CaretLeft} size={14} />
-      </PanelIconButton>
-      <div className="explorer-breadcrumbs" title={currentPath}>
-        {breadcrumbSegments(currentPath, breadcrumbRoot, breadcrumbHome).map((seg, idx, arr) => {
-          const isCurrent = seg.targetPath === currentPath;
-          const showSeparator = idx < arr.length - 1;
-          return (
-            <span key={`${idx}:${seg.targetPath}`} className="explorer-breadcrumb" data-collapsed={seg.isCollapsed ? "true" : undefined}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isCurrent) return;
-                  onNavigate(seg.targetPath);
-                }}
-                disabled={disabled || isCurrent}
-                aria-current={isCurrent ? "page" : undefined}
-                className={isCurrent ? "explorer-breadcrumb-current" : "hover-bg explorer-breadcrumb-link"}
-                title={seg.targetPath}
-              >
-                {seg.label}
-              </button>
-              {showSeparator && <span className="explorer-breadcrumb-sep" aria-hidden="true">›</span>}
-            </span>
-          );
-        })}
-      </div>
-      <PanelIconButton
-        disabled={disabled}
-        onClick={onRefresh}
-        title={t("explorer.refresh")}
-        aria-label={t("explorer.refresh")}
-      >
-        <RefreshIcon />
-      </PanelIconButton>
-    </nav>
+    <>
+      <nav className="explorer-nav" aria-label={t("explorer.chrome.nav")}>
+        <PanelIconButton
+          onClick={onGoBack}
+          disabled={disabled || !canGoBack}
+          title={t("explorer.go_back")}
+        >
+          <Icon icon={ArrowLeft} size={14} />
+        </PanelIconButton>
+        <PanelIconButton
+          onClick={onGoForward}
+          disabled={disabled || !canGoForward}
+          title={t("explorer.go_forward")}
+        >
+          <Icon icon={ArrowRight} size={14} />
+        </PanelIconButton>
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="ui-native-control explorer-path-input"
+            aria-label={t("explorer.directory_path")}
+            aria-invalid={draft.invalid || undefined}
+            aria-describedby={draft.invalid ? errorId : undefined}
+            spellCheck={false}
+            value={draft.path}
+            onChange={(event) => setDraft({ ...draft, path: event.target.value, invalid: false })}
+            onBlur={(event) => {
+              if (event.relatedTarget !== editButtonRef.current) setDraft(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || (event.key !== "Enter" && event.key !== "Escape")) return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (event.key === "Escape") {
+                finishEditing();
+                return;
+              }
+              if (!draft.path.startsWith("/") || draft.path.includes("\0") || /(?:^|\/)\.{1,2}(?:\/|$)/.test(draft.path)) {
+                setDraft({ ...draft, invalid: true });
+                return;
+              }
+              finishEditing();
+              onNavigate(draft.path.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/");
+            }}
+          />
+        ) : <div className="explorer-breadcrumbs" title={currentPath}>
+          {breadcrumbSegments(currentPath, breadcrumbRoot, breadcrumbHome).map((seg, idx, arr) => {
+            const isCurrent = seg.targetPath === currentPath;
+            const showSeparator = idx < arr.length - 1;
+            return (
+              <span key={`${idx}:${seg.targetPath}`} className="explorer-breadcrumb" data-collapsed={seg.isCollapsed ? "true" : undefined}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isCurrent) return;
+                    onNavigate(seg.targetPath, "out");
+                  }}
+                  disabled={disabled || isCurrent}
+                  aria-current={isCurrent ? "page" : undefined}
+                  className={isCurrent ? "explorer-breadcrumb-current" : "hover-bg explorer-breadcrumb-link"}
+                  title={seg.targetPath}
+                >
+                  {seg.label}
+                </button>
+                {showSeparator && <span className="explorer-breadcrumb-sep" aria-hidden="true">›</span>}
+              </span>
+            );
+          })}
+        </div>}
+        <PanelIconButton
+          ref={editButtonRef}
+          disabled={disabled || !currentPath.startsWith("/")}
+          onClick={() => {
+            if (editing) finishEditing();
+            else setDraft({ path: currentPath, origin: currentPath, invalid: false });
+          }}
+          aria-pressed={editing}
+          title={t("explorer.edit_path")}
+        >
+          <Icon icon={PencilSimple} size={14} />
+        </PanelIconButton>
+        <PanelIconButton
+          disabled={disabled}
+          onClick={onRefresh}
+          title={t("explorer.refresh")}
+          aria-label={t("explorer.refresh")}
+        >
+          <RefreshIcon />
+        </PanelIconButton>
+      </nav>
+      {editing && draft.invalid && (
+        <div id={errorId} role="alert" className="explorer-error-notice">{t("explorer.path_absolute_required")}</div>
+      )}
+    </>
   );
 }
 
 export function ExplorerSearchRow({
   t,
+  id,
+  hidden,
+  inputRef,
   disabled,
   searchMode,
   searchQuery,
   onToggleSearchMode,
   onQueryChange,
-  onClearQuery,
   onInputKeyDown,
   includeHidden,
   onToggleHidden,
 }: {
   t: Translate;
+  id?: string;
+  hidden: boolean;
+  inputRef: Ref<HTMLInputElement>;
   disabled: boolean;
   searchMode: "name" | "content";
   searchQuery: string;
   onToggleSearchMode: () => void;
   onQueryChange: (query: string) => void;
-  onClearQuery: () => void;
   onInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   includeHidden: boolean;
   onToggleHidden: () => void;
 }) {
+  const contentSearch = searchMode === "content";
+  const modeLabel = t(contentSearch ? "explorer.search_mode.switch_to_name" : "explorer.search_mode.switch_to_content");
+  const queryLabel = t(contentSearch ? "explorer.search_placeholder_content" : "explorer.search_placeholder");
+  const clearLabel = t("explorer.clear_search");
   return (
-    <div className="explorer-search-row" role="search" aria-label={t("explorer.chrome.search")}>
+    <div id={id} hidden={hidden} className="explorer-search-row" role="search" aria-label={t("explorer.chrome.search")}>
       <div className="explorer-search">
         <button
           type="button"
           disabled={disabled}
           onClick={onToggleSearchMode}
-          title={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-          aria-label={searchMode === "name" ? t("explorer.search_mode.switch_to_content") : t("explorer.search_mode.switch_to_name")}
-          aria-pressed={searchMode === "content"}
+          title={modeLabel}
+          aria-label={modeLabel}
+          aria-pressed={contentSearch}
           className="hover-bg explorer-search-mode"
-          data-active={searchMode === "content" ? "true" : "false"}
+          data-active={contentSearch}
         >
-          {searchMode === "content" ? <FileContentIcon /> : <FileNameIcon />}
+          {contentSearch ? <FileContentIcon /> : <FileNameIcon />}
         </button>
         <SearchIcon />
         <input
+          ref={inputRef}
           className="ui-native-control"
           type="text"
           disabled={disabled}
           value={searchQuery}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
-          aria-label={searchMode === "content" ? t("explorer.search_placeholder_content") : t("explorer.search_placeholder")}
+          placeholder={queryLabel}
+          aria-label={queryLabel}
         />
         {searchQuery && (
           <button
             type="button"
             disabled={disabled}
-            onClick={onClearQuery}
+            onClick={() => onQueryChange("")}
             className="hover-bg explorer-search-clear"
-            title={t("explorer.clear_search")}
-            aria-label={t("explorer.clear_search")}
+            title={clearLabel}
+            aria-label={clearLabel}
           >
             <CloseIcon size={11} strokeWidth={2.4} />
           </button>
@@ -184,6 +264,8 @@ export function ExplorerSearchRow({
 
 export function ExplorerRemoteTools({
   t,
+  hostBadge,
+  searchToggle,
   active,
   bindingKey,
   showPlaces,
@@ -211,6 +293,8 @@ export function ExplorerRemoteTools({
   onOpenTransfers,
 }: {
   t: Translate;
+  hostBadge?: ReactNode;
+  searchToggle: ReactNode;
   active: boolean;
   bindingKey: string;
   showPlaces: boolean;
@@ -313,15 +397,15 @@ export function ExplorerRemoteTools({
 
   return (
     <div className="explorer-tools" role="toolbar" aria-label={t("explorer.chrome.tools")}>
+      {hostBadge}
       <div className="explorer-places" role="group" aria-label={t("explorer.chrome.places")}>
         <PanelIconButton
           title={t("explorer.paths")}
-          aria-label={t("explorer.paths")}
           aria-haspopup="menu"
           aria-expanded={menu?.kind === "places"}
           onClick={(event) => openMenu("places", event.currentTarget)}
         >
-          <PlacesIcon />
+          <Icon icon={BookmarkSimple} size={14} />
         </PanelIconButton>
       </div>
       <div className="explorer-transfers" role="group" aria-label={t("explorer.chrome.transfers")}>
@@ -329,15 +413,13 @@ export function ExplorerRemoteTools({
           onClick={onUploadFile}
           disabled={remoteDisconnected || uploadBusy}
           title={t("explorer.upload")}
-          aria-label={t("explorer.upload")}
         >
           <UploadIcon />
         </PanelIconButton>
         {activeTransferNotice > 0 && (
-          <button
-            type="button"
+          <PanelIconButton
             onClick={onOpenTransfers}
-            className="hover-bg explorer-transfer-entry"
+            className="explorer-transfer-entry"
             title={t("explorer.transfers_open")}
             aria-label={t("explorer.transfers_in_progress", { count: String(activeTransferNotice) })}
           >
@@ -345,9 +427,10 @@ export function ExplorerRemoteTools({
             <span aria-hidden="true" className="explorer-transfer-count">
               {activeTransferNotice > 99 ? "99+" : activeTransferNotice}
             </span>
-          </button>
+          </PanelIconButton>
         )}
       </div>
+      {searchToggle}
       <PanelIconButton
         title={t("explorer.more_actions")}
         aria-haspopup="menu"

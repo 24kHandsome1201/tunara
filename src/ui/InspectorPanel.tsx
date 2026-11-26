@@ -86,7 +86,7 @@ function useInspectorPaneCwd(session: Session) {
   )?.focusedCwd ?? null;
 }
 
-function SessionFileExplorer({ session, active }: { session: Session; active: boolean }) {
+function SessionFileExplorer({ session, active, remoteHostTitle }: { session: Session; active: boolean; remoteHostTitle?: string }) {
   const paneCwd = useInspectorPaneCwd(session);
   const live = session.connection?.phase === "ready";
   return (
@@ -99,6 +99,7 @@ function SessionFileExplorer({ session, active }: { session: Session; active: bo
       transportGeneration={live ? session.transportGeneration : undefined}
       remote={Boolean(session.remote)}
       remoteHost={session.remote ? `${session.remote.user}@${session.remote.host}` : undefined}
+      remoteHostTitle={remoteHostTitle}
     />
   );
 }
@@ -156,7 +157,9 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
     || session.workspaceState === "unavailable"
     || (!session.workspace && session.branch),
   );
-  const showContextBar = showSourceSummary || isRemote;
+  const showScopeDescription = showSourceSummary || isRemote;
+  const showContextBar = showSourceSummary || (isRemote && tab !== "files");
+  const scopeTitle = `${session.dir}\n${t(scopeDescriptionKey)}`;
 
   useEffect(() => {
     const activeTab = tabListRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(tab)}"]`);
@@ -273,7 +276,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
           id="inspector-context-bar"
         >
           <span
-            title={`${session.dir}\n${t(scopeDescriptionKey)}`}
+            title={scopeTitle}
             className="inspector-context-badge"
           >
             {session.remote ? `${session.remote.user}@${session.remote.host}` : session.dir.split(/[\\/]/).filter(Boolean).pop() || session.dir}
@@ -289,27 +292,26 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
               )}
             </div>
           )}
-          <span
-            id="inspector-scope-description"
-            className="sr-only"
-          >
-            {session.remote ? `${session.remote.user}@${session.remote.host}: ${session.dir}` : session.dir}
-          </span>
         </div>
+      )}
+      {showScopeDescription && (
+        <span id="inspector-scope-description" className="sr-only">
+          {session.remote ? `${session.remote.user}@${session.remote.host}: ${session.dir}` : session.dir}
+        </span>
       )}
 
       <div
         role="tabpanel"
         id={INSPECTOR_TABPANEL_ID}
         aria-label={t(descriptor.titleKey)}
-        aria-describedby={showContextBar ? "inspector-scope-description" : undefined}
+        aria-describedby={showScopeDescription ? "inspector-scope-description" : undefined}
         className="inspector-panel-content"
       >
         {fileSessions.map((fileSession) => {
           const active = tab === "files" && fileSession.id === session.id;
           return (
             <Activity key={fileSession.id} mode={active ? "visible" : "hidden"}>
-              <SessionFileExplorer session={fileSession} active={active} />
+              <SessionFileExplorer session={fileSession} active={active} remoteHostTitle={active ? scopeTitle : undefined} />
             </Activity>
           );
         })}

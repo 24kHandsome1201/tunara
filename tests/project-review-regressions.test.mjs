@@ -14,6 +14,7 @@ const readModule = (base) =>
 const readSettingsSources = () => [
   "src/ui/overlays/Settings.tsx",
   "src/ui/overlays/settings/AppearanceSettings.tsx",
+  "src/ui/overlays/settings/EverydayAppearance.tsx",
   "src/ui/overlays/settings/TerminalSettings.tsx",
   "src/ui/overlays/settings/AccessibilitySettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
@@ -717,7 +718,8 @@ test("file explorer exposes fast project search, refresh, and hidden-file contro
   // not vanish into an empty catch.
   assert.match(explorer, /const openEditor = \(path: string, line\?: number\) =>[\s\S]*?openInEditorWithToast\(externalEditor, path/);
   assert.doesNotMatch(explorer, /openInEditor\([^)]*\)\.catch\(\(\) => \{\}\)/);
-  assert.match(explorerChrome, /placeholder=\{searchMode === "content" \? t\("explorer\.search_placeholder_content"\) : t\("explorer\.search_placeholder"\)\}/);
+  assert.match(explorerChrome, /const queryLabel = t\(contentSearch \? "explorer\.search_placeholder_content" : "explorer\.search_placeholder"\)/);
+  assert.match(explorerChrome, /placeholder=\{queryLabel\}/);
   assert.match(explorerChrome, /aria-label=\{t\("explorer\.chrome\.nav"\)\}/);
   assert.match(explorerChrome, /role="search"/);
   assert.match(explorerChrome, /role="toolbar"/);
@@ -1389,16 +1391,10 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /title=\{`\$\{t\("split\.vertical"\)\} \$\{formatShortcut\(splitVerticalShortcut\)\}`\}/);
   assert.match(main, /aria-label=\{t\("split\.horizontal"\)\}/);
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
-  assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(132px, 1fr\)\)"/);
   assert.match(settings, /getTerminalTheme/);
-  assert.match(settings, /terminalThemePreviewColors/);
+  assert.match(settings, /buildTerminalFontFamily/);
   assert.match(settings, /role="radiogroup"/);
   assert.match(settings, /role="radio"/);
-  assert.match(settings, /aria-checked=\{selected\}/);
-  assert.match(settings, /data-color-scheme-preview="window"/);
-  assert.match(settings, /data-preview-region="sidebar"/);
-  assert.match(settings, /data-preview-region="terminal"/);
-  assert.match(settings, /data-preview-region="panel"/);
   assert.doesNotMatch(settings, /#ff5f57|#febc2e|#28c840/);
   assert.doesNotMatch(settings, /\[9, 6, 8\]/);
   assert.doesNotMatch(settings, /key=\{i\}/);
@@ -1442,7 +1438,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(zhDict, /"sidebar\.dir\.copy_path": "复制路径"/);
   assert.doesNotMatch(explorer, /function SearchIcon/);
   assert.equal((explorer.match(/explorer-listing-grid/g) ?? []).length, 2);
-  assert.match(globals, /\.explorer-listing-grid\[data-selectable="true"\] \{[\s\S]*?20px minmax\(0, 1fr\) minmax\(42px, 92px\) 28px/);
+  assert.match(globals, /\.explorer-listing-grid\[data-selectable="true"\] \{[\s\S]*?20px minmax\(0, 1fr\) minmax\(42px, 92px\) 54px/);
   assert.match(explorer, /formatModifiedTime\(node\.entry\.mtime\)/);
   assert.doesNotMatch(palette, /width: 3,[\s\S]*height: "60%"/);
   assert.match(palette, /className="no-scrollbar scroll-fade-y"/);

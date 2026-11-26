@@ -1,13 +1,13 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
-import { useUIStore } from "@/state/ui";
+import { loadUserConfig, useUIStore } from "@/state/ui";
 import { Settings } from "@/ui/overlays/Settings";
 import { useCliStatus } from "@/ui/overlays/settings/useCliStatus";
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn(), open: vi.fn() }));
 vi.mock("@tauri-apps/plugin-os", () => ({ platform: () => "linux" }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn(), openUrl: vi.fn() }));
 vi.mock("@/ui/overlays/useAppUpdate", () => ({
@@ -21,32 +21,56 @@ beforeEach(() => {
   mockIPC((command) => command === "resolve_all_bins" ? [] : undefined);
   useUIStore.setState({ configPath: "/private/config.json", configError: null });
   vi.mocked(confirm).mockReset();
+  vi.mocked(open).mockReset();
   vi.mocked(openPath).mockReset();
 });
 
-test("settings navigation indicates clicks and the section reached while scrolling", () => {
-  const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+test("everyday controls stay visible while Advanced starts collapsed", () => {
   render(<Settings onClose={() => {}} />);
 
-  const appearance = screen.getByRole("button", { name: "Appearance" });
-  const terminal = screen.getByRole("button", { name: "Terminal" });
-  expect(appearance.getAttribute("aria-current")).toBe("page");
+  const advanced = screen.getByRole("button", { name: "Advanced" });
+  expect(advanced.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.getByRole("heading", { name: "Appearance" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Open config file" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "Connections & transfers" })).toBeNull();
 
-  fireEvent.click(terminal);
-  expect(terminal.getAttribute("aria-current")).toBe("page");
-  expect(document.activeElement).toBe(document.getElementById("settings-section-terminal"));
-  expect(scrollIntoView).toHaveBeenCalled();
+  fireEvent.click(advanced);
+  expect(advanced.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("heading", { name: "Connections & transfers" })).toBeTruthy();
+  fireEvent.click(advanced);
+  expect(screen.queryByRole("heading", { name: "Connections & transfers" })).toBeNull();
+});
 
-  const panel = document.getElementById("settings-tabpanel") as HTMLElement;
-  panel.getBoundingClientRect = () => ({ top: 100 } as DOMRect);
-  for (const [id, top] of [["appearance", 20], ["terminal", 40], ["ssh", 80], ["advanced", 140], ["about", 300]] as const) {
-    const section = document.getElementById(`settings-section-${id}`) as HTMLElement;
-    section.getBoundingClientRect = () => ({ top } as DOMRect);
+test("folder selection and Home reset persist through config loads", async () => {
+  const folder = "/home/ubuntu/My Project";
+  let saved = { appearance: {}, keybindings: {} };
+  mockIPC((command, payload) => {
+    if (command === "resolve_all_bins") return [];
+    if (command === "save_config") saved = (payload as { config: typeof saved }).config;
+    if (command === "load_config") return { path: "/config.toml", config: saved, error: null };
+    return undefined;
+  });
+  await loadUserConfig();
+  vi.mocked(open).mockResolvedValueOnce(folder).mockResolvedValueOnce(null);
+  try {
+    render(<Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose default folder: Home folder" }));
+    await screen.findByRole("button", { name: `Choose default folder: ${folder}` });
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
+    await waitFor(() => expect(saved.appearance).toMatchObject({ default_terminal_folder: folder }));
+
+    await act(loadUserConfig);
+    const chooser = screen.getByRole("button", { name: `Choose default folder: ${folder}` });
+    await act(async () => { fireEvent.click(chooser); });
+    expect(useUIStore.getState().defaultTerminalFolder).toBe(folder);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset to Home" }));
+    await waitFor(() => expect(saved.appearance).toMatchObject({ default_terminal_folder: "" }));
+    await act(loadUserConfig);
+    expect(screen.getByRole("button", { name: "Choose default folder: Home folder" })).toBeTruthy();
+  } finally {
+    useUIStore.setState({ configLoaded: false });
   }
-  fireEvent.scroll(panel);
-  expect(screen.getByRole("button", { name: "Connections & transfers" }).getAttribute("aria-current")).toBe("page");
-  expect(terminal.hasAttribute("aria-current")).toBe(false);
-  scrollIntoView.mockRestore();
 });
 
 test("failed override reset and config open show inline generic alerts", async () => {
@@ -61,7 +85,7 @@ test("failed override reset and config open show inline generic alerts", async (
 
   fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
   fireEvent.click(screen.getByRole("button", { name: "Reset all custom paths" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open config file" }));
 
   await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
   const feedback = screen.getAllByRole("alert").map((alert) => alert.textContent);

@@ -36,6 +36,7 @@ import { createWebglAtlasRebuilder, recordTerminalAtlasOutputPressure, registerT
 import { detectAgentCommand, parseAgentLifecycleOsc, PROMPT_READY_AGENTS, shouldUseStartupQuietReadyFallback, tracksAgentActivity } from "@/modules/terminal/lib/agent-lifecycle";
 import { createPromptAgentScreenStateTracker } from "@/modules/terminal/lib/terminal-prompt-agent-state";
 import { scanTerminalInputBuffer, shouldScanTerminalInput } from "@/modules/terminal/lib/terminal-input-buffer";
+import { createShellPromptTracker } from "@/modules/terminal/lib/terminal-shell-prompt";
 import { getTerminalSnapshot } from "@/modules/terminal/lib/terminal-snapshot"; import { createTerminalSnapshotScheduler } from "@/modules/terminal/lib/terminal-snapshot-scheduler";
 import { safeHistoryForTerminal } from "@/modules/terminal/lib/terminal-safe-history"; import { announceSnapshotRestored } from "@/modules/terminal/lib/restore-notice";
 import { createTerminalOscGuard } from "@/modules/terminal/lib/terminal-osc-guard";
@@ -75,6 +76,7 @@ function TerminalViewImpl({
   }));
   const fitRef = useRef<FitAddon | null>(null);
   const ptyRef = useRef<PtySession | null>(null);
+  const [shellPrompt] = useState(createShellPromptTracker);
   const initRef = useRef(false);
   const terminalInstanceEpochRef = useRef(allocateTerminalInstanceEpoch());
   // Gates the pendingInput effect to fire once when the PTY is ready.
@@ -112,14 +114,15 @@ function TerminalViewImpl({
       pty,
       input: pendingInput,
       submit: pendingInputSubmit !== false,
+      onWrite: shellPrompt.recordWrite,
       onConsumed: () => onPendingInputConsumed?.(sessionIdRef.current),
     }).dispose;
-  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed, ptyReady]);
+  }, [pendingInput, pendingInputSubmit, onPendingInputConsumed, ptyReady, shellPrompt]);
   useEffect(() => {
     if (initRef.current || !containerRef.current) return;
     initRef.current = true;
     let disposed = false;
-    const cleanups: Array<() => void> = [];
+    const cleanups: Array<() => void> = [shellPrompt.reset];
     (async () => {
       await waitForTerminalFontReady({ fontSize, fontFamily, nerdFontFallback });
       if (disposed || !containerRef.current) return;
@@ -156,6 +159,7 @@ function TerminalViewImpl({
       cleanups.push(registerTerminalActions(sessionIdRef.current, {
         terminal: term,
         openSearch: search.openSearch,
+        isAtFreshShellPrompt: shellPrompt.isFresh,
         getBlocks: blocks.getBlocks,
         revealAttention: () => {
           const current = useSessionsStore.getState().sessions.find((s) => s.id === sessionIdRef.current);
@@ -312,10 +316,11 @@ function TerminalViewImpl({
         onCwd: handleCwdChange,
       }));
       const promptDisposable = term.parser.registerOscHandler(133, (data) => {
-        if (data.charAt(0) === "A" || data.charAt(0) === "B" || data.charAt(0) === "C" || data.charAt(0) === "D") {
+        const marker = data.charAt(0);
+        shellPrompt.recordMarker(marker);
+        if (marker === "A" || marker === "B" || marker === "C" || marker === "D") {
           useSessionsStore.getState().markShellIntegrationSeen(sessionIdRef.current);
         }
-        const marker = data.charAt(0);
         const trackedSession = getCurrentSession();
         if (trackedSession?.agent) { const shellMarker = data.includes(";tunara-shell");
           if (marker === "A" && shellMarker) {
@@ -520,8 +525,10 @@ function TerminalViewImpl({
         });
       }
       const onWriteError = createInputQueueFullWarner(term, snapshotScheduler.schedule);
+      let inputState = { buffer: "", bracketedPasteActive: false };
       const writePty = (data: string) => {
         if (!inputToPtyEnabled || !ptyRef.current) return; const pty = ptyRef.current;
+        shellPrompt.recordInput(data, inputState.bracketedPasteActive);
         pty.write(data).catch(onWriteError);
       };
       cleanups.push(registerTerminalDeviceAttributesHandler(term, {
@@ -533,7 +540,6 @@ function TerminalViewImpl({
           /* Resize can race with process exit or pane teardown. */
         });
       };
-      let inputState = { buffer: "", bracketedPasteActive: false };
       const submitCommandBuffer = (submitted: string) => {
         const trimmed = cleanTerminalText(submitted).trim();
         const currentAgent = getCurrentSession()?.agent;
