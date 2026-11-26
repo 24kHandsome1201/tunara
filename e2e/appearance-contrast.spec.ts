@@ -9,6 +9,7 @@ for (const theme of ["Light", "Dark"] as const) {
     await page.keyboard.press("Meta+,");
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await dialog.getByRole("radio", { name: theme, exact: true }).click();
+    await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
 
     for (const name of ["Nerd Font", "Ligatures"]) {
       const button = dialog.getByRole("button", { name, exact: true });

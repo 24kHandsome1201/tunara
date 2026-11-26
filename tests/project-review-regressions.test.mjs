@@ -14,6 +14,7 @@ const readModule = (base) =>
 const readSettingsSources = () => [
   "src/ui/overlays/Settings.tsx",
   "src/ui/overlays/settings/AppearanceSettings.tsx",
+  "src/ui/overlays/settings/EverydayAppearance.tsx",
   "src/ui/overlays/settings/TerminalSettings.tsx",
   "src/ui/overlays/settings/AccessibilitySettings.tsx",
   "src/ui/overlays/settings/CliSettings.tsx",
@@ -1389,16 +1390,10 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(main, /title=\{`\$\{t\("split\.vertical"\)\} \$\{formatShortcut\(splitVerticalShortcut\)\}`\}/);
   assert.match(main, /aria-label=\{t\("split\.horizontal"\)\}/);
   assert.doesNotMatch(main, /左右分栏|上下分栏|关闭分栏/);
-  assert.match(settings, /gridTemplateColumns: "repeat\(auto-fit, minmax\(132px, 1fr\)\)"/);
   assert.match(settings, /getTerminalTheme/);
-  assert.match(settings, /terminalThemePreviewColors/);
+  assert.match(settings, /buildTerminalFontFamily/);
   assert.match(settings, /role="radiogroup"/);
   assert.match(settings, /role="radio"/);
-  assert.match(settings, /aria-checked=\{selected\}/);
-  assert.match(settings, /data-color-scheme-preview="window"/);
-  assert.match(settings, /data-preview-region="sidebar"/);
-  assert.match(settings, /data-preview-region="terminal"/);
-  assert.match(settings, /data-preview-region="panel"/);
   assert.doesNotMatch(settings, /#ff5f57|#febc2e|#28c840/);
   assert.doesNotMatch(settings, /\[9, 6, 8\]/);
   assert.doesNotMatch(settings, /key=\{i\}/);

@@ -13,7 +13,8 @@ export function canUseSessionDirForLocalTerminal(session: SessionRemoteSource | 
   return !!session && !session.remote;
 }
 
-export function localTerminalCwdFromSession(session: SessionDirSource | null | undefined): string {
+export function localTerminalCwdFromSession(session: SessionDirSource | null | undefined, defaultFolder = ""): string {
+  if (defaultFolder) return defaultFolder;
   if (!session || !canUseSessionDirForLocalTerminal(session)) return DEFAULT_LOCAL_TERMINAL_DIR;
   return session.dir;
 }

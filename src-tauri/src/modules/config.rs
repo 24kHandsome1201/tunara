@@ -29,6 +29,7 @@ pub struct AppearanceConfig {
     pub cursor_blink: bool,
     pub font_size: u16,
     pub font_family: String,
+    pub default_terminal_folder: String,
     pub font_ligatures: bool,
     pub nerd_font_fallback: bool,
     pub scrollback: u32,
@@ -61,6 +62,7 @@ impl Default for AppearanceConfig {
             cursor_blink: true,
             font_size: 14,
             font_family: "JetBrains Mono".into(),
+            default_terminal_folder: String::new(),
             font_ligatures: false,
             nerd_font_fallback: true,
             scrollback: 10_000,
@@ -117,6 +119,9 @@ impl AppearanceConfig {
             1.0
         };
         self.font_size = self.font_size.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE);
+        if self.default_terminal_folder.contains('\0') {
+            self.default_terminal_folder.clear();
+        }
         self.scrollback = DEFAULT_SCROLLBACK;
         self.sidebar_width = self
             .sidebar_width
@@ -326,7 +331,7 @@ fn ensure_parent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 27] {
+fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 28] {
     [
         (
             "download_max_files",
@@ -346,6 +351,10 @@ fn known_appearance_items(config: &AppearanceConfig) -> [(&'static str, Item); 2
         ("cursor_blink", value(config.cursor_blink)),
         ("font_size", value(i64::from(config.font_size))),
         ("font_family", value(config.font_family.clone())),
+        (
+            "default_terminal_folder",
+            value(config.default_terminal_folder.clone()),
+        ),
         ("font_ligatures", value(config.font_ligatures)),
         ("nerd_font_fallback", value(config.nerd_font_fallback)),
         ("scrollback", value(i64::from(config.scrollback))),
@@ -598,6 +607,20 @@ mod tests {
             .join(format!("tunara-config-test-{name}-{unique}"))
             .join(dir_name)
             .join("config.toml")
+    }
+
+    #[test]
+    fn default_terminal_folder_round_trips() {
+        let path = temp_config_path("default-terminal-folder");
+        let mut config = TunaraConfig::default();
+        config.appearance.default_terminal_folder = "/home/example/My Project".into();
+        write_config(&path, &config).unwrap();
+        let loaded = load_config_from_path(&path).unwrap();
+        assert_eq!(
+            loaded.config.appearance.default_terminal_folder,
+            "/home/example/My Project"
+        );
+        let _ = fs::remove_dir_all(path.parent().and_then(Path::parent).unwrap());
     }
 
     #[test]

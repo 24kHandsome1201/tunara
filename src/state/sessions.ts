@@ -941,7 +941,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminal: () => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    get().addSession(createSession(localTerminalCwdFromSession(active), { title: t("session.default_title") }));
+    const dir = localTerminalCwdFromSession(active, useUIStore.getState().defaultTerminalFolder);
+    get().addSession(createSession(dir, { title: t("session.default_title") }));
   },
 
   newTerminalInDir: (dir) => {
@@ -950,7 +951,7 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
 
   newTerminalWithInput: (input, dir, submit = false) => {
     const active = get().sessions.find((s) => s.id === get().activeSessionId);
-    get().addSession(createSession(dir ?? localTerminalCwdFromSession(active), {
+    get().addSession(createSession(dir ?? localTerminalCwdFromSession(active, useUIStore.getState().defaultTerminalFolder), {
       title: t("session.default_title"),
       pendingInput: input,
       pendingInputSubmit: submit,
