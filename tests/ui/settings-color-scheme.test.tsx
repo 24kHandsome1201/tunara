@@ -6,7 +6,6 @@ import { setLanguage } from "@/modules/i18n";
 import { useTheme } from "@/app/useTheme";
 import { DEFAULT_SETTINGS, useUIStore } from "@/state/ui";
 import { Settings } from "@/ui/overlays/Settings";
-import { terminalThemePreviewColors } from "@/ui/overlays/settings/controls";
 import { DARK_THEME, LIGHT_THEME } from "@/styles/terminalTheme";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ confirm: vi.fn() }));
@@ -65,6 +64,7 @@ test("appearance reset confirms and preserves terminal, accessibility and shortc
   useUIStore.setState({ ...preserved, fontFamily: "Custom Mono", fontSize: 20 });
   vi.mocked(confirm).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
   render(<Settings onClose={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
   fireEvent.click(screen.getByRole("button", { name: "Reset appearance to defaults" }));
   await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
   expect(useUIStore.getState().fontFamily).toBe("Custom Mono");
@@ -77,7 +77,7 @@ test("font family and size are grouped and IME Enter does not commit a draft", (
   useUIStore.setState({ fontFamily: "JetBrains Mono", fontSize: 14 });
   render(<Settings onClose={() => {}} />);
 
-  const family = screen.getByRole("textbox", { name: "Font family" });
+  const family = screen.getByRole("combobox", { name: "Terminal font" });
   fireEvent.change(family, { target: { value: "输入中的字体" } });
   fireEvent.keyDown(family, { key: "Enter", keyCode: 229, isComposing: true });
   expect(useUIStore.getState().fontFamily).toBe("JetBrains Mono");
@@ -90,6 +90,7 @@ test.each(["light", "dark"] as const)("%s font toggles use on-accent text only w
   useUIStore.setState({ theme, nerdFontFallback: false, fontLigatures: false });
   render(<Settings onClose={() => {}} />);
 
+  fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
   for (const name of ["Nerd Font", "Ligatures"]) {
     const button = screen.getByRole("button", { name });
     expect(button.getAttribute("aria-pressed")).toBe("false");
@@ -123,7 +124,7 @@ test("System, Light, and Dark are one mutually exclusive synchronized choice", a
     </>,
   );
 
-  const group = screen.getByRole("radiogroup", { name: "Terminal & interface color scheme" });
+  const group = screen.getByRole("radiogroup", { name: "Theme" });
   const dark = within(group).getByRole("radio", { name: "Dark" });
   const light = within(group).getByRole("radio", { name: "Light" });
   expect(dark.getAttribute("aria-checked")).toBe("true");
@@ -142,21 +143,13 @@ test("System, Light, and Dark are one mutually exclusive synchronized choice", a
   expect(useUIStore.getState()).toMatchObject({ theme: "system" });
 });
 
-test("the radio group supports roving keyboard selection and whole-window previews", () => {
+test("the radio group supports roving keyboard selection", () => {
   useUIStore.setState({ theme: "system" });
   render(<Settings onClose={() => {}} />);
 
-  const group = screen.getByRole("radiogroup", { name: "Terminal & interface color scheme" });
+  const group = screen.getByRole("radiogroup", { name: "Theme" });
   const radios = within(group).getAllByRole("radio");
   expect(radios).toHaveLength(3);
-  for (const radio of radios) {
-    const preview = radio.querySelector('[data-color-scheme-preview="window"]');
-    expect(preview).not.toBeNull();
-    expect(preview?.querySelector('[data-preview-region="sidebar"]')).not.toBeNull();
-    expect(preview?.querySelector('[data-preview-region="terminal"]')).not.toBeNull();
-    expect(preview?.querySelector('[data-preview-region="panel"]')).not.toBeNull();
-  }
-
   const system = within(group).getByRole("radio", { name: "System" });
   system.focus();
   fireEvent.keyDown(system, { key: "ArrowRight" });
@@ -175,6 +168,7 @@ test("the radio group supports roving keyboard selection and whole-window previe
 test("segmented settings expose one tab stop and support arrow-key selection", () => {
   render(<Settings onClose={() => {}} />);
 
+  fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
   const group = screen.getByRole("radiogroup", { name: "Language" });
   const english = within(group).getByRole("radio", { name: "English" });
   const chinese = within(group).getByRole("radio", { name: "简体中文" });
@@ -230,35 +224,54 @@ test("system media changes affect only the System scheme", async () => {
   expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb");
 });
 
-test("default scheme previews mirror the token-derived chrome and palette", () => {
-  expect(terminalThemePreviewColors("light", false)).toMatchObject({
-    deepest: "#fffdfb",
-    sidebar: "#f2ece9",
-    raised: "#e9e2de",
-    terminal: LIGHT_THEME.background,
-    text: LIGHT_THEME.foreground,
-    secondaryText: "#5c5552",
-    border: "#d4ceca",
-  });
-  expect(terminalThemePreviewColors("dark", false)).toMatchObject({
-    deepest: "#0f0b09",
-    sidebar: "#1c1714",
-    raised: "#25211e",
-    terminal: DARK_THEME.background,
-    text: DARK_THEME.foreground,
-    secondaryText: "#9f9a97",
-    border: "#342f2c",
-  });
+test("presets update the live preview and retain the terminal font family", () => {
+  useUIStore.setState({ theme: "light", fontSize: 14, fontFamily: "JetBrains Mono" });
+  render(<Settings onClose={() => {}} />);
+
+  const classic = screen.getByRole("button", { name: /Classic/ });
+  const night = screen.getByRole("button", { name: /Night/ });
+  const largeText = screen.getByRole("button", { name: /Large text/ });
+  const preview = screen.getByRole("figure", { name: "Terminal preview" });
+  const output = preview.querySelector<HTMLElement>(".settings-preview-terminal")!;
+  const colorOf = (color: string) => {
+    const sample = document.createElement("div");
+    sample.style.backgroundColor = color;
+    return sample.style.backgroundColor;
+  };
+  expect(classic.getAttribute("aria-pressed")).toBe("true");
+
+  fireEvent.click(night);
+  expect(night.getAttribute("aria-pressed")).toBe("true");
+  expect(output.style.backgroundColor).toBe(colorOf(DARK_THEME.background));
+  expect(output.style.fontSize).toBe("14px");
+
+  fireEvent.click(largeText);
+  expect(largeText.getAttribute("aria-pressed")).toBe("true");
+  expect(output.style.backgroundColor).toBe(colorOf(LIGHT_THEME.background));
+  expect(output.style.fontSize).toBe("18px");
+  expect(useUIStore.getState().fontFamily).toBe("JetBrains Mono");
+
+  const family = screen.getByRole("combobox", { name: "Terminal font" });
+  fireEvent.change(family, { target: { value: "Menlo" } });
+  expect(output.style.fontFamily).toContain("Menlo");
+  fireEvent.blur(family);
+  expect(useUIStore.getState().fontFamily).toBe("Menlo");
+
+  fireEvent.click(screen.getByRole("button", { name: "Increase · Font size" }));
+  expect(output.style.fontSize).toBe("19px");
+  expect(largeText.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(classic);
+  expect(classic.getAttribute("aria-pressed")).toBe("true");
+  expect(output.style.fontSize).toBe("14px");
 });
 
 test("recommended Chinese title and description remain readable as a single section", () => {
   setLanguage("zh-CN");
   render(<Settings onClose={() => {}} />);
 
-  const group = screen.getByRole("radiogroup", { name: "界面与终端配色" });
-  expect(screen.getByText("浅色、深色和跟随系统使用 Tunara 默认配色。")).toBeTruthy();
+  const group = screen.getByRole("radiogroup", { name: "主题" });
+  expect(screen.getByText("设置应用界面和终端的配色。")).toBeTruthy();
   expect(within(group).getByRole("radio", { name: "跟随系统" })).toBeTruthy();
   expect(within(group).getByRole("radio", { name: "浅色" })).toBeTruthy();
   expect(within(group).getByRole("radio", { name: "深色" })).toBeTruthy();
-  expect(group.style.gridTemplateColumns).toContain("auto-fit");
 });

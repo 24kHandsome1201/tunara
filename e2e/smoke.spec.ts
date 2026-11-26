@@ -149,19 +149,22 @@ test("Settings opens and every section is reachable", async ({ page, backend }) 
   await page.keyboard.press("Meta+,");
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
-  const nav = dialog.getByRole("navigation");
-  const sections = [
-    ["appearance", "Appearance"],
-    ["terminal", "Terminal"],
-    ["ssh", "Connections & transfers"],
-    ["advanced", "Advanced"],
-    ["about", "About"],
-  ] as const;
-  for (const [id, label] of sections) {
-    const button = nav.getByRole("button", { name: label, exact: true });
-    await button.click();
-    await expect(button).toHaveAttribute("aria-current", "page");
-    await expect(dialog.locator(`#settings-section-${id}`)).toBeInViewport();
+  await expect(dialog.getByRole("heading", { name: "Appearance", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("heading", { name: "Default folder" })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Open config file" })).toBeInViewport();
+  const advanced = dialog.getByRole("button", { name: "Advanced", exact: true });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  const about = dialog.getByRole("heading", { name: "About", exact: true });
+  await expect(about).toBeHidden();
+
+  await dialog.getByRole("button", { name: /Large text/ }).click();
+  await expect(dialog.locator(".settings-preview-terminal")).toHaveCSS("font-size", "18px");
+  await advanced.click();
+  await expect(advanced).toHaveAttribute("aria-expanded", "true");
+  for (const label of ["More appearance options", "Terminal", "Connections & transfers", "CLI tools", "About"]) {
+    const heading = dialog.getByRole("heading", { name: label, exact: true });
+    await heading.scrollIntoViewIfNeeded();
+    await expect(heading).toBeInViewport();
   }
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();

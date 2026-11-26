@@ -10,6 +10,7 @@ export interface RawAppearanceConfig {
   cursor_blink: boolean;
   font_size: number;
   font_family: string;
+  default_terminal_folder?: string;
   font_ligatures: boolean;
   nerd_font_fallback: boolean;
   scrollback: number;
