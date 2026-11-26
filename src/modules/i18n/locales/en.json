@@ -409,6 +409,8 @@
   "explorer.path_absolute_required": "Enter an absolute path starting with /, without . or .. segments.",
   "explorer.chrome.nav": "Directory",
   "explorer.chrome.search": "Search files",
+  "explorer.search_expand": "Show file search",
+  "explorer.search_collapse": "Hide file search",
   "explorer.chrome.tools": "Remote file tools",
   "explorer.chrome.places": "Remote locations",
   "explorer.chrome.transfers": "File transfers",

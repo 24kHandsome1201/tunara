@@ -120,6 +120,18 @@ test("keeps Files mounted but hidden across tabs and puts unavailable tools in M
   expect(screen.queryByRole("tab", { name: "Forwarding" })).toBeNull();
 });
 
+test("keeps the SSH Files scope description without a separate context row", () => {
+  const { container } = render(<InspectorPanel session={remoteSession} />);
+  expect(container.querySelector("#inspector-context-bar")).toBeNull();
+  const files = screen.getByRole("tabpanel", { name: "Files", description: "deploy@example.com: /tmp/project" });
+  expect(files.getAttribute("aria-describedby")).toBe("inspector-scope-description");
+
+  fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
+  const contextBar = container.querySelector("#inspector-context-bar");
+  expect(contextBar?.querySelector(".inspector-context-badge")?.textContent).toBe("deploy@example.com");
+  expect(screen.getByRole("tabpanel", { name: "Changes", description: "deploy@example.com: /tmp/project" })).toBeTruthy();
+});
+
 test("keeps the active tab visible and preserves APG roving focus navigation", async () => {
   const scrollIntoView = vi.fn();
   const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;

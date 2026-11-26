@@ -36,7 +36,23 @@ test("SSH Files keeps favorites and file upload one click away and reveals selec
   await expect(checkbox).toHaveCount(0);
   await expect(selectAll).toHaveCount(0);
   await expect(toolbar.getByRole("button", { name: "Upload file…" })).toBeEnabled();
-  await expect(toolbar.getByRole("button")).toHaveCount(3);
+  await expect(toolbar.getByRole("button")).toHaveCount(4);
+  await expect(toolbar.getByText("deploy@example.test", { exact: true })).toBeVisible();
+
+  const searchToggle = toolbar.getByRole("button", { name: "Show file search" });
+  const search = page.getByRole("search", { name: "Search files" });
+  await expect(search).toHaveCount(0);
+  await searchToggle.press("Enter");
+  const searchInput = search.getByRole("textbox", { name: "Search this folder" });
+  await expect(searchInput).toBeFocused();
+  const changesTab = page.getByRole("tab", { name: "Changes", exact: true });
+  await changesTab.click();
+  await changesTab.press("ArrowLeft");
+  await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeFocused();
+  await expect(searchInput).toBeVisible();
+  await searchInput.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(searchToggle).toBeFocused();
 
   await more.click();
   await expect(menu.getByRole("menuitem", { name: "Go to filesystem root" })).toBeEnabled();

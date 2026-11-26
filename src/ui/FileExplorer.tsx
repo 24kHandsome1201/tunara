@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { computeVirtualSlice } from "./lib/diff-virtual";
 
 /** Fixed row height shared by navigation, DnD and virtualization. */
@@ -15,7 +16,7 @@ import {
   sshReadDir,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
-import { PanelEmptyState, PanelLoadingState, PanelState } from "./shared";
+import { PanelEmptyState, PanelIconButton, PanelLoadingState, PanelState, SearchIcon } from "./shared";
 import { DotsThree, Icon, TerminalWindow } from "@/ui/icons";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
@@ -103,6 +104,7 @@ interface FileExplorerProps {
   /** Stable transport identity while the physical SSH PTY is unavailable. */
   remote?: boolean;
   remoteHost?: string;
+  remoteHostTitle?: string;
 }
 
 export function FileExplorer({
@@ -113,6 +115,7 @@ export function FileExplorer({
   transportGeneration,
   remote = remotePtyId !== undefined,
   remoteHost,
+  remoteHostTitle,
 }: FileExplorerProps) {
   recordFrontendPerf("renders");
   const t = useT();
@@ -264,6 +267,15 @@ export function FileExplorer({
     searchMaxLimit,
     isSearching,
   } = search;
+  const searchRowId = useId();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchToggleRef = useRef<HTMLButtonElement>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const closeSearch = () => {
+    search.setQuery("");
+    setSearchOpen(false);
+    searchToggleRef.current?.focus();
+  };
   const searchRows = useMemo<SearchRow[]>(() => {
     if (!isSearching) return [];
     if (searchMode === "name") {
@@ -1343,58 +1355,29 @@ export function FileExplorer({
           {mutationPrepareError}
         </div>
       )}
-      <ExplorerNav
-        t={t}
-        disabled={remoteDisconnected}
-        canGoBack={!!history && history.index > 0}
-        canGoForward={!!history && history.index + 1 < history.paths.length}
-        onGoBack={() => goHistory(-1)}
-        onGoForward={() => goHistory(1)}
-        currentPath={currentPath}
-        breadcrumbRoot={breadcrumbRoot}
-        breadcrumbHome={isRemote ? homeDir : localHomeDir}
-        onNavigate={navigateTo}
-        onRefresh={refresh}
-      />
-      <ExplorerSearchRow
-        t={t}
-        disabled={remoteDisconnected}
-        searchMode={searchMode}
-        searchQuery={searchQuery}
-        onToggleSearchMode={search.toggleSearchMode}
-        onQueryChange={(query) => {
-          if (selectionMode && query.trim()) exitDownloadSelection();
-          search.setQuery(query);
-        }}
-        onClearQuery={() => search.setQuery("")}
-        includeHidden={includeHidden}
-        onToggleHidden={() => setIncludeHidden((v) => !v)}
-        onInputKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            if (searchQuery) search.setQuery("");
-            else event.currentTarget.blur();
-            return;
-          }
-          if (event.key !== "ArrowDown") return;
-          if (isSearching) {
-            if (focusFirstSearchResultRef.current?.()) event.preventDefault();
-            return;
-          }
-          const first = treeListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
-          if (!first) return;
-          event.preventDefault();
-          first.focus();
-        }}
-      />
-      {isRemote && includeHidden && isSearching && (
-        <div role="status" aria-live="polite" className="explorer-search-notice">
-          {t("explorer.remote_hidden_search_notice")}
-        </div>
-      )}
       {isRemote && (
         <ExplorerRemoteTools
           t={t}
+          hostBadge={remoteHost && (
+            <span className="inspector-context-badge" title={remoteHostTitle ?? remoteHost}>{remoteHost}</span>
+          )}
+          searchToggle={(
+            <PanelIconButton
+              ref={searchToggleRef}
+              title={t(searchOpen ? "explorer.search_collapse" : "explorer.search_expand")}
+              aria-controls={searchRowId}
+              aria-expanded={searchOpen}
+              data-active={searchOpen ? "true" : undefined}
+              disabled={remoteDisconnected && !searchOpen}
+              onClick={() => {
+                if (searchOpen) return closeSearch();
+                flushSync(() => setSearchOpen(true));
+                searchInputRef.current?.focus();
+              }}
+            >
+              <SearchIcon />
+            </PanelIconButton>
+          )}
           active={active}
           bindingKey={treeRequestContext}
           showPlaces={Boolean(prefsKey)}
@@ -1433,6 +1416,58 @@ export function FileExplorer({
             useUIStore.getState().setInspectorTab("transfers", { sessionId });
           }}
         />
+      )}
+      <ExplorerNav
+        t={t}
+        disabled={remoteDisconnected}
+        canGoBack={!!history && history.index > 0}
+        canGoForward={!!history && history.index + 1 < history.paths.length}
+        onGoBack={() => goHistory(-1)}
+        onGoForward={() => goHistory(1)}
+        currentPath={currentPath}
+        breadcrumbRoot={breadcrumbRoot}
+        breadcrumbHome={isRemote ? homeDir : localHomeDir}
+        onNavigate={navigateTo}
+        onRefresh={refresh}
+      />
+      <ExplorerSearchRow
+        t={t}
+        id={isRemote ? searchRowId : undefined}
+        hidden={isRemote && !searchOpen}
+        inputRef={searchInputRef}
+        disabled={remoteDisconnected}
+        searchMode={searchMode}
+        searchQuery={searchQuery}
+        onToggleSearchMode={search.toggleSearchMode}
+        onQueryChange={(query) => {
+          if (selectionMode && query.trim()) exitDownloadSelection();
+          search.setQuery(query);
+        }}
+        includeHidden={includeHidden}
+        onToggleHidden={() => setIncludeHidden((v) => !v)}
+        onInputKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            if (searchQuery) search.setQuery("");
+            else if (isRemote) closeSearch();
+            else event.currentTarget.blur();
+            return;
+          }
+          if (event.key !== "ArrowDown") return;
+          if (isSearching) {
+            if (focusFirstSearchResultRef.current?.()) event.preventDefault();
+            return;
+          }
+          const first = treeListRef.current?.querySelector<HTMLElement>("[data-explorer-item]");
+          if (!first) return;
+          event.preventDefault();
+          first.focus();
+        }}
+      />
+      {isRemote && includeHidden && isSearching && (
+        <div role="status" aria-live="polite" className="explorer-search-notice">
+          {t("explorer.remote_hidden_search_notice")}
+        </div>
       )}
       {hasCachedRemoteListing && (
         <div role="status" title={t("explorer.remote_disconnected")} className="explorer-disconnected">
