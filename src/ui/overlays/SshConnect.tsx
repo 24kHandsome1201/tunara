@@ -441,7 +441,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const configEntries = entries.filter((entry) => entry.source === "sshConfig");
   const suggestionQuery = command?.destination ?? target;
   const savedSuggestions = filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), suggestionQuery);
-  const configMatches = filterSshProfileEntries(configEntries, suggestionQuery);
+  const configMatches = filterSshProfileEntries(configEntries, suggestionQuery, configEntries.length);
   const suggestions = configOpen ? [...configMatches, ...savedSuggestions] : savedSuggestions;
   const highlightedEntry = suggestions.find((entry) => entry.key === highlight);
 
@@ -817,7 +817,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 autoCapitalize="off"
                 autoComplete="off"
                 aria-autocomplete="list"
-                aria-controls={configOpen && configEntries.length > 0 ? "ssh-connect-config-options ssh-connect-suggestions" : "ssh-connect-suggestions"}
+                aria-controls={configOpen && configMatches.length > 0 ? "ssh-connect-config-options ssh-connect-suggestions" : "ssh-connect-suggestions"}
                 aria-activedescendant={highlightedEntry ? `ssh-connect-option-${highlightedEntry.key}` : undefined}
               />
             </div>
@@ -844,12 +844,12 @@ export function SshConnect({ onClose }: SshConnectProps) {
               </button>
             </div>
             <div id="ssh-connect-config-picker" hidden={!configOpen}>
-              {configOpen && (configEntries.length > 0 ? (
+              {configOpen && (configMatches.length > 0 ? (
                 <div id="ssh-connect-config-options" className="ssh-connect-options ssh-connect-config-options" role="listbox" aria-label={t("ssh.source.config")}>
-                  {configEntries.map(renderSuggestion)}
+                  {configMatches.map(renderSuggestion)}
                 </div>
               ) : (
-                <PanelEmptyState label={t(loadingConfig ? "ssh.config.loading" : "ssh.config.empty")} compact />
+                <PanelEmptyState label={t(loadingConfig ? "ssh.config.loading" : configEntries.length > 0 ? "ssh.search_empty" : "ssh.config.empty")} compact />
               ))}
             </div>
             <div id="ssh-connect-suggestions" className="ssh-connect-options" role="listbox" aria-label={t("ssh.source.saved")}>

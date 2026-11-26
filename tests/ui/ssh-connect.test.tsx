@@ -116,14 +116,14 @@ describe("SSH connection sheet", () => {
     expect(screen.getByRole("button", { name: "Advanced" }).getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByLabelText("Port")).toBeNull();
 
-    fireEvent.change(input, { target: { value: "deploy@staging.example" } });
+    fireEvent.change(input, { target: { value: "example" } });
     const browse = browseConfig();
     const config = await screen.findByRole("listbox", { name: "SSH config" });
     expect(browse.getAttribute("aria-expanded")).toBe("true");
     expect(config.compareDocumentPosition(saved) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(input.value).toBe("deploy@staging.example");
+    expect(input.value).toBe("example");
     fireEvent.click(browse);
-    expect(input.value).toBe("deploy@staging.example");
+    expect(input.value).toBe("example");
 
     fireEvent.change(input, { target: { value: "production" } });
     fireEvent.keyDown(input, { key: "ArrowDown" });
@@ -171,12 +171,38 @@ describe("SSH connection sheet", () => {
     browseConfig();
     const config = await screen.findByRole("listbox", { name: "SSH config" });
     const input = hostInput();
-    fireEvent.change(input, { target: { value: "production" } });
     expect(within(config).getByRole("option", { name: /staging/ })).toBeTruthy();
+    fireEvent.change(input, { target: { value: "production" } });
+    expect(within(config).queryByRole("option", { name: /staging/ })).toBeNull();
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("ops@prod.example:2222");
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
+  test("arrow navigation reaches every config host shown in the open picker", async () => {
+    const imported = Array.from({ length: 13 }, (_, index) => ({
+      id: `config-${index + 1}`,
+      label: `alias-${index + 1}`,
+      host: `host-${index + 1}.example`,
+      port: 22,
+      user: "ops",
+      identity_file: "",
+    }));
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return { imported, skipped: 0 };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    browseConfig();
+    const config = await screen.findByRole("listbox", { name: "SSH config" });
+    expect(within(config).getAllByRole("option")).toHaveLength(imported.length);
+    const input = hostInput();
+    for (const _host of imported) fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("ops@host-13.example");
   });
 
   test("connects from one target field without showing auth chooser first", async () => {
