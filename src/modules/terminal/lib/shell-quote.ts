@@ -7,6 +7,13 @@ export function shellQuoteToken(token: string): string {
     : `'${token.replace(/'/g, "'\\''")}'`;
 }
 
+export function formatExplorerTerminalPath(path: string, isDirectory: boolean): string | null {
+  if (!path.startsWith("/") || /[\u0000-\u001f\u007f-\u009f]/.test(path)) return null;
+  // Escape quotes and backslashes outside single quotes so fish and POSIX shells agree.
+  const word = `'${path.replace(/['\\]/g, (char) => `'\\${char}'`)}'`;
+  return isDirectory ? `cd -- ${word}` : word;
+}
+
 /**
  * Turn dropped filesystem paths into text a local PTY can insert.
  * A leading space matches Terminal/iTerm so the drop can append to a typed command.

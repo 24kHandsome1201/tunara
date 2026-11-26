@@ -140,7 +140,9 @@ test("Files keeps a read-only snapshot on SSH disconnect and refreshes on reconn
   await expect.poll(() => backend.openPtyIds()).toEqual([2]);
   await expect(page.getByRole("treeitem", { name: "refreshed.ts" })).toBeVisible();
   await expectListingBreadcrumb(page);
-  await expect(file.getByRole("button")).toHaveCount(1);
+  await expect(file.getByRole("button", { name: "More actions: file-tree.tsx" })).toBeVisible();
+  await file.hover();
+  await expect(file.getByRole("button", { name: "Send path to terminal: file-tree.tsx" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Upload file…" })).toBeEnabled();
   await expect(snapshot).toHaveCount(0);
   await page.getByRole("navigation", { name: "Directory" }).getByRole("button", { name: "Back", exact: true }).click();

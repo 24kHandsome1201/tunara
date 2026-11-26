@@ -1194,7 +1194,7 @@ select.ui-control {
   font-variant-numeric: tabular-nums;
 }
 .explorer-listing-grid {
-  --explorer-listing-columns: minmax(0, 1fr) minmax(42px, 92px) 28px;
+  --explorer-listing-columns: minmax(0, 1fr) minmax(42px, 92px) 54px;
   display: grid;
   grid-template-columns: var(--explorer-listing-columns);
   column-gap: 4px;
@@ -1202,7 +1202,7 @@ select.ui-control {
   text-align: left;
 }
 .explorer-listing-grid[data-selectable="true"] {
-  --explorer-listing-columns: 20px minmax(0, 1fr) minmax(42px, 92px) 28px;
+  --explorer-listing-columns: 20px minmax(0, 1fr) minmax(42px, 92px) 54px;
 }
 .explorer-listing-header {
   height: 24px;
@@ -1244,6 +1244,11 @@ select.ui-control {
   text-align: right;
   pointer-events: none;
 }
+.explorer-listing-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
 button.explorer-listing-action {
   width: 26px;
   height: 26px;
@@ -1253,6 +1258,11 @@ button.explorer-listing-action {
   background: transparent;
   color: var(--c-text-4);
   cursor: pointer;
+}
+@media (hover: hover) {
+  .explorer-send-path { visibility: hidden; }
+  .explorer-tree-node:hover .explorer-send-path,
+  .explorer-tree-node:focus-within .explorer-send-path { visibility: visible; }
 }
 .explorer-state-shell {
   width: 100%;
@@ -1267,10 +1277,10 @@ button.explorer-listing-action {
 @container file-explorer (max-width: 360px) {
   .explorer-listing-row .explorer-listing-modified { display: none; }
   .explorer-listing-grid {
-    --explorer-listing-columns: minmax(0, 1fr) 28px;
+    --explorer-listing-columns: minmax(0, 1fr) 54px;
   }
   .explorer-listing-grid[data-selectable="true"] {
-    --explorer-listing-columns: 20px minmax(0, 1fr) 28px;
+    --explorer-listing-columns: 20px minmax(0, 1fr) 54px;
   }
   .explorer-listing-header {
     --explorer-listing-columns: minmax(0, 1fr) auto;
@@ -1278,7 +1288,7 @@ button.explorer-listing-action {
   .explorer-listing-header[data-selectable="true"] {
     --explorer-listing-columns: 20px minmax(0, 1fr) auto;
   }
-  .explorer-listing-header > .explorer-listing-action { display: none; }
+  .explorer-listing-header > .explorer-listing-actions { display: none; }
 }
 .explorer-tree-node {
   overflow: visible;

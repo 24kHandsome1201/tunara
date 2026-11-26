@@ -16,7 +16,7 @@ import {
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { PanelEmptyState, PanelLoadingState, PanelState } from "./shared";
-import { DotsThree, Icon } from "@/ui/icons";
+import { DotsThree, Icon, TerminalWindow } from "@/ui/icons";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
@@ -45,6 +45,8 @@ import {
 import { validateManifest } from "@/modules/ssh/transfer-bridge";
 import { useTransferStore } from "@/modules/ssh/transfer-store";
 import type { SessionBindingV1 } from "@/modules/terminal/lib/pty-bridge";
+import { formatExplorerTerminalPath } from "@/modules/terminal/lib/shell-quote";
+import { pasteIntoActiveShellPrompt } from "@/modules/terminal/lib/terminal-action-registry";
 import { RemoteFsMutationDialog } from "@/modules/ssh/remote-fs/RemoteFsMutationDialog";
 import { RemoteMetadataPanel } from "@/modules/ssh/remote-fs/RemoteMetadataPanel";
 import { sshStatV1, type MutationRequestV1, type PathExpectationV1 } from "@/modules/ssh/remote-fs/bridge";
@@ -138,6 +140,17 @@ export function FileExplorer({
       variant: ok ? "success" : "error",
     });
   };
+
+  function sendPathToTerminal(node: ListingNode) {
+    const text = formatExplorerTerminalPath(node.path, node.entry.kind === "dir");
+    if (text && pasteIntoActiveShellPrompt(sessionId, text)) return;
+    useUIStore.getState().addToast({
+      sessionId,
+      title: t("explorer.send_path.failed"),
+      subtitle: text ? t("explorer.send_path.prompt_required") : t("explorer.send_path.unsupported_path"),
+      variant: "warning",
+    });
+  }
 
   const downloadRemoteFile = async (remotePath: string, fileName: string) => {
     if (!binding || downloadChooserPendingRef.current) return;
@@ -1070,7 +1083,14 @@ export function FileExplorer({
       menuReturnPathRef.current = node.path;
       setMenuReturnPath(node.path);
       menuReturnFocusRef.current = opener;
-      setContextMenu({ position: { x, y }, items: treeMenuItems(node), bindingKey: treeRequestContext });
+      setContextMenu({
+        position: { x, y },
+        items: [
+          ...treeMenuItems(node),
+          { id: "send-path", label: t("explorer.send_path"), icon: "terminal", action: () => sendPathToTerminal(node) },
+        ],
+        bindingKey: treeRequestContext,
+      });
     };
     return (
       <div
@@ -1179,21 +1199,35 @@ export function FileExplorer({
           <ExplorerEntryName name={node.entry.name} />
         </span>
         <span className="explorer-listing-modified">{formatModifiedTime(node.entry.mtime)}</span>
-        {!remoteDisconnected && <button
-          type="button"
-          tabIndex={-1}
-          className="hover-bg explorer-listing-action"
-          aria-label={`${t("common.more_actions")}: ${node.entry.name}`}
-          title={t("common.more_actions")}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const rect = event.currentTarget.getBoundingClientRect();
-            openMenu(rect.right, rect.bottom, event.currentTarget);
-          }}
-        >
-          <Icon icon={DotsThree} size={14} weight="bold" />
-        </button>}
+        {!remoteDisconnected && (
+          <div className="explorer-listing-actions">
+            <button
+              type="button"
+              tabIndex={-1}
+              className="hover-bg explorer-listing-action explorer-send-path"
+              aria-label={t("explorer.send_path.named", { name: node.entry.name })}
+              title={t("explorer.send_path")}
+              onClick={() => sendPathToTerminal(node)}
+            >
+              <Icon icon={TerminalWindow} size={14} />
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="hover-bg explorer-listing-action"
+              aria-label={`${t("common.more_actions")}: ${node.entry.name}`}
+              title={t("common.more_actions")}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const rect = event.currentTarget.getBoundingClientRect();
+                openMenu(rect.right, rect.bottom, event.currentTarget);
+              }}
+            >
+              <Icon icon={DotsThree} size={14} weight="bold" />
+            </button>
+          </div>
+        )}
         </div>
       </div>
     );
@@ -1511,7 +1545,7 @@ export function FileExplorer({
                   </div>
                 );
               })}
-              <span className="explorer-listing-action" aria-hidden="true" />
+              <span className="explorer-listing-actions" aria-hidden="true" />
             </div>
             <div
               role="tree"
