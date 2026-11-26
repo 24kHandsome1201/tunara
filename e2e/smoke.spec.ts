@@ -157,14 +157,25 @@ test("Settings opens and every section is reachable", async ({ page, backend }) 
 test("SSH connect overlay opens and validates the form", async ({ page, backend }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Connect SSH" }).click();
-  const dialog = page.locator('[role="dialog"][aria-labelledby="ssh-connect-title"]');
+  const dialog = page.getByRole("dialog", { name: "Connect SSH" });
   await expect(dialog).toBeVisible();
 
-  const host = dialog.locator("#ssh-connect-host");
+  const host = dialog.getByRole("textbox", { name: "SSH command or host" });
   const connect = dialog.getByRole("button", { name: "Connect", exact: true });
+  const browse = dialog.getByRole("button", { name: "Browse ~/.ssh/config" });
+  const advanced = dialog.getByRole("button", { name: "Advanced", exact: true });
   await expect(host).toBeFocused();
   await expect(dialog.getByRole("option", { name: /staging/ })).toBeVisible();
   await expect(connect).toBeDisabled();
+
+  await expect(browse).toHaveAttribute("aria-expanded", "false");
+  await browse.click();
+  await expect(dialog.getByText("No additional hosts in ~/.ssh/config")).toBeVisible();
+  await browse.click();
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  await advanced.click();
+  await expect(dialog.getByLabel("Port", { exact: true })).toBeVisible();
+  await advanced.click();
 
   await host.fill("deploy@example.test:99999");
   await expect(host).toHaveAttribute("aria-invalid", "true");

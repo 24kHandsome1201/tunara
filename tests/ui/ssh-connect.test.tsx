@@ -30,6 +30,12 @@ function hostInput() {
   return document.getElementById("ssh-connect-host") as HTMLInputElement;
 }
 
+function browseConfig() {
+  const browse = screen.getByRole("button", { name: "Browse ~/.ssh/config" });
+  fireEvent.click(browse);
+  return browse;
+}
+
 function SshDialogHarness() {
   const [open, setOpen] = useState(false);
   return (
@@ -79,7 +85,7 @@ describe("SSH connection sheet", () => {
     opener.focus();
     fireEvent.click(opener);
 
-    const dialog = screen.getByRole("dialog", { name: "SSH Connection" });
+    const dialog = screen.getByRole("dialog", { name: "Connect SSH" });
     expect(dialog.getAttribute("aria-describedby")).toBe("ssh-connect-subtitle");
     await waitFor(() => expect(document.activeElement).toBe(hostInput()));
 
@@ -88,6 +94,64 @@ describe("SSH connection sheet", () => {
     expect(escape.defaultPrevented).toBe(true);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(opener);
+  });
+
+  test("browses config hosts above saved hosts without altering the draft", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "saved", label: "staging", host: "staging.example", port: 22, user: "deploy", identity_file: "" },
+      ];
+      if (command === "ssh_hosts_import_config") return {
+        imported: [{ id: "config", label: "production", host: "prod.example", port: 2222, user: "ops", identity_file: "" }],
+        skipped: 0,
+      };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: "SSH command or host" }) as HTMLInputElement;
+    const saved = await screen.findByRole("listbox", { name: "Saved" });
+    expect(await within(saved).findByText("Saved")).toBeTruthy();
+    expect(screen.queryByRole("listbox", { name: "SSH config" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Advanced" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText("Port")).toBeNull();
+
+    fireEvent.change(input, { target: { value: "deploy@staging.example" } });
+    const browse = browseConfig();
+    const config = await screen.findByRole("listbox", { name: "SSH config" });
+    expect(browse.getAttribute("aria-expanded")).toBe("true");
+    expect(config.compareDocumentPosition(saved) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(input.value).toBe("deploy@staging.example");
+    fireEvent.click(browse);
+    expect(input.value).toBe("deploy@staging.example");
+
+    fireEvent.change(input, { target: { value: "production" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(browse.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("ops@prod.example:2222");
+    expect(browse.getAttribute("aria-expanded")).toBe("false");
+    expect(useSessionsStore.getState().sessions).toHaveLength(0);
+  });
+
+  test("still requires confirmation before deleting a saved host", async () => {
+    const remove = vi.fn((_payload: unknown) => []);
+    mockIPC((command, payload) => {
+      if (command === "ssh_hosts_load") return [
+        { id: "saved", label: "staging", host: "staging.example", port: 22, user: "deploy", identity_file: "" },
+      ];
+      if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0 };
+      if (command === "ssh_hosts_remove") return remove(payload);
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete saved host" }));
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Click again to confirm" }));
+    await waitFor(() => expect(screen.queryByRole("option", { name: /staging/ })).toBeNull());
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledWith({ id: "saved" });
   });
 
   test("connects from one target field without showing auth chooser first", async () => {
@@ -535,7 +599,7 @@ describe("SSH connection sheet", () => {
 
     expect(error.getAttribute("role")).toBe("alert");
     expect(host.getAttribute("aria-invalid")).toBe("true");
-    expect(host.getAttribute("aria-describedby")).toBe("ssh-connect-port-error");
+    expect(host.getAttribute("aria-describedby")).toBe("ssh-connect-target-hint ssh-connect-port-error");
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -567,6 +631,7 @@ describe("SSH connection sheet", () => {
     });
     render(<SshConnect onClose={vi.fn()} />);
 
+    browseConfig();
     fireEvent.click(await screen.findByRole("button", { name: /prod/i }));
     expect((screen.getByRole("radio", { name: /^Private key/ }) as HTMLInputElement).checked).toBe(true);
     expect((document.getElementById("ssh-connect-identity") as HTMLInputElement).value).toBe("~/.ssh/id_prod");
@@ -862,6 +927,7 @@ describe("SSH connection sheet", () => {
 
     render(<SshConnect onClose={vi.fn()} />);
     const saved = await screen.findByRole("button", { name: /saved routed/i });
+    browseConfig();
     expect(screen.getByRole("button", { name: /config routed/i })).toBeTruthy();
     fireEvent.click(saved);
     expect(screen.getByText(/ProxyJump host is missing/i)).toBeTruthy();
@@ -896,6 +962,7 @@ describe("SSH connection sheet", () => {
     });
 
     render(<SshConnect onClose={vi.fn()} />);
+    browseConfig();
     fireEvent.click(await screen.findByRole("button", { name: /Routed target/i }));
     const jumpMethods = screen.getByRole("radiogroup", { name: "Jump host authentication method" });
     fireEvent.click(within(jumpMethods).getByRole("radio", { name: "Password" }));
@@ -937,6 +1004,7 @@ describe("SSH connection sheet", () => {
     });
 
     render(<SshConnect onClose={vi.fn()} />);
+    browseConfig();
     fireEvent.click(await screen.findByRole("button", { name: /Config direct/i }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
@@ -971,6 +1039,7 @@ describe("SSH connection sheet", () => {
     });
 
     render(<SshConnect onClose={vi.fn()} />);
+    browseConfig();
     fireEvent.click(await screen.findByRole("button", { name: /Config routed/i }));
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
@@ -1034,6 +1103,7 @@ describe("SSH connection sheet", () => {
     });
 
     render(<SshConnect onClose={vi.fn()} />);
+    browseConfig();
     fireEvent.click(await screen.findByRole("button", { name: /Config target/i }));
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false);
     await waitFor(() => expect(document.getElementById("ssh-connect-port")).toBeTruthy());
@@ -1048,6 +1118,7 @@ describe("SSH connection sheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
     resolveRefresh({ imported: [], skipped: 0, diagnostics: [] });
+    browseConfig();
     await waitFor(() => expect(screen.queryByRole("button", { name: /Config target/i })).toBeNull());
     expect(useSessionsStore.getState().sessions).toHaveLength(0);
   });
@@ -1093,7 +1164,9 @@ describe("SSH connection sheet", () => {
     });
     render(<SshConnect onClose={vi.fn()} />);
 
+    const browse = browseConfig();
     await screen.findByRole("button", { name: /qa-local/ });
+    fireEvent.click(browse);
     fireEvent.change(hostInput(), { target: { value: "qa-local" } });
     const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
     await waitFor(() => expect(connect.disabled).toBe(false));
@@ -1121,7 +1194,9 @@ describe("SSH connection sheet", () => {
     });
     render(<SshConnect onClose={vi.fn()} />);
 
+    const browse = browseConfig();
     await screen.findByRole("button", { name: /qa-local/ });
+    fireEvent.click(browse);
     fireEvent.change(hostInput(), { target: { value: "root@qa-local" } });
     const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
     await waitFor(() => expect(connect.disabled).toBe(false));
@@ -1149,6 +1224,8 @@ describe("SSH connection sheet", () => {
     await act(async () => { await Promise.resolve(); });
     expect(screen.queryByText("No matching connections")).toBeNull();
     await act(async () => { resolveLoad([]); });
+    expect(screen.queryByText("No matching connections")).toBeNull();
+    browseConfig();
     expect(await screen.findByRole("button", { name: /qa-local/ })).toBeTruthy();
     expect(screen.queryByText("No matching connections")).toBeNull();
   });

@@ -551,6 +551,127 @@ select.ui-control {
    connection form. The form owns vertical scrolling; source rows stay compact
    enough to compare endpoints without hiding their origin or route. */
 .ssh-connect-dialog { container: ssh-connect-dialog / inline-size; }
+.ssh-connect-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--c-border-2);
+  flex-shrink: 0;
+}
+.ssh-connect-header-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border: 1px solid var(--c-accent-border);
+  border-radius: var(--r-btn);
+  color: var(--c-accent-text);
+  background: var(--c-accent-bg-light);
+}
+.ssh-connect-header > button { margin-inline-start: auto; flex-shrink: 0; }
+.ssh-connect-header h2 { margin: 0 0 3px; font-size: calc(var(--fs-title) * 1.5); }
+.ssh-connect-header p,
+.ssh-connect-target p { margin: 0; color: var(--c-text-4); font-size: var(--fs-secondary); }
+.ssh-connect-content {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 24px 16px;
+}
+.ssh-connect-content > * { flex-shrink: 0; }
+.ssh-connect-target { display: grid; gap: 7px; }
+.ssh-connect-target label,
+.ssh-connect-hosts-heading h3 { margin: 0; font-size: var(--fs-body); font-weight: 650; }
+.ssh-connect-target-input { position: relative; }
+.ssh-connect-target-input > svg {
+  position: absolute;
+  inset-inline-start: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--c-accent-text);
+  pointer-events: none;
+}
+.ssh-connect-target-input > input {
+  width: 100%;
+  padding: 10px 12px;
+  padding-inline-start: 38px;
+  font: var(--fs-body) var(--font-mono);
+}
+.ssh-connect-hosts,
+.ssh-connect-options { display: grid; gap: 6px; }
+.ssh-connect-hosts-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+.ssh-connect-browse {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--c-accent-text);
+  font-size: var(--fs-secondary);
+  font-weight: 650;
+  cursor: pointer;
+}
+.ssh-connect-config-options { max-height: 220px; overflow-y: auto; }
+.ssh-connect-option { border-radius: var(--r-btn); }
+.ssh-connect-option[data-selected="false"] { border-color: var(--c-border-2); }
+.ssh-connect-option-main { display: flex; align-items: center; padding-inline-end: 3px; }
+.ssh-connect-option-select,
+.ssh-connect-advanced {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--c-text-primary);
+  cursor: pointer;
+  text-align: start;
+}
+.ssh-connect-option-select { flex: 1; min-width: 0; }
+.ssh-connect-option-copy,
+.ssh-connect-advanced-copy { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 650; }
+.ssh-connect-option-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ssh-connect-endpoint,
+.ssh-connect-advanced-copy > :last-child { color: var(--c-text-4); font-size: var(--fs-meta); font-weight: 400; }
+.ssh-connect-endpoint { font-family: var(--font-mono); }
+.ssh-connect-option .ssh-profile-delete {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--c-text-4);
+  cursor: pointer;
+}
+.ssh-connect-option .ssh-profile-delete[data-pending="true"] { color: var(--c-error); }
+.ssh-connect-advanced { width: 100%; border: 1px solid var(--c-border-2); background: var(--c-bg-1); }
+.ssh-connect-advanced > svg { color: var(--c-text-4); }
+.ssh-connect-advanced-fields:not([hidden]) { display: grid; gap: 12px; padding-block-start: 12px; }
+.ssh-connect-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 11px 24px;
+  border-top: 1px solid var(--c-border-2);
+  background: var(--c-bg-1);
+  flex-shrink: 0;
+}
 .ssh-connect-fieldset { margin: 0; padding: 0; border: none; min-width: 0; }
 .ssh-connect-fieldset--boxed { padding: 10px; border: 1px solid var(--c-border-2); border-radius: var(--r-btn); }
 .ssh-connect-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
