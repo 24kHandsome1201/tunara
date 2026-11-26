@@ -205,6 +205,25 @@ describe("SSH connection sheet", () => {
     expect(input.value).toBe("ops@host-13.example");
   });
 
+  test.each(["root@production", "production:2200"])("shows the configured host for decorated alias %s", async (alias) => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return {
+        imported: [{ id: "prod", label: "production", host: "prod.example", port: 2222, user: "ops", identity_file: "" }],
+        skipped: 0,
+      };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    browseConfig();
+    await screen.findByRole("listbox", { name: "SSH config" });
+    const input = hostInput();
+    fireEvent.change(input, { target: { value: alias } });
+    expect(screen.getByRole("option", { name: /production/ })).toBeTruthy();
+    expect(input.value).toBe(alias);
+  });
+
   test("connects from one target field without showing auth chooser first", async () => {
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);

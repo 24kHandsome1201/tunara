@@ -30,7 +30,7 @@ import {
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
 import { postConnectPendingInput } from "@/modules/ssh/post-connect";
 import { normalizePostConnectCommand } from "@/modules/ssh/hosts-model";
-import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, sshAliasProfileMatch, sshTargetHasInvalidPort, withSshTargetPort } from "@/modules/ssh/connect-target";
+import { exactSshProfileMatch, filterSshProfileEntries, formatSshTarget, parseSshTarget, profileMatchesTarget, sshAliasProfileMatch, sshTargetHasInvalidPort, withSshTargetPort } from "@/modules/ssh/connect-target";
 import { isSshCommandInput, matchingSshJumpProfiles, parseSshCommand, sshCommandMatchTarget } from "@/modules/ssh/connect-command";
 import { stashSshCredentials } from "@/modules/ssh/pending-credentials";
 import { captureSshReconnectForwards } from "@/modules/ssh/auto-reconnect";
@@ -441,7 +441,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const configEntries = entries.filter((entry) => entry.source === "sshConfig");
   const suggestionQuery = command?.destination ?? target;
   const savedSuggestions = filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), suggestionQuery);
-  const configMatches = filterSshProfileEntries(configEntries, suggestionQuery, configEntries.length);
+  const configAlias = sshAliasProfileMatch(configHosts, suggestionQuery);
+  const configMatches = configEntries.filter(({ profile }) => profile === configAlias || profileMatchesTarget(profile, suggestionQuery));
   const suggestions = configOpen ? [...configMatches, ...savedSuggestions] : savedSuggestions;
   const highlightedEntry = suggestions.find((entry) => entry.key === highlight);
 
