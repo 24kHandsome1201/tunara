@@ -94,6 +94,7 @@ pub fn run() {
             pty::pty_close,
             fs::tree::fs_read_dir,
             fs::tree::fs_resolve_dir,
+            fs::tree::fs_resolve_file_jump,
             fs::file::fs_read_file,
             fs::file::fs_write_text_file,
             fs::file::fs_export_text_file,

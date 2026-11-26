@@ -9,6 +9,7 @@ commands.allow = [
   "pty_close",
   "fs_read_dir",
   "fs_resolve_dir",
+  "fs_resolve_file_jump",
   "fs_read_file",
   "fs_write_text_file",
   "fs_export_text_file",

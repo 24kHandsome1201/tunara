@@ -12,8 +12,10 @@ import { fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/module
 import type { GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import {
   invalidateRemoteSearchCache,
+  resolveFileJump,
   sshHome,
   sshReadDir,
+  type FileJump,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { PanelEmptyState, PanelIconButton, PanelLoadingState, PanelState, SearchIcon } from "./shared";
@@ -248,6 +250,9 @@ export function FileExplorer({
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
+  const [pin, setPin] = useState<FileJump | null>(null);
+  const pinnedFileName = pin?.directory === currentPath ? pin.pinnedFile : undefined;
+  const readHidden = includeHidden || pinnedFileName?.startsWith(".") === true;
   const [reloadKey, setReloadKey] = useState(0);
   const [uploadReloadKey, setUploadReloadKey] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; direction: SortDirection }>({ key: "name", direction: "asc" });
@@ -267,6 +272,7 @@ export function FileExplorer({
     searchMaxLimit,
     isSearching,
   } = search;
+  const pathJumpRequest = useRef(0);
   const searchRowId = useId();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
@@ -336,14 +342,19 @@ export function FileExplorer({
   const treeRequestContextRef = useRef(treeRequestContext);
   // Render-time assignment closes the window before passive effect cleanup.
   treeRequestContextRef.current = treeRequestContext;
+  useLayoutEffect(() => () => {
+    pathJumpRequest.current += 1;
+  }, [active, searchQuery, searchMode, treeRequestContext]);
+  useEffect(() => {
+    setPin((pinned) => pinned?.directory === currentPath ? pinned : null);
+  }, [currentPath]);
   const listingNodes = useMemo<ListingNode[]>(() => {
     if (!hasCachedListing) return [];
-    const usable = usableExplorerEntries(entries);
-    return [
-      ...sortExplorerEntries(usable.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
-      ...sortExplorerEntries(usable.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
-    ].map((entry) => ({ entry, path: joinPath(currentPath, entry.name) }));
-  }, [hasCachedListing, entries, currentPath, sort]);
+    const usable = usableExplorerEntries(entries).filter(({ name }) =>
+      includeHidden || !name.startsWith(".") || name === pinnedFileName);
+    return sortExplorerEntries(usable, sort.key, sort.direction, pinnedFileName)
+      .map((entry) => ({ entry, path: joinPath(currentPath, entry.name) }));
+  }, [hasCachedListing, entries, currentPath, sort, includeHidden, pinnedFileName]);
   const nodeIndexByPath = useMemo(() => new Map(listingNodes.map(({ path }, index) => [path, index])), [listingNodes]);
   const isConfirmedMissingFile = useCallback((path: string) => (
     parentPath(path) === (currentPath.replace(/\/+$/, "") || "/")
@@ -567,6 +578,7 @@ export function FileExplorer({
     if (sourceChanged) {
       initializedDirectory.current = directorySource;
       setNavDir(null);
+      setPin(null);
       search.resetSearch();
     }
     if (isRemote) {
@@ -668,8 +680,8 @@ export function FileExplorer({
     }
     const read =
       isRemote && remotePtyId !== undefined
-        ? sshReadDir(remotePtyId, currentPath, includeHidden)
-        : fsReadDir(currentPath, includeHidden);
+        ? sshReadDir(remotePtyId, currentPath, readHidden)
+        : fsReadDir(currentPath, readHidden);
     read
       .then((e) => {
         if (!cancelled && treeRequestContextRef.current === treeRequestContext) {
@@ -689,7 +701,7 @@ export function FileExplorer({
         }
       });
     return () => { cancelled = true; };
-  }, [currentPath, includeHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, setCurrentPath]);
+  }, [currentPath, readHidden, treeRequestContext, browsingContext, listingContext, listingCacheKey, uploadReloadKey, baseDir, isRemote, remotePtyId, remoteDisconnected, setCurrentPath]);
 
   const breadcrumbRoot = remoteExplorerListingRoot();
   const dropListingNodes = useMemo<DropListingNode[]>(() => listingNodes.map(({ path, entry }) => ({
@@ -1088,6 +1100,7 @@ export function FileExplorer({
   function renderListingRow(node: ListingNode, listingIndex: number) {
     const isDir = node.entry.kind === "dir";
     const active = activeFilePath === node.path;
+    const pinned = !isDir && node.entry.name === pinnedFileName;
     const batchSelectable = !!binding && node.entry.kind === "file" && node.entry.size <= downloadLimits.maxFileBytes;
     const batchSelected = selectedDownloads.has(node.path);
     const openMenu = (x: number, y: number, opener: HTMLElement) => {
@@ -1111,11 +1124,12 @@ export function FileExplorer({
         aria-label={node.entry.name}
         aria-setsize={listingRowCount}
         aria-posinset={listingIndex + 1}
-        aria-selected={batchSelectable ? batchSelected : batchSelected || active}
+        aria-selected={(pinned && !selectionMode) || batchSelected || (!batchSelectable && active)}
         data-explorer-item
         data-listing-index={listingIndex}
         data-tree-row-index={listingIndex}
         data-tree-path={node.path}
+        data-pinned={pinned ? "true" : undefined}
         data-drop-target={dropHighlightPath === node.path ? "true" : undefined}
         data-file-path={!isDir ? node.path : undefined}
         tabIndex={rovingFocusPath === node.path ? 0 : -1}
@@ -1188,7 +1202,7 @@ export function FileExplorer({
         <div
           className="hover-bg explorer-listing-grid explorer-listing-row"
           data-selectable={selectionMode ? "true" : undefined}
-          data-active={batchSelected || active}
+          data-active={pinned || batchSelected || active}
         >
         {selectionMode && (
           <input
@@ -1245,6 +1259,20 @@ export function FileExplorer({
     );
   }
 
+  async function jumpToPath(query: string) {
+    if (!active || remoteDisconnected) return;
+    const request = ++pathJumpRequest.current;
+    try {
+      const result = await resolveFileJump(query, remotePtyId, binding);
+      if (request !== pathJumpRequest.current) return;
+      const { directory, pinnedFile: name } = result;
+      setPin(name ? result : null);
+      if (name && directory === currentPath && !entries.some((entry) => entry.name === name && entry.kind !== "dir")) refresh();
+      navigateTo(directory);
+    } catch {
+      // Keep the query and its normal search results when a path cannot be resolved.
+    }
+  }
 
   function openFile(path: string, line?: number) {
     if (remoteDisconnected) return;
@@ -1446,6 +1474,14 @@ export function FileExplorer({
         includeHidden={includeHidden}
         onToggleHidden={() => setIncludeHidden((v) => !v)}
         onInputKeyDown={(event) => {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            const query = searchQuery.trimStart();
+            if (/^(?:\/|~(?:\/|$))/.test(query)) {
+              event.preventDefault();
+              void jumpToPath(query);
+            }
+            return;
+          }
           if (event.key === "Escape") {
             event.preventDefault();
             if (searchQuery) search.setQuery("");

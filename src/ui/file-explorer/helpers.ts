@@ -43,8 +43,10 @@ export function sortExplorerEntries(
   entries: readonly DirEntry[],
   key: SortKey,
   direction: SortDirection,
+  pinnedFileName?: string,
 ): DirEntry[] {
-  return [...entries].sort((a, b) => compareEntries(a, b, key, direction));
+  const rank = (entry: DirEntry) => entry.kind === "dir" ? 1 : entry.name === pinnedFileName ? 0 : 2;
+  return [...entries].sort((a, b) => rank(a) - rank(b) || compareEntries(a, b, key, direction));
 }
 
 export function formatModifiedTime(mtime: number, now = new Date()): string {

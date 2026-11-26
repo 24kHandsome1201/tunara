@@ -17,6 +17,142 @@ function openFileActions() {
 }
 
 describe("FileExplorer directory navigation", () => {
+  test.each([false, true])("jumps to absolute directories and pins files without opening them (remote=%s)", async (remote) => {
+    mockIPC((command, payload) => {
+      if (command === "ssh_fs_home" || command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_resolve_file_jump") {
+        const { path, id } = payload as { path: string; id?: number };
+        expect(id).toBe(remote ? 40 : undefined);
+        if (path === "/home/dev/link/..") return { directory: "/other" };
+        if (["/home/dev/docs", "/home//dev/../dev/./docs/"].includes(path)) return { directory: "/home/dev/docs" };
+        if (path === "~/./docs//archive/../.notes.md") return { directory: "/home/dev/docs", pinnedFile: ".notes.md" };
+        throw new Error("not found");
+      }
+      if (command === "fs_read_dir" || command === "ssh_fs_read_dir") {
+        const { path, includeHidden } = payload as { path: string; includeHidden: boolean };
+        if (path === "/srv/app") return [];
+        if (path === "/other") return [{ name: "symlink-target-parent.txt", kind: "file", size: 1, mtime: 0 }];
+        if (path === "/home/dev/docs") return [
+          { name: "archive", kind: "dir", size: 0, mtime: 0 },
+          { name: "readme.md", kind: "file", size: 1, mtime: 0 },
+          ...(includeHidden ? [".notes.md", ".other"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 })) : []),
+        ];
+        throw new Error("not a directory");
+      }
+      if (command === "ssh_fs_search") return [];
+      return { hits: [], unreadable: 0 };
+    });
+    const id = "path-jump";
+    const session: Session = {
+      id, title: "Path jump", dir: "/srv/app", branch: "", runState: "idle", updatedAt: 1,
+      ...(remote ? { remote: { host: "example.test", port: 22, user: "dev" }, ptyId: 40, transportGeneration: "g1" } : {}),
+    };
+    useSessionsStore.setState({ sessions: [session], activeSessionId: id });
+    render(<FileExplorer sessionId={id} rootDir={session.dir} remotePtyId={session.ptyId} transportGeneration={session.transportGeneration} />);
+    if (remote) fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
+    const search = screen.getByRole("textbox", { name: "Search this folder" });
+    const submit = async (value: string) => {
+      fireEvent.change(search, { target: { value } });
+      await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+    };
+    await submit("/home//dev/../dev/./docs/");
+    await screen.findByRole("treeitem", { name: "archive" });
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/home/dev/docs");
+    expect(search).toHaveProperty("value", "");
+
+    await submit("~/./docs//archive/../.notes.md");
+    const pinned = await screen.findByRole("treeitem", { name: ".notes.md" });
+    expect(screen.getAllByRole("treeitem").map((row) => row.getAttribute("aria-label"))).toEqual([
+      ".notes.md", "archive", "readme.md",
+    ]);
+    expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(pinned.getAttribute("data-tree-path")).toBe("/home/dev/docs/.notes.md");
+    expect(useUIStore.getState().readers[id]).toBeUndefined();
+
+    await submit("/home/dev/docs/missing.md");
+    expect(search).toHaveProperty("value", "/home/dev/docs/missing.md");
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/home/dev/docs");
+
+    await submit("/home/dev/docs");
+    await screen.findByRole("treeitem", { name: "archive" });
+    expect(screen.queryByRole("treeitem", { name: ".notes.md" })).toBeNull();
+
+    await submit("/home/dev/link/..");
+    await screen.findByRole("treeitem", { name: "symlink-target-parent.txt" });
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/other");
+    await submit("/home/dev/missing/../docs");
+    expect(search).toHaveProperty("value", "/home/dev/missing/../docs");
+    expect(useUIStore.getState().explorerPaths[id]).toBe("/other");
+  });
+
+  test("refreshes the current directory when a path jump finds a file absent from the listing", async () => {
+    let created = false;
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir") return "/home/dev";
+      if (command === "fs_resolve_file_jump" && created && (payload as { path: string }).path === "/srv/app/new.md") {
+        return { directory: "/srv/app", pinnedFile: "new.md" };
+      }
+      if (command === "fs_search") return { hits: [], unreadable: 0 };
+      if (command !== "fs_read_dir") return null;
+      if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
+      return [
+        { name: "archive", kind: "dir", size: 0, mtime: 0 },
+        ...(created ? [{ name: "new.md", kind: "file", size: 1, mtime: 0 }] : []),
+      ];
+    });
+    render(<FileExplorer sessionId="new-file-jump" rootDir="/srv/app" />);
+    await screen.findByRole("treeitem", { name: "archive" });
+    created = true;
+    const search = screen.getByRole("textbox", { name: "Search this folder" });
+    fireEvent.change(search, { target: { value: "/srv/app/new.md" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    const pinned = await screen.findByRole("treeitem", { name: "new.md" });
+    expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(screen.getAllByRole("treeitem")[0]).toBe(pinned);
+  });
+
+  test.each([false, true])("pins an unambiguous case-insensitive match only if the typed path exists (remote=%s)", async (remote) => {
+    let caseInsensitive = false;
+    mockIPC((command, payload) => {
+      if (command === "fs_resolve_dir" || command === "ssh_fs_home") return "/home/dev";
+      if (command === "fs_resolve_file_jump") {
+        const { path, id } = payload as { path: string; id?: number };
+        expect(id).toBe(remote ? 40 : undefined);
+        if (path === "/srv/app/README.md" && caseInsensitive) {
+          return { directory: "/srv/app", pinnedFile: "Readme.md" };
+        }
+        if (path === "/srv/app/Title.ts") return { directory: "/srv/app", pinnedFile: "Title.ts" };
+        throw new Error("not found");
+      }
+      if (command === "fs_search") return { hits: [], unreadable: 0 };
+      if (command === "ssh_fs_search") return [];
+      if (command !== "fs_read_dir" && command !== "ssh_fs_read_dir") return null;
+      if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
+      return ["Readme.md", "Title.ts", "title.ts"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 }));
+    });
+    render(<FileExplorer sessionId="case-file-jump" rootDir="/srv/app" remotePtyId={remote ? 40 : undefined} transportGeneration={remote ? "g1" : undefined} />);
+    await screen.findByRole("treeitem", { name: "Readme.md" });
+    if (remote) fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
+    const search = screen.getByRole("textbox", { name: "Search this folder" });
+    const submit = async (name: string) => {
+      fireEvent.change(search, { target: { value: `/srv/app/${name}` } });
+      await act(async () => { fireEvent.keyDown(search, { key: "Enter" }); });
+    };
+
+    await submit("README.md");
+    expect(search).toHaveProperty("value", "/srv/app/README.md");
+    caseInsensitive = true;
+    await submit("README.md");
+    const pinned = await screen.findByRole("treeitem", { name: "Readme.md" });
+    expect(pinned.getAttribute("data-pinned")).toBe("true");
+    expect(pinned.getAttribute("data-tree-path")).toBe("/srv/app/Readme.md");
+
+    await submit("TITLE.ts");
+    expect(search).toHaveProperty("value", "/srv/app/TITLE.ts");
+    await submit("Title.ts");
+    expect((await screen.findByRole("treeitem", { name: "Title.ts" })).getAttribute("data-pinned")).toBe("true");
+  });
+
   test("follows the local terminal directory and remembers it when a terminal link opens another folder", async () => {
     const session: Session = { id: "local", title: "Local", dir: "/tmp/next", branch: "", runState: "idle", updatedAt: 1 };
     useSessionsStore.setState({ sessions: [session], activeSessionId: session.id });

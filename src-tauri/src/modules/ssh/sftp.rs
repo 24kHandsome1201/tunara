@@ -23,6 +23,7 @@ mod read;
 mod transfer;
 mod write;
 
+pub(crate) use browse::resolve_remote_file_jump;
 pub use browse::{ssh_fs_home, ssh_fs_read_dir};
 pub use read::{
     ssh_file_view_head_v1, ssh_file_view_tail_v1, ssh_fs_read_file, ssh_fs_read_if_changed_v1,

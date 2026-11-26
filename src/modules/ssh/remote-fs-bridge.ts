@@ -24,6 +24,15 @@ export function sshReadDir(id: number, path: string, includeHidden = false): Pro
   return invoke<DirEntry[]>("ssh_fs_read_dir", { id, path, includeHidden });
 }
 
+export interface FileJump {
+  directory: string;
+  pinnedFile?: string;
+}
+
+export function resolveFileJump(path: string, id: number | undefined, binding: SessionBindingV1 | null): Promise<FileJump> {
+  return invoke<FileJump>("fs_resolve_file_jump", { path, id, binding });
+}
+
 export function sshReadFile(id: number, path: string): Promise<ReadResult> {
   return invoke<ReadResult>("ssh_fs_read_file", { id, path });
 }

@@ -116,6 +116,14 @@ test("all 36 added SSH commands are registered, permitted, and present in genera
   }
 });
 
+test("Files path resolvers are permitted and present in the generated main-window ACL", async () => {
+  const permission = await readFile(new URL("src-tauri/permissions/main.toml", root), "utf8");
+  const acl = JSON.parse(await readFile(new URL("src-tauri/gen/schemas/acl-manifests.json", root), "utf8"));
+  const generated = acl["__app-acl__"].permissions["allow-main-commands"].commands.allow;
+  assert.match(permission, /"fs_resolve_file_jump"/);
+  assert.ok(generated.includes("fs_resolve_file_jump"));
+});
+
 test("every non-exempt registered SSH Result<String> command maps its final error", async () => {
   for (const [file, commands] of Object.entries(mapped)) {
     const source = await readFile(new URL(`src-tauri/src/modules/ssh/${file}`, root), "utf8");

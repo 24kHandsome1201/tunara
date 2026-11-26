@@ -13,6 +13,11 @@ async function mockListing(page: Page) {
     window.__TAURI_INTERNALS__.invoke = (cmd: string, args?: Record<string, unknown>) => {
       // Use the filesystem root as home so both revisions show the same absolute breadcrumbs.
       if (cmd === "ssh_fs_home" || (cmd === "fs_resolve_dir" && args?.path === "~")) return Promise.resolve("/");
+      if (cmd === "fs_resolve_file_jump") {
+        if (args?.path === "/home/e2e/src") return Promise.resolve({ directory: args.path });
+        if (args?.path === "/home/e2e/src/index.ts") return Promise.resolve({ directory: "/home/e2e/src", pinnedFile: "index.ts" });
+        return Promise.reject(new Error("Not found"));
+      }
       if (cmd === "fs_read_dir" || cmd === "ssh_fs_read_dir") {
         void invoke(cmd, args);
         if (args?.path === "/") return Promise.resolve([entry("home", "dir")]);
@@ -70,6 +75,39 @@ async function capturePanel(page: Page, scenario: string) {
   if (!prefix) return;
   await page.mouse.move(640, 12);
   await page.locator(".tunara-panel").screenshot({ path: `${prefix}-${scenario}.png`, animations: "disabled" });
+}
+
+for (const target of ["directory", "file"] as const) {
+  test(`Files jumps to an absolute ${target} on Enter`, async ({ page, backend }) => {
+    await page.goto("/");
+    await mockListing(page);
+    await page.getByRole("button", { name: "Local terminal" }).click();
+    await expect(page.locator(".xterm-rows").first()).toContainText("e2e$");
+    await page.getByRole("tab", { name: "Files", exact: true }).click();
+    const root = page.getByRole("navigation", { name: "Directory" }).getByRole("button", { name: "/", exact: true });
+    await expect(root).toBeVisible();
+    if (await root.isEnabled()) await root.click();
+    await expect(page.getByRole("treeitem", { name: "home", exact: true })).toBeVisible();
+    const search = page.getByRole("textbox", { name: "Search this folder" });
+    await search.fill(target === "directory" ? "/home/e2e/src" : "/home/e2e/src/index.ts");
+    const fileReads = await backend.callCount("fs_read_file");
+    await search.press("Enter");
+    await expect(search).toBeEmpty();
+    await expect(page.locator(".explorer-breadcrumbs")).toHaveAttribute("title", "/home/e2e/src");
+    const rows = page.getByRole("treeitem");
+    if (target === "file") {
+      await expect(rows.first()).toHaveAttribute("aria-label", "index.ts");
+      await expect(rows.first()).toHaveAttribute("data-pinned", "true");
+    } else {
+      await expect(rows.first()).toHaveAttribute("aria-label", "components");
+    }
+    expect(await backend.callCount("fs_read_file")).toBe(fileReads);
+    await capturePanel(page, `path-${target}`);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page.getByRole("treeitem", { name: "home", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Forward", exact: true }).click();
+    await expectListingBreadcrumb(page);
+  });
 }
 
 test("Files keeps the current directory and scroll position after visiting Changes", async ({ page }) => {
