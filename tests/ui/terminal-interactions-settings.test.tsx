@@ -1,5 +1,5 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { defaultKeybindingsForPlatform } from "@/modules/config/keybindings";
 import { useUIStore } from "@/state/ui";
@@ -29,6 +29,7 @@ test("host modifier control remains on the single settings page", () => {
   });
   mockIPC((command) => command === "resolve_all_bins" ? [] : undefined);
   render(<Settings onClose={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
 
   expect(screen.getByLabelText("Terminal host modifier").classList).toContain("settings-control");
   expect(screen.getByText("ESC").tagName).toBe("KBD");

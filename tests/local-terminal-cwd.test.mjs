@@ -15,6 +15,11 @@ test("localTerminalCwdFromSession inherits a local session cwd", () => {
   );
 });
 
+test("a configured default folder takes precedence for a new local terminal", () => {
+  assert.equal(localTerminalCwdFromSession(null, "/home/example/My Project"), "/home/example/My Project");
+  assert.equal(localTerminalCwdFromSession({ dir: "/other" }, "/home/example/My Project"), "/home/example/My Project");
+});
+
 test("localTerminalCwdFromSession falls back for missing or remote sessions", () => {
   assert.equal(localTerminalCwdFromSession(null), DEFAULT_LOCAL_TERMINAL_DIR);
   assert.equal(
