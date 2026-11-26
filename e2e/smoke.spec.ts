@@ -8,6 +8,32 @@ test("boots and shows a terminal backed by the mocked PTY", async ({ page, backe
   expect(await backend.callCount("ssh_hosts_load")).toBeGreaterThan(0);
 });
 
+test("terminal insets leave the workspace statusbar unobscured", async ({ page, backend }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openLocalTerminal(page, backend);
+  await backend.emitPtyOutput(1, "\x1b]7;file://localhost/home/e2e/project\x07");
+
+  const bar = page.locator(".tunara-statusbar");
+  await expect(bar.getByText("/home/e2e/project", { exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Split left/right" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Split top/bottom" })).toBeVisible();
+  await expect.poll(() => bar.evaluate((element) => {
+    const root = document.querySelector("#root")!;
+    const mount = document.querySelector("[data-terminal-canvas=true]")!;
+    const screen = mount.querySelector(".xterm-screen")!;
+    const rootContentBottom = root.getBoundingClientRect().bottom - parseFloat(getComputedStyle(root).borderBottomWidth);
+    const barRect = element.getBoundingClientRect();
+    return {
+      barFitsWindow: barRect.bottom <= rootContentBottom,
+      screenFitsMount: screen.getBoundingClientRect().bottom <= mount.getBoundingClientRect().bottom,
+      controlsUnobscured: [...element.querySelectorAll("[title], button")].every((control) => {
+        const { left, top, width } = control.getBoundingClientRect();
+        return control.contains(document.elementFromPoint(left + width / 2, top + 2));
+      }),
+    };
+  })).toEqual({ barFitsWindow: true, screenFitsMount: true, controlsUnobscured: true });
+});
+
 test("empty workspace has an accessible title and stacks its launch cards in a narrow window", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Start a terminal", level: 2 })).toBeVisible();
