@@ -38,7 +38,7 @@ function LaunchButton({ icon, label, detail, onClick, title, variant = "row" }: 
       data-primary={variant === "primary" || undefined}
       title={title}
       aria-label={label}
-      aria-describedby={detailId}
+      aria-describedby={title ? undefined : detailId}
       onClick={onClick}
     >
       <span className="workspace-empty-icon"><Icon icon={icon} size={isRow ? 14 : 16} /></span>

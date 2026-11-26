@@ -127,6 +127,28 @@ test("empty workspace keeps one quiet launcher above recent folders and SSH host
   useUIStore.setState({ overlay: null, sshPrefill: null });
 });
 
+test("empty workspace distinguishes same-name folders by their full paths", async () => {
+  const recentPaths = ["/tmp/client/project", "/tmp/server/project"];
+  const nearbyPaths = ["/tmp/client/tools", "/tmp/server/tools"];
+  mockIPC((command) => {
+    if (command === "ssh_hosts_load") return [];
+    if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
+    if (command === "fs_scan_recent_repos") return nearbyPaths.map((path) => ({ path, name: "tools", mtime: 1 }));
+    return undefined;
+  });
+  useSessionsStore.setState({ sessions: [], activeSessionId: null, recentDirs: recentPaths });
+  render(<WorkspaceEmptyState onNewTerminal={vi.fn()} onNewTerminalInDirectory={vi.fn()} onOpenSsh={vi.fn()} />);
+
+  const recent = within(screen.getByRole("region", { name: "Recent folders" }));
+  const nearby = within(await screen.findByRole("region", { name: "Nearby projects" }));
+  for (const description of recentPaths) {
+    expect(recent.getByRole("button", { name: "project", description })).toBeTruthy();
+  }
+  for (const description of nearbyPaths) {
+    expect(nearby.getByRole("button", { name: "tools", description })).toBeTruthy();
+  }
+});
+
 test("OSC 7 cwd changes stay in the same SSH host group", () => {
   render(
     <Sidebar
