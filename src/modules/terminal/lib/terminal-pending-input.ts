@@ -4,17 +4,20 @@ export function schedulePendingInput({
   pty,
   input,
   submit,
+  onWrite,
   onConsumed,
 }: {
   pty: PtySession;
   input: string | undefined;
   submit: boolean;
+  onWrite?: (submit: boolean) => void;
   onConsumed?: () => void;
 }) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   if (input) {
     timer = setTimeout(() => {
       timer = null;
+      onWrite?.(submit);
       // Match xterm's Enter key, including shells that bind Ctrl-J separately.
       pty.write(submit ? input + "\r" : input)
         .then(() => onConsumed?.())

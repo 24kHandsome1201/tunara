@@ -14,6 +14,7 @@ import { stringOffsetToCellColumn, type TerminalSearchSource } from "./cross-ses
 interface TerminalActions {
   terminal: Terminal;
   openSearch: () => void;
+  isAtFreshShellPrompt?: () => boolean;
   revealAttention?: () => void;
   getBlocks?: () => readonly TerminalCommandBlock[];
 }
@@ -137,6 +138,27 @@ export function focusActiveTerminal(sessionId: string): void {
     if (recovery && !recovery.disabled) { recovery.focus(); return; }
   }
   actions.get(sessionId)?.terminal.focus();
+}
+
+export function pasteIntoActiveShellPrompt(sessionId: string, text: string): boolean {
+  const registration = actions.get(sessionId);
+  const session = useSessionsStore.getState().sessions.find((item) => item.id === sessionId);
+  if (
+    !registration || !session || session.connection?.phase !== "ready"
+    || session.agent || session.pendingInput || !registration.isAtFreshShellPrompt?.()
+  ) return false;
+  const { terminal } = registration;
+  const target = captureTerminalActionTarget(sessionId, terminal);
+  if (
+    !target?.isCurrent()
+    || target.token.physicalPtyId !== session.ptyId
+    || target.token.transportGeneration !== session.transportGeneration
+    || !terminal.element?.isConnected
+    || terminal.buffer.active.type !== "normal"
+  ) return false;
+  terminal.paste(text);
+  focusActiveTerminal(sessionId);
+  return true;
 }
 
 export async function safePasteActiveTerminal(sessionId: string): Promise<void> {

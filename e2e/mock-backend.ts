@@ -13,6 +13,7 @@ type MockPty = {
   rows: number;
   writes: string[];
   closed: boolean;
+  autoPrompt?: boolean;
 };
 
 /** Mirrors the backend's snake_case `RawHostProfile`. */
@@ -90,7 +91,7 @@ function emitData(pty: MockPty, text: string): void {
 function echoInput(pty: MockPty, data: string): void {
   let out = "";
   for (const ch of data) {
-    if (ch === "\r") out += `\r\n${PROMPT}`;
+    if (ch === "\r") out += `\r\n${pty.autoPrompt === false ? "" : PROMPT}`;
     else if (ch === "\x7f") out += "\b \b";
     else if (ch >= " ") out += ch;
   }
