@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useId, useState } from "react";
 import { useSessionsStore } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { useT } from "@/modules/i18n";
@@ -10,6 +10,7 @@ import {
   nearbyReposNotInRecents,
   type NearbyGitRepo,
 } from "@/modules/session/empty-state-dirs";
+import { ArrowRight, CaretRight, FolderSimple, HardDrives, Icon, Terminal, type IconGlyph } from "./icons";
 import { useSshProfilesPanel } from "./useSshProfilesPanel";
 
 interface WorkspaceEmptyStateProps {
@@ -18,34 +19,37 @@ interface WorkspaceEmptyStateProps {
   onOpenSsh: () => void;
 }
 
-const launchButtonStyle: CSSProperties = {
-  minHeight: "var(--h-btn-lg)",
-  padding: "0 16px",
-  borderRadius: "var(--r-btn)",
-  border: "1px solid var(--c-control-border)",
-  background: "var(--c-bg-white)",
-  color: "var(--c-text-2)",
-  fontSize: "var(--fs-body)",
-  fontWeight: 600,
-  cursor: "pointer",
-};
+interface LaunchButtonProps {
+  icon: IconGlyph;
+  label: string;
+  detail: string;
+  onClick: () => void;
+  title?: string;
+  variant?: "primary" | "action" | "row";
+}
 
-const cardButtonStyle: CSSProperties = {
-  width: "100%",
-  textAlign: "left",
-  border: "1px solid var(--c-border-1)",
-  background: "var(--c-bg-white)",
-  color: "var(--c-text-3)",
-  fontSize: "var(--fs-secondary)",
-  fontFamily: "var(--font-ui)",
-  padding: "10px 12px",
-  borderRadius: "var(--r-btn)",
-  cursor: "pointer",
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  minWidth: 0,
-};
+function LaunchButton({ icon, label, detail, onClick, title, variant = "row" }: LaunchButtonProps) {
+  const detailId = useId();
+  const isRow = variant === "row";
+  return (
+    <button
+      type="button"
+      className={`workspace-empty-button ${isRow ? "workspace-empty-row" : "workspace-empty-action"}`}
+      data-primary={variant === "primary" || undefined}
+      title={title}
+      aria-label={label}
+      aria-describedby={title ? undefined : detailId}
+      onClick={onClick}
+    >
+      <span className="workspace-empty-icon"><Icon icon={icon} size={isRow ? 14 : 16} /></span>
+      <span className="workspace-empty-copy">
+        <strong>{label}</strong>
+        <small id={detailId}>{detail}</small>
+      </span>
+      <Icon icon={isRow ? CaretRight : ArrowRight} className="workspace-empty-arrow" size={isRow ? 12 : 16} />
+    </button>
+  );
+}
 
 export function WorkspaceEmptyState({
   onNewTerminal,
@@ -77,106 +81,95 @@ export function WorkspaceEmptyState({
   const hasSuggestions = recents.length > 0 || suggested.length > 0 || hosts.length > 0;
 
   return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0, overflowY: "auto", padding: 24 }}>
-      <div style={{ width: "min(560px, 100%)", display: "flex", flexDirection: "column", gap: 20 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <h2 style={{ margin: 0, textAlign: "center", fontSize: "var(--fs-title)", color: "var(--c-text-1)", fontWeight: 600 }}>
-            {t("app.empty.title")}
-          </h2>
-          <div style={{ textAlign: "center", color: "var(--c-text-4)", fontSize: "var(--fs-secondary)" }}>
-            {t("app.empty.guide")}
-          </div>
+    <div className="workspace-empty">
+      <div className="workspace-empty-content">
+        <div className="workspace-empty-intro">
+          <span className="workspace-empty-icon"><Icon icon={Terminal} size={22} /></span>
+          <h2>{t("app.empty.title")}</h2>
+          <p>{t("app.empty.guide")}</p>
         </div>
-        <div role="group" aria-label={t("app.empty.actions")} className="workspace-empty-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <button type="button" onClick={onNewTerminal} className="hover-accent-bg" style={{ ...launchButtonStyle, background: "var(--c-accent)", color: "var(--c-on-accent)", borderColor: "var(--c-accent)" }}>
+        <div role="group" aria-label={t("app.empty.actions")} className="workspace-empty-actions">
+          <div className="workspace-empty-cards">
+            <LaunchButton
+              variant="primary"
+              icon={FolderSimple}
+              onClick={onNewTerminalInDirectory}
+              label={t("app.empty.open_terminal_in_folder")}
+              detail={t("app.empty.folder_hint")}
+            />
+            <LaunchButton
+              variant="action"
+              icon={HardDrives}
+              onClick={onOpenSsh}
+              label={t("app.empty.connect_ssh")}
+              detail={t("app.empty.ssh_hint")}
+            />
+          </div>
+          <button type="button" className="workspace-empty-button workspace-empty-local" onClick={onNewTerminal}>
+            <Icon icon={Terminal} size={15} />
             {t("app.empty.local_terminal")}
-          </button>
-          <button type="button" onClick={onNewTerminalInDirectory} className="hover-bg" style={launchButtonStyle}>
-            {t("app.empty.open_terminal_in_folder")}
-          </button>
-          <button type="button" onClick={onOpenSsh} className="hover-bg" style={launchButtonStyle}>
-            {t("app.empty.connect_ssh")}
           </button>
         </div>
         {hasSuggestions && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18, paddingTop: 14, borderTop: "1px solid var(--c-border-1)" }}>
-            {recents.length > 0 && (
-              <section aria-label={t("app.empty.recent")}>
-                <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 8 }}>
-                  {t("app.empty.recent")}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {recents.map((entry) => (
-                    <button
-                      key={entry.dir}
-                      type="button"
-                      className="hover-bg"
-                      title={entry.dir}
-                      aria-label={entry.label}
-                      onClick={() => useSessionsStore.getState().newTerminalInDir(entry.dir)}
-                      style={cardButtonStyle}
-                    >
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "var(--c-text-2)" }}>
-                        {entry.label}
-                      </span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-                        {t("common.new_terminal_here")}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-            {suggested.length > 0 && (
-              <section aria-label={t("app.empty.nearby")}>
-                <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 8 }}>
-                  {t("app.empty.nearby")}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {suggested.map((repo) => (
-                    <button
-                      key={repo.path}
-                      type="button"
-                      className="hover-bg"
-                      title={repo.path}
-                      aria-label={repo.name}
-                      onClick={() => useSessionsStore.getState().newTerminalInDir(repo.path)}
-                      style={cardButtonStyle}
-                    >
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "var(--c-text-2)" }}>
-                        {repo.name}
-                      </span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "var(--fs-meta)", color: "var(--c-text-5)" }}>
-                        {t("common.new_terminal_here")}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
+          <div className="workspace-empty-suggestions">
             {hosts.length > 0 && (
-              <section aria-label={t("sidebar.hosts.title")}>
-                <div style={{ fontSize: "var(--fs-meta)", color: "var(--c-text-5)", marginBottom: 8 }}>
-                  {t("sidebar.hosts.title")}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {hosts.map((entry) => (
-                    <button
-                      key={`${entry.key}:${entry.profile.host}`}
-                      type="button"
-                      className="hover-bg"
-                      title={`${entry.profile.user}@${entry.profile.host}${entry.profile.port === 22 ? "" : `:${entry.profile.port}`}`}
-                      aria-label={hostProfileButtonLabel(entry.profile)}
-                      onClick={() => useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(entry, panel))}
-                      style={cardButtonStyle}
-                    >
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "var(--c-text-2)" }}>
-                        {hostProfileButtonLabel(entry.profile)}
-                      </span>
-                    </button>
-                  ))}
+              <section className="workspace-empty-hosts" aria-label={t("app.empty.saved_ssh_hosts")}>
+                <h3>{t("app.empty.saved_ssh_hosts")}</h3>
+                <div className="workspace-empty-list">
+                  {hosts.map((entry) => {
+                    const { profile } = entry;
+                    const endpoint = `${profile.user}@${profile.host}${profile.port === 22 ? "" : `:${profile.port}`}`;
+                    return (
+                      <LaunchButton
+                        key={`${entry.key}:${profile.host}`}
+                        icon={HardDrives}
+                        title={endpoint}
+                        label={hostProfileButtonLabel(profile)}
+                        detail={endpoint}
+                        onClick={() => useUIStore.getState().openSshConnect(sshConnectPrefillFromEntry(entry, panel))}
+                      />
+                    );
+                  })}
                 </div>
               </section>
+            )}
+            {(recents.length > 0 || suggested.length > 0) && (
+              <div className="workspace-empty-directories">
+                {recents.length > 0 && (
+                  <section aria-label={t("app.empty.recent")}>
+                    <h3>{t("app.empty.recent")}</h3>
+                    <div className="workspace-empty-list">
+                      {recents.map((entry) => (
+                        <LaunchButton
+                          key={entry.dir}
+                          icon={FolderSimple}
+                          title={entry.dir}
+                          label={entry.label}
+                          detail={t("common.new_terminal_here")}
+                          onClick={() => useSessionsStore.getState().newTerminalInDir(entry.dir)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {suggested.length > 0 && (
+                  <section aria-label={t("app.empty.nearby")}>
+                    <h3>{t("app.empty.nearby")}</h3>
+                    <div className="workspace-empty-list">
+                      {suggested.map((repo) => (
+                        <LaunchButton
+                          key={repo.path}
+                          icon={FolderSimple}
+                          title={repo.path}
+                          label={repo.name}
+                          detail={t("common.new_terminal_here")}
+                          onClick={() => useSessionsStore.getState().newTerminalInDir(repo.path)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
             )}
           </div>
         )}
