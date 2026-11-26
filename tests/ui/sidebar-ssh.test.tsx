@@ -81,7 +81,7 @@ test("empty workspace keeps one quiet launcher above recent folders and SSH host
       return [{ id: "saved-box", label: "lab box", host: "box.example", port: 22, user: "deploy", identity_file: "" }];
     }
     if (command === "ssh_hosts_import_config") return { imported: [], skipped: 0, diagnostics: [] };
-    if (command === "fs_scan_recent_repos") return [];
+    if (command === "fs_scan_recent_repos") return [{ path: "/tmp/nearby", name: "nearby", mtime: 1 }];
     return undefined;
   });
   useSessionsStore.setState({ sessions: [], activeSessionId: null, recentDirs: ["/tmp/project"] });
@@ -100,19 +100,25 @@ test("empty workspace keeps one quiet launcher above recent folders and SSH host
 
   expect(screen.queryByText("No sessions")).toBeNull();
   const launcher = screen.getByRole("group", { name: "Start a session" });
-  expect(within(launcher).getAllByRole("button").map((button) => button.textContent)).toEqual([
-    "Local terminal",
-    "Open terminal in folder",
-    "Connect SSH",
+  const folder = within(launcher).getByRole("button", { name: "Open folder", description: "Start a terminal in a folder you choose." });
+  const ssh = within(launcher).getByRole("button", { name: "Connect SSH", description: "Open a terminal on a remote machine." });
+  const local = within(launcher).getByRole("button", { name: "Local terminal" });
+  expect(within(launcher).getAllByRole("button")).toEqual([
+    folder,
+    ssh,
+    local,
   ]);
-  fireEvent.click(within(launcher).getByRole("button", { name: "Local terminal" }));
-  fireEvent.click(within(launcher).getByRole("button", { name: "Open terminal in folder" }));
-  fireEvent.click(within(launcher).getByRole("button", { name: "Connect SSH" }));
+  fireEvent.click(local);
+  fireEvent.click(folder);
+  fireEvent.click(ssh);
   expect(onNewTerminal).toHaveBeenCalledTimes(1);
   expect(onNewTerminalInDirectory).toHaveBeenCalledTimes(1);
   expect(onOpenSsh).toHaveBeenCalledTimes(1);
   expect(within(screen.getByRole("region", { name: "Recent folders" })).getByRole("button", { name: "project" })).toBeTruthy();
-  const host = await screen.findByRole("button", { name: "lab box" });
+  const nearby = await screen.findByRole("region", { name: "Nearby projects" });
+  expect(within(nearby).getByRole("button", { name: "nearby" })).toBeTruthy();
+  const hosts = await screen.findByRole("region", { name: "Saved SSH hosts" });
+  const host = within(hosts).getByRole("button", { name: "lab box", description: "deploy@box.example" });
   fireEvent.click(host);
   await waitFor(() => expect(useUIStore.getState()).toMatchObject({
     overlay: "ssh",

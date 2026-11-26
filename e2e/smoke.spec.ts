@@ -8,9 +8,22 @@ test("boots and shows a terminal backed by the mocked PTY", async ({ page, backe
   expect(await backend.callCount("ssh_hosts_load")).toBeGreaterThan(0);
 });
 
-test("empty workspace has an accessible title", async ({ page }) => {
+test("empty workspace has an accessible title and stacks its launch cards in a narrow window", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "No terminals open", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start a terminal", level: 2 })).toBeVisible();
+  const folder = page.getByRole("button", { name: "Open folder", exact: true });
+  const ssh = page.getByRole("button", { name: "Connect SSH", exact: true });
+  const folderWide = await folder.boundingBox();
+  const sshWide = await ssh.boundingBox();
+  expect(folderWide!.width).toBeCloseTo(sshWide!.width);
+  expect(folderWide!.y).toBeCloseTo(sshWide!.y);
+
+  await page.setViewportSize({ width: 640, height: 720 });
+  const folderNarrow = await folder.boundingBox();
+  const sshNarrow = await ssh.boundingBox();
+  expect(folderNarrow!.width).toBeCloseTo(sshNarrow!.width);
+  expect(folderNarrow!.x).toBeCloseTo(sshNarrow!.x);
+  expect(folderNarrow!.y + folderNarrow!.height).toBeLessThan(sshNarrow!.y);
 });
 
 test("Inspector auto-collapses in a narrow window and restores when wide", async ({ page, backend }) => {
