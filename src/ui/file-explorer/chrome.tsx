@@ -152,6 +152,7 @@ export function ExplorerNav({
           })}
         </div>}
         <PanelIconButton
+          className="workspace-reveal-action"
           ref={editButtonRef}
           disabled={disabled || !currentPath.startsWith("/")}
           onClick={() => {
@@ -164,6 +165,7 @@ export function ExplorerNav({
           <Icon icon={PencilSimple} size={14} />
         </PanelIconButton>
         <PanelIconButton
+          className="workspace-reveal-action"
           disabled={disabled}
           onClick={onRefresh}
           title={t("explorer.refresh")}

@@ -6,6 +6,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import { expect, test, vi } from "vitest";
 import { t } from "@/modules/i18n";
 import { DEFAULT_SETTINGS, flushUserConfig, loadUserConfig, useUIStore } from "@/state/ui";
+import { DARK_THEME, LIGHT_THEME } from "@/styles/terminalTheme";
 import { createTerminalInstance } from "@/modules/terminal/lib/terminal-instance";
 import { registerTerminalAtlasRebuilder } from "@/modules/terminal/lib/terminal-atlas-refresh";
 import { useTerminalRuntimeSync } from "@/ui/useTerminalRuntimeSync";
@@ -249,7 +250,7 @@ test("runtime theme swaps repaint the current terminal frame", async () => {
 
   view.rerender(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="dark" />);
 
-  await waitFor(() => expect(terminal.options.theme?.background).toBe("#0f0b09"));
+  await waitFor(() => expect(terminal.options.theme?.background).toBe(DARK_THEME.background));
   expect(rebuild).toHaveBeenCalled();
   expect(refresh).toHaveBeenCalledWith(0, terminal.rows - 1);
   unregisterRebuild();
@@ -286,13 +287,13 @@ test("live terminals follow system color-scheme changes without a settings updat
     screenReaderMode: false,
   });
   render(<ScreenReaderRuntimeHarness enabled={false} terminal={terminal} theme="system" />);
-  expect(terminal.options.theme?.background).toBe("#fffdfb");
+  expect(terminal.options.theme?.background).toBe(LIGHT_THEME.background);
 
   await act(async () => {
     matches = true;
     for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
   });
-  await waitFor(() => expect(terminal.options.theme?.background).toBe("#0f0b09"));
+  await waitFor(() => expect(terminal.options.theme?.background).toBe(DARK_THEME.background));
 
   terminal.dispose();
   Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });

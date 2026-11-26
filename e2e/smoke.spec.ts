@@ -1,3 +1,4 @@
+import { TauriEvent } from "@tauri-apps/api/event";
 import { expect, focusedTerminalSessionId, openLocalTerminal, terminalSessionIds, test } from "./fixtures";
 
 test.use({ locale: "en-US" });
@@ -6,6 +7,57 @@ test("boots and shows a terminal backed by the mocked PTY", async ({ page, backe
   await openLocalTerminal(page, backend);
   expect(await backend.callCount("load_config")).toBeGreaterThan(0);
   expect(await backend.callCount("ssh_hosts_load")).toBeGreaterThan(0);
+});
+
+test("terminal insets leave the workspace statusbar unobscured", async ({ page, backend }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openLocalTerminal(page, backend);
+  await backend.emitPtyOutput(1, "\x1b]7;file://localhost/home/e2e/project\x07");
+
+  const bar = page.locator(".tunara-statusbar");
+  await expect(bar.getByText("/home/e2e/project", { exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Split left/right" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Split top/bottom" })).toBeVisible();
+  await expect.poll(() => bar.evaluate((element) => {
+    const root = document.querySelector("#root")!;
+    const mount = document.querySelector(".xterm")!.parentElement!;
+    const screen = mount.querySelector(".xterm-screen")!;
+    const rootContentBottom = root.getBoundingClientRect().bottom - parseFloat(getComputedStyle(root).borderBottomWidth);
+    const barRect = element.getBoundingClientRect();
+    return {
+      barFitsWindow: barRect.bottom <= rootContentBottom,
+      screenFitsMount: screen.getBoundingClientRect().bottom <= mount.getBoundingClientRect().bottom,
+      controlsUnobscured: [...element.querySelectorAll("[title], button")].every((control) => {
+        const { left, top, width } = control.getBoundingClientRect();
+        return control.contains(document.elementFromPoint(left + width / 2, top + 2));
+      }),
+    };
+  })).toEqual({ barFitsWindow: true, screenFitsMount: true, controlsUnobscured: true });
+});
+
+test("the terminal gutter accepts file drops and opens the context menu", async ({ page, backend }) => {
+  await openLocalTerminal(page, backend);
+  const canvas = page.locator("[data-terminal-canvas=true]");
+  const gutter = await canvas.evaluate((element) => {
+    const canvasRect = element.getBoundingClientRect();
+    const terminalRect = element.querySelector(".xterm")!.getBoundingClientRect();
+    const x = Math.round((canvasRect.left + terminalRect.left) / 2);
+    const y = Math.round((canvasRect.top + terminalRect.top) / 2);
+    return { x, y };
+  });
+  await page.mouse.click(gutter.x, gutter.y, { button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Safe paste" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await page.evaluate(async ({ event, x, y }) => {
+    const invoke = window.__TAURI_INTERNALS__.invoke as (cmd: string, args: unknown) => Promise<unknown>;
+    await invoke("plugin:event|emit", {
+      event,
+      payload: { paths: ["/home/e2e/a file.txt"], position: { x: x * devicePixelRatio, y: y * devicePixelRatio } },
+    });
+  }, { event: TauriEvent.DRAG_DROP, ...gutter });
+  await expect.poll(() => backend.ptyWrites(1)).toBe(" '/home/e2e/a file.txt'");
 });
 
 test("empty workspace has an accessible title and stacks its launch cards in a narrow window", async ({ page }) => {
@@ -282,6 +334,7 @@ test("failed SSH banner clamps its message and keeps recovery actions together",
   const message = page.locator('[role="alert"] span[title^="SSH connection failed"]');
   await expect(message).toBeVisible();
   await expect(message).toContainText("Couldn't resolve the host name. Check the address or your DNS/VPN.");
+  await page.locator(".inspector-toolbar").hover();
   await page.getByRole("button", { name: "Close inspector" }).click();
   const messageStyle = await message.evaluate((element) => {
     const style = getComputedStyle(element);

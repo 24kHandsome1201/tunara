@@ -53,6 +53,49 @@ async function openFiles(page: Page, { ssh = false, controlName = false, startup
   return terminal;
 }
 
+test("workspace secondary actions reveal without moving row controls", async ({ page }) => {
+  await openFiles(page);
+  const terminal = page.locator(".xterm-helper-textarea").first();
+  const row = page.getByRole("treeitem", { name: "README.md", exact: true });
+  const send = row.getByRole("button", { name: "Send path to terminal: README.md" });
+  const more = row.getByRole("button", { name: "More actions: README.md" });
+  const closeSession = page.locator(".session-card-close");
+  const closeInspector = page.getByRole("button", { name: "Close inspector" });
+  await page.mouse.move(730, 530);
+  await terminal.focus();
+  await expect(send).toHaveCSS("opacity", "0");
+  await expect(more).toHaveCSS("opacity", "0");
+  await expect(closeSession).toHaveCSS("opacity", "0");
+  await expect(closeInspector).toHaveCSS("opacity", "0");
+  const actionBounds = await more.boundingBox();
+
+  await row.hover();
+  await expect(send).toHaveCSS("opacity", "1");
+  await expect(more).toHaveCSS("opacity", "1");
+  expect(await more.boundingBox()).toEqual(actionBounds);
+  await expect(more).toHaveCSS("transition-duration", "0.15s, 0.15s");
+
+  await page.mouse.move(730, 530);
+  await row.focus();
+  await expect(more).toHaveCSS("opacity", "1");
+  await row.press("Shift+F10");
+  await expect(page.getByRole("menuitem", { name: "Send path to terminal" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const session = page.locator(".session-card-select");
+  await session.focus();
+  await session.press("Tab");
+  await expect(closeSession).toBeFocused();
+  await expect(closeSession).toHaveCSS("opacity", "1");
+
+  const files = page.getByRole("tab", { name: "Files", exact: true });
+  await files.focus();
+  await expect(closeInspector).toHaveCSS("opacity", "1");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(more).toHaveCSS("transition-duration", "0s, 0s");
+});
+
 for (const { kind, name, expected } of [
   { kind: "folder", name: "docs draft", expected: "cd -- '/home/e2e/docs draft'" },
   { kind: "file", name: "README.md", expected: "'/home/e2e/README.md'" },

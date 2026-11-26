@@ -138,7 +138,7 @@ test("paper chrome keeps one quiet voice: hierarchy, no squashy lists, muted gly
   assert.doesNotMatch(tokens, /\.inspector-tab:active \{ transform:/);
   assert.doesNotMatch(tokens, /\.inspector-tab\[data-active="true"\] \{ background:/);
   assert.doesNotMatch(inspector, /background: "var\(--c-bg-2\)"/);
-  assert.match(inspector, /background: "var\(--c-bg-1\)"/);
+  assert.match(inspector, /background: "var\(--c-workspace-tools\)"/);
   assert.match(styles, /\.ui-button--ghost \{/);
   assert.match(styles, /\.ui-button--ghost:hover:not\(:disabled\)/);
   assert.match(styles, /\.ui-button--ghost:active:not\(:disabled\)/);
@@ -173,7 +173,8 @@ test("Files keeps aligned action-aware columns and a non-wrapping compact SSH to
   assert.match(styles, /\.explorer-listing-grid\[data-selectable="true"\] \{[\s\S]*?20px minmax\(0, 1fr\) minmax\(42px, 92px\) 54px/);
   assert.match(styles, /@container file-explorer \(max-width: 360px\) \{[\s\S]*?\.explorer-listing-modified \{ display: none; \}[\s\S]*?20px minmax\(0, 1fr\) 54px/);
   assert.equal((explorer.match(/explorer-listing-grid/g) ?? []).length, 2);
-  assert.match(explorer, /className="hover-bg explorer-listing-grid explorer-listing-row"/);
+  assert.match(explorer, /className="explorer-listing-grid explorer-listing-row"/);
+  assert.match(styles, /\.explorer-tree-node:is\(:hover, :focus-within\) > \.explorer-listing-row/);
   assert.match(explorer, /className="explorer-listing-grid explorer-listing-header"/);
   assert.match(styles, /\.explorer-tools \{ justify-content: space-between; flex-wrap: nowrap; \}/);
   assert.match(styles, /\.explorer-transfer-entry \{[\s\S]*?width: 48px/);

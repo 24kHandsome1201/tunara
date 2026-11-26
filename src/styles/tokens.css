@@ -43,6 +43,15 @@
   --c-bg-hover: oklch(92.8% 0.011 55);
   --c-bg-hover-solid: oklch(92.8% 0.011 55);
 
+  /* Workspace planes; the canvas also backs the xterm palette in terminalTheme.ts. */
+  --c-workspace-rail-solid: oklch(95.4% 0.006 62);
+  --c-workspace-tools-solid: oklch(97.5% 0.005 66);
+  --c-workspace-canvas: var(--terminal-canvas-bg, #fdfcfb);
+  --c-workspace-rail: var(--c-workspace-rail-solid);
+  --c-workspace-tools: var(--c-workspace-tools-solid);
+  --c-workspace-field: color-mix(in oklch, var(--c-text-primary) 6%, transparent);
+  --c-workspace-selection: color-mix(in oklch, var(--c-accent) 14%, var(--c-workspace-rail-solid));
+
   /* ── 线/边框 ── */
   --c-border-1: oklch(89.8% 0.008 55);
   --c-border-2: oklch(85.5% 0.009 55);
@@ -189,6 +198,7 @@
   /* ── Motion (response-only) ── */
   --dur-instant: 60ms;   /* hover colour/opacity nudges */
   --dur-fast: 120ms;     /* press, menu/tooltip entrance, colour transitions */
+  --dur-workspace: 150ms;
   --dur-base: 160ms;     /* overlay/palette entrance, expand arrows, panel slide */
   --dur-slow: 220ms;     /* only: sidebar/panel drawers, large layout shifts */
   --dur-loading: 1200ms; /* loading pulse period (the only allowed infinite) */
@@ -273,6 +283,7 @@
 html[data-reduce-motion] {
   --dur-instant: 0ms;
   --dur-fast: 0ms;
+  --dur-workspace: 0ms;
   --dur-base: 0ms;
   --dur-slow: 0ms;
   --motion-distance-sm: 0px;
@@ -318,6 +329,10 @@ html[data-reduce-motion] {
   --c-bg-3-solid: oklch(25% 0.009 55);
   --c-bg-hover: oklch(28% 0.011 55);
   --c-bg-hover-solid: oklch(28% 0.011 55);
+  --c-workspace-rail-solid: oklch(24% 0.012 66);
+  --c-workspace-tools-solid: oklch(22.3% 0.010 66);
+  --c-workspace-canvas: var(--terminal-canvas-bg, #181411);
+  --c-workspace-selection: color-mix(in oklch, var(--c-accent) 17%, var(--c-workspace-rail-solid));
 
   --c-border-1: oklch(25% 0.009 55);
   --c-border-2: oklch(31% 0.01 55);
@@ -471,10 +486,6 @@ html[data-reduce-motion] {
 }
 .explorer-sort-direction[data-visible="true"] { opacity: 1; transform: scale(1); }
 
-/* Inspector tabs are underline-only. Press-scale belongs on buttons, not
-   navigation chrome that sits in a dense rail. */
-.inspector-tab.hover-text-3:hover { background: var(--c-bg-hover) !important; }
-
 .split-handle:hover .split-handle-line,
 .split-handle:focus-visible .split-handle-line { background: var(--c-accent) !important; }
 .split-handle-h:hover .split-handle-line,
@@ -485,17 +496,11 @@ html[data-reduce-motion] {
 
 .session-card {
   border: 1px solid transparent;
-  transition: background var(--dur-fast) var(--ease-out),
-              box-shadow var(--dur-base) var(--ease-out);
+  transition: background-color var(--dur-workspace) var(--ease-out);
   cursor: inherit;
 }
 .session-card:hover { background: var(--c-bg-hover); }
-.session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-bg-3); }
-.session-card:has(.session-card-select[aria-current="page"]):hover { background: var(--c-bg-hover); }
-.session-card-close { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
-.session-card:hover .session-card-close,
-.session-card:has(.session-card-close[data-confirm="true"]) .session-card-close,
-.session-card-close:focus-visible { opacity: 1; pointer-events: auto; }
+.session-card:has(.session-card-select[aria-current="page"]) { background: var(--c-workspace-selection); }
 .session-card-close:active { transform: scale(var(--press-scale)); }
 
 /* Context menu items */
@@ -521,10 +526,10 @@ html[data-reduce-motion] {
   user-select: none;
 }
 
-.sidebar-search:focus-within { background: var(--c-bg-white) !important; border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
 /* The container's :focus-within ring is the single focus indicator here. */
-.sidebar-search input:focus-visible { outline: none; }
-.explorer-search:focus-within { border-color: var(--c-accent) !important; box-shadow: var(--focus-ring-soft); }
+.sidebar-search:focus-within,
+.explorer-search:focus-within { outline: var(--focus-ring-w) solid var(--focus-ring-color); }
+.sidebar-search input:focus-visible,
 .explorer-search input:focus-visible { outline: none; }
 
 /* ── Utility classes ── */

@@ -384,7 +384,7 @@ export default function App() {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100vh",
+        height: "100%",
         overflow: "hidden",
         fontFamily: "var(--font-ui)",
         background: "var(--c-bg-white)",

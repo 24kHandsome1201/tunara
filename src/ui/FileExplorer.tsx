@@ -1200,7 +1200,7 @@ export function FileExplorer({
         }}
       >
         <div
-          className="hover-bg explorer-listing-grid explorer-listing-row"
+          className="explorer-listing-grid explorer-listing-row"
           data-selectable={selectionMode ? "true" : undefined}
           data-active={pinned || batchSelected || active}
         >
@@ -1230,7 +1230,7 @@ export function FileExplorer({
             <button
               type="button"
               tabIndex={-1}
-              className="hover-bg explorer-listing-action explorer-send-path"
+              className="hover-bg explorer-listing-action"
               aria-label={t("explorer.send_path.named", { name: node.entry.name })}
               title={t("explorer.send_path")}
               onClick={() => sendPathToTerminal(node)}

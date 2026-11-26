@@ -46,9 +46,10 @@ export function TerminalViewChrome({
   const remote = useSessionsStore((s) => Boolean(s.sessions.find((session) => session.id === sessionId)?.remote));
   const inputRouter = useRef(new TerminalInputRouter());
   const contextMenuOwners = useRef(new WeakMap<Event, TerminalInputOwner>());
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   const isOnTerminalCanvas = (event: React.SyntheticEvent) =>
-    event.target instanceof Node && !!containerRef.current?.contains(event.target);
+    event.target instanceof Node && !!canvasRef.current?.contains(event.target);
 
   const ownerFor = (kind: TerminalInputEventKind, event: React.MouseEvent | React.WheelEvent) => {
     const term = getTerminal();
@@ -94,10 +95,10 @@ export function TerminalViewChrome({
   }, [getTerminal, getBlockMenuEntries, sessionId]);
 
   const openKeyboardMenu = useCallback(() => {
-    const rect = containerRef.current?.getBoundingClientRect();
+    const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     openMenu(rect.left + 24, rect.top + 24);
-  }, [containerRef, openMenu]);
+  }, [openMenu]);
 
   useEffect(() => registerTerminalMenuAction(sessionId, openKeyboardMenu), [openKeyboardMenu, sessionId]);
 
@@ -118,7 +119,7 @@ export function TerminalViewChrome({
       if (disposed) return;
       if (event.payload.type !== "drop") return;
       const { paths, position } = event.payload;
-      const rect = containerRef.current?.getBoundingClientRect();
+      const rect = canvasRef.current?.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
       const x = position.x / scale;
       const y = position.y / scale;
@@ -189,7 +190,7 @@ export function TerminalViewChrome({
       // Browser/unit-test environments have no current Tauri webview.
     }
     return () => { disposed = true; unlisten?.(); };
-  }, [containerRef, sessionId, t]);
+  }, [sessionId, t]);
 
   const handleContextMenuCapture = (e: React.MouseEvent) => {
     if (!isOnTerminalCanvas(e)) return;
@@ -259,7 +260,9 @@ export function TerminalViewChrome({
             onToggleCaseSensitive={search.toggleCaseSensitive}
           />
         )}
-        <div data-terminal-canvas ref={containerRef} style={{ flex: 1, padding: "var(--sp-2)", minHeight: 0 }} />
+        <div data-terminal-canvas ref={canvasRef} style={{ flex: 1, display: "flex", padding: "var(--sp-4) var(--sp-5)", minHeight: 0 }}>
+          <div ref={containerRef} style={{ flex: 1, minWidth: 0 }} />
+        </div>
       </div>
       {menu && (
         <ContextMenu

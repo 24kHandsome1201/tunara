@@ -179,7 +179,7 @@ export function MainArea({ sessions, activeSessionId, onTogglePanel }: MainAreaP
   return (
     <div
       data-terminal-canvas="workspace"
-      style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-bg-white)", overflow: "hidden", minWidth: 0 }}
+      style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--c-workspace-canvas)", overflow: "hidden", minWidth: 0 }}
     >
       <div ref={splitContainerRef} style={{ flex: 1, position: "relative", minHeight: 0 }}>
         {mountedSessions.map((s) => (
@@ -233,16 +233,14 @@ export function MainArea({ sessions, activeSessionId, onTogglePanel }: MainAreaP
         className="tunara-statusbar"
         style={{
           height: "var(--h-statusbar)",
-          background: "var(--c-bg-1)",
-          borderTop: "1px solid var(--c-border-1)",
           display: "flex",
           alignItems: "center",
-          padding: "0 12px",
+          padding: "0 var(--sp-5)",
           gap: 10,
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-shell-path)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
+        <span style={{ fontSize: "var(--fs-meta)", lineHeight: "16px", color: "var(--c-text-4)", fontFamily: "var(--font-mono)", fontWeight: 500, flex: "0 1 auto", minWidth: 48, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={active?.dir ?? ""}>
           {compactPath(active?.dir ?? "")}
         </span>
 
