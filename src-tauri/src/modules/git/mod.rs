@@ -5,7 +5,7 @@
 //!
 //! 关键设计：
 //! - `git_status` 两步 diff：`diff_tree_to_index` (staged) + `diff_index_to_workdir` (unstaged/untracked)，带 stage 字段。
-//! - `diff.foreach` 先 file_cb 登记再 line_cb 累计，不漏零行变更（修 P2-15）。
+//! - 逐个收集 delta 与 patch 行数，不漏零行变更（修 P2-15）。
 //! - `FileDiff` 结构化：text / binary / tooLarge / metadataOnly（修 P1-13）。
 //! - `RemoteState` 结构化降级：无 upstream / detached / unborn 不连累文件列表（修 P1-10）。
 
@@ -16,10 +16,9 @@ pub mod watcher;
 pub mod workspace;
 pub use watcher::GitWatcherState;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
-use git2::{Delta, Diff, DiffOptions, Repository, Tree};
+use git2::{Delta, Diff, DiffOptions, Patch, Repository, Tree};
 use serde::Serialize;
 use tauri::State;
 
@@ -116,9 +115,7 @@ pub fn git_status(
 
     // Unstaged + untracked: index → workdir（未暂存 + 未追踪）
     let mut unstaged_opts = DiffOptions::new();
-    unstaged_opts
-        .include_untracked(true)
-        .recurse_untracked_dirs(true);
+    include_untracked_text(&mut unstaged_opts);
     let unstaged_diff = repo
         .diff_index_to_workdir(None, Some(&mut unstaged_opts))
         .map_err(|e| e.to_string())?;
@@ -145,46 +142,31 @@ pub fn git_status(
 /// 从 diff 收集 FileChange，`is_staged_diff` 区分是 staged (HEAD→index) 还是
 /// unstaged (index→workdir) diff。后者中 Untracked delta 归类为 "untracked"。
 fn collect_diff(diff: &git2::Diff, is_staged_diff: bool) -> Result<Vec<FileChange>, String> {
-    let per_file: RefCell<HashMap<String, FileChangeAccumulator>> = RefCell::new(HashMap::new());
-    diff.foreach(
-        &mut |delta, _progress| {
-            let path = delta_path(&delta);
-            let stage = stage_for_delta(&delta, is_staged_diff);
-            per_file
-                .borrow_mut()
-                .entry(path)
-                .or_insert(FileChangeAccumulator {
-                    added: 0,
-                    removed: 0,
-                    mark: delta_mark(&delta),
-                    stage,
-                });
-            true
-        },
-        None,
-        None,
-        Some(&mut |delta, _hunk, line| {
-            let path = delta_path(&delta);
-            let stage = stage_for_delta(&delta, is_staged_diff);
-            let mut map = per_file.borrow_mut();
-            let e = map.entry(path).or_insert(FileChangeAccumulator {
+    let mut per_file = HashMap::new();
+    for (index, delta) in diff.deltas().enumerate() {
+        let change = per_file
+            .entry(delta_path(&delta))
+            .or_insert(FileChangeAccumulator {
                 added: 0,
                 removed: 0,
                 mark: delta_mark(&delta),
-                stage,
+                stage: stage_for_delta(&delta, is_staged_diff),
             });
-            match line.origin() {
-                '+' => e.added += 1,
-                '-' => e.removed += 1,
-                _ => {}
-            }
-            true
-        }),
-    )
-    .map_err(|e| e.to_string())?;
+        if oversized_untracked(&delta).is_some() {
+            continue;
+        }
+        let patch = match Patch::from_diff(diff, index) {
+            Ok(Some(patch)) => patch,
+            Ok(None) => continue,
+            Err(_) if delta.status() == Delta::Untracked => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        let (_, added, removed) = patch.line_stats().map_err(|e| e.to_string())?;
+        change.added += added;
+        change.removed += removed;
+    }
 
     Ok(per_file
-        .into_inner()
         .into_iter()
         .map(|(path, change)| FileChange {
             path,
@@ -210,6 +192,18 @@ fn stage_for_delta(delta: &git2::DiffDelta, is_staged_diff: bool) -> &'static st
 
 const DIFF_MAX_BYTES: usize = 256 * 1024; // 单文件 patch 上限
 const DIFF_MAX_LINES: usize = 2000; // 单文件行数上限
+
+fn include_untracked_text(options: &mut DiffOptions) {
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .show_untracked_content(true);
+}
+
+fn oversized_untracked(delta: &git2::DiffDelta<'_>) -> Option<usize> {
+    let bytes = usize::try_from(delta.new_file().size()).unwrap_or(usize::MAX);
+    (delta.status() == Delta::Untracked && bytes > DIFF_MAX_BYTES).then_some(bytes)
+}
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -283,11 +277,11 @@ fn scoped_file_diff<'repo>(
         DiffScope::Staged => repo.diff_tree_to_index(head_tree, None, Some(&mut opts)),
         DiffScope::Unstaged => repo.diff_index_to_workdir(None, Some(&mut opts)),
         DiffScope::Untracked => {
-            opts.include_untracked(true).recurse_untracked_dirs(true);
+            include_untracked_text(&mut opts);
             repo.diff_index_to_workdir(None, Some(&mut opts))
         }
         DiffScope::Combined => {
-            opts.include_untracked(true).recurse_untracked_dirs(true);
+            include_untracked_text(&mut opts);
             repo.diff_tree_to_workdir_with_index(head_tree, Some(&mut opts))
         }
     }
@@ -297,6 +291,9 @@ fn scoped_file_diff<'repo>(
 fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, String> {
     // 先看 delta：二进制 / 纯 metadata 直接短路
     if let Some(delta) = diff.deltas().next() {
+        if let Some(bytes) = oversized_untracked(&delta) {
+            return Ok(FileDiff::TooLarge { path: file, bytes });
+        }
         if delta.flags().is_binary() {
             return Ok(FileDiff::Binary { path: file });
         }
@@ -324,7 +321,7 @@ fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, Str
         if truncated {
             return true;
         }
-        let content = std::str::from_utf8(l.content()).unwrap_or("");
+        let content = String::from_utf8_lossy(l.content());
         let origin = l.origin();
         let prefix_len = if matches!(origin, '+' | '-' | ' ') {
             1
@@ -339,11 +336,18 @@ fn file_diff_from_git_diff(diff: Diff<'_>, file: String) -> Result<FileDiff, Str
             out.push(origin);
             lines += 1;
         }
-        out.push_str(content);
+        out.push_str(&content);
         true
     })
     .map_err(|e| e.to_string())?;
 
+    if diff
+        .deltas()
+        .next()
+        .is_some_and(|delta| delta.status() == Delta::Untracked && delta.flags().is_binary())
+    {
+        return Ok(FileDiff::Binary { path: file });
+    }
     if truncated && out.len() >= DIFF_MAX_BYTES {
         return Ok(FileDiff::TooLarge {
             path: file,
@@ -450,8 +454,11 @@ fn delta_mark(delta: &git2::DiffDelta) -> char {
 
 #[cfg(test)]
 mod tests {
-    use super::{git_diff, status_cache_key, DiffScope, FileDiff, DIFF_MAX_BYTES};
-    use git2::{Repository, Signature};
+    use super::{
+        collect_diff, git_diff, include_untracked_text, status_cache_key, DiffScope, FileDiff,
+        DIFF_MAX_BYTES,
+    };
+    use git2::{DiffOptions, Repository, Signature};
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -543,6 +550,126 @@ mod tests {
             Some("unstaged".into()),
         )
         .expect("unstaged diff")
+    }
+
+    #[test]
+    fn git_diff_preserves_line_boundaries_in_non_utf8_text() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).unwrap();
+        commit_file(&repo, &dir.path, "tracked.txt", "old\n");
+        let patches =
+            [("tracked.txt", "unstaged"), ("new.txt", "untracked")].map(|(file, stage)| {
+                std::fs::write(dir.path.join(file), b"caf\xe9\nsecond\n").unwrap();
+                text_patch(
+                    git_diff(
+                        dir.path.to_str().unwrap().into(),
+                        file.into(),
+                        Some(stage.into()),
+                    )
+                    .unwrap(),
+                )
+            });
+        assert!(
+            patches
+                .iter()
+                .all(|patch| patch.contains("+caf�\n+second\n")),
+            "{patches:?}"
+        );
+    }
+
+    #[test]
+    fn git_diff_shows_all_untracked_text_lines_as_additions() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).expect("init test repo");
+        let file = "new [file].txt";
+        std::fs::write(dir.path.join(file), "first\n\nlast").unwrap();
+        for stage in [Some("untracked"), None] {
+            let diff = git_diff(
+                dir.path.to_str().unwrap().into(),
+                file.into(),
+                stage.map(String::from),
+            )
+            .unwrap();
+            let FileDiff::Text {
+                patch,
+                total_lines,
+                truncated,
+                ..
+            } = diff
+            else {
+                panic!("expected text diff, got {diff:?}");
+            };
+            assert!(
+                patch.contains("@@ -0,0 +1,3 @@\n+first\n+\n+last\n"),
+                "{patch:?}"
+            );
+            assert_eq!(total_lines, 3);
+            assert!(!truncated);
+        }
+        let mut opts = DiffOptions::new();
+        include_untracked_text(&mut opts);
+        let diff = repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap();
+        let changes = collect_diff(&diff, false).unwrap();
+        let change = &changes[0];
+        assert_eq!((&*change.path, &*change.stage), (file, "untracked"));
+        assert_eq!((change.added, change.removed), (3, 0));
+    }
+
+    #[test]
+    fn git_status_keeps_other_changes_when_an_untracked_patch_cannot_be_read() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).unwrap();
+        commit_file(&repo, &dir.path, "tracked", "before\n");
+        std::fs::write(dir.path.join("tracked"), "after\n").unwrap();
+        let unavailable = dir.path.join("unavailable");
+        std::fs::write(&unavailable, "untracked\n").unwrap();
+        let mut opts = DiffOptions::new();
+        include_untracked_text(&mut opts);
+        let diff = repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&unavailable, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        if std::fs::File::open(&unavailable).is_ok() {
+            std::fs::remove_file(&unavailable).unwrap();
+        }
+        let changes = collect_diff(&diff, false).unwrap();
+        let tracked = changes.iter().find(|file| file.path == "tracked").unwrap();
+        assert_eq!((tracked.added, tracked.removed), (1, 1));
+        let unavailable = changes
+            .iter()
+            .find(|file| file.path == "unavailable")
+            .unwrap();
+        assert_eq!((&*unavailable.stage, unavailable.added), ("untracked", 0));
+    }
+
+    #[test]
+    fn git_diff_keeps_untracked_binary_and_large_files_out_of_text_preview() {
+        let dir = TestRepoDir::new();
+        let repo = Repository::init(&dir.path).expect("init test repo");
+        std::fs::write(dir.path.join("binary"), b"one\0two\n").unwrap();
+        std::fs::write(dir.path.join("large"), vec![b'x'; DIFF_MAX_BYTES + 1]).unwrap();
+        let diff = |file: &str| {
+            git_diff(
+                dir.path.to_str().unwrap().into(),
+                file.into(),
+                Some("untracked".into()),
+            )
+            .unwrap()
+        };
+        assert!(matches!(diff("binary"), FileDiff::Binary { .. }));
+        assert!(
+            matches!(diff("large"), FileDiff::TooLarge { bytes, .. } if bytes == DIFF_MAX_BYTES + 1)
+        );
+        let mut opts = DiffOptions::new();
+        include_untracked_text(&mut opts);
+        let workdir = repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap();
+        let changes = collect_diff(&workdir, false).unwrap();
+        assert_eq!(changes.len(), 2);
+        assert!(changes
+            .iter()
+            .all(|change| (change.added, change.removed) == (0, 0)));
     }
 
     #[test]

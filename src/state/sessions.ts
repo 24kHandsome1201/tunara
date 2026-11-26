@@ -425,7 +425,8 @@ export const useSessionsStore = create<SessionsState>()((set, get) => ({
     useUIStore.getState().closeReaderForSession(id);
     useUIStore.setState((state) => {
       const { [id]: _removedPath, ...explorerPaths } = state.explorerPaths;
-      return { explorerPaths };
+      const { [id]: _removedHistory, ...explorerHistory } = state.explorerHistory;
+      return { explorerPaths, explorerHistory };
     });
     const wasActive = get().activeSessionId === id;
     const splitFocusSessionId = releaseSplitPane(id, get().sessions.filter((s) => s.id !== id));

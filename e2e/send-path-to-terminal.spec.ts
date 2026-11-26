@@ -67,7 +67,8 @@ for (const { kind, name, expected } of [
     await expect(page.locator(".xterm-helper-textarea")).toBeFocused();
     await expect(page.getByRole("tabpanel", { name: "Files" })).toBeVisible();
     await expect.poll(() => backend.openPtyIds()).toEqual([1]);
-    if (kind === "folder") await expect(row).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("navigation", { name: "Directory" }).locator(".explorer-breadcrumbs"))
+      .toHaveAttribute("title", "/home/e2e");
     const capture = process.env.SEND_PATH_CAPTURE;
     if (capture) await page.screenshot({ path: `${capture}-${kind}.png`, animations: "disabled" });
 
