@@ -80,7 +80,10 @@ test("breadcrumbSegments keeps a filesystem-root trail when SSH is browsing from
 });
 
 test("breadcrumbSegments starts at ~ inside the home directory", () => {
-  assert.deepEqual(breadcrumbSegments("/Users/me", "/", "/Users/me"), [{ label: "~", targetPath: "/Users/me" }]);
+  assert.deepEqual(breadcrumbSegments("/Users/me", "/", "/Users/me"), [
+    { label: "…", targetPath: "/Users", isCollapsed: true },
+    { label: "~", targetPath: "/Users/me" },
+  ]);
   assert.deepEqual(breadcrumbSegments("/Users/me/code", "/", "/Users/me"), [
     { label: "~", targetPath: "/Users/me" },
     { label: "code", targetPath: "/Users/me/code" },

@@ -14,7 +14,7 @@ import "@/styles/files.css";
 const ROOT = "/opt/wfs/repo";
 const params = new URLSearchParams(window.location.search);
 const language = params.get("lang") === "en" ? "en" : "zh-CN";
-const expand = params.get("expand") !== "0";
+const enterFolder = params.get("enter") !== "0";
 const scenario = params.get("scenario") ?? "local";
 const requestedWidth = Number(params.get("width") ?? "320");
 const panelWidth = Number.isFinite(requestedWidth) ? Math.max(220, Math.min(560, requestedWidth)) : 320;
@@ -105,11 +105,11 @@ function rowOf(item: Element) {
   return item.querySelector(":scope > .hover-bg") ?? item;
 }
 
-function VisualExpand() {
+function VisualNavigation() {
   React.useEffect(() => {
     if (isRemote) return;
-    if (!expand) {
-      document.documentElement.dataset.explorerReady = "collapsed";
+    if (!enterFolder) {
+      document.documentElement.dataset.explorerReady = "root";
       return;
     }
     let cancelled = false;
@@ -128,10 +128,10 @@ function VisualExpand() {
       const nested = await waitFor(/^nested$/);
       rowOf(nested).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
       const deep = await waitFor(/^deep\.ts$/);
-      if (deep.getAttribute("aria-level") !== "3" || nested.getAttribute("aria-expanded") !== "true") {
-        throw new Error("nested tree did not expand in place");
+      if (deep.getAttribute("data-file-path") !== `${ROOT}/src/nested/deep.ts` || nested.isConnected) {
+        throw new Error("the nested folder did not replace its parent listing");
       }
-      document.documentElement.dataset.explorerReady = "expanded";
+      document.documentElement.dataset.explorerReady = "navigated";
     })().catch((error) => {
       document.documentElement.dataset.explorerReady = "error";
       document.documentElement.dataset.explorerError = String(error);
@@ -197,7 +197,7 @@ document.body.style.background = "var(--c-bg-2)";
 
 createRoot(document.getElementById("root")!).render(
   <>
-    <VisualExpand />
+      <VisualNavigation />
     <main style={{ width: "100vw", height: "100vh", padding: 16, boxSizing: "border-box", display: "flex", justifyContent: "center" }}>
       <section
         aria-label="Files inspector"

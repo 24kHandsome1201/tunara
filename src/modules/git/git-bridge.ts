@@ -125,7 +125,7 @@ export interface RemoteGitSnapshotV1 {
   requestId: string; generation: number; binding: SessionBindingV1; observedAt: number;
   freshness: "fresh" | "stale";
   repo?: { status: StatusResult; upstream: RemoteState; workspace?: WorkspaceContext };
-  unavailableFields: Array<{ field: "workspace"; kind: RemoteGitErrorKind }>;
+  unavailableFields: Array<{ field: "workspace" | "status"; kind: RemoteGitErrorKind }>;
   error?: RemoteGitErrorV1;
 }
 

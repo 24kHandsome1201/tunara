@@ -45,6 +45,7 @@ fn ssh_session(state: &State<'_, PtyState>, id: u32) -> Result<std::sync::Arc<Se
 /// local `git_diff` text-preview budget (256 KiB) — DiffPanel already renders
 /// `tooLarge` beyond that.
 const MAX_STATUS_BYTES: usize = 256 * 1024;
+const STATUS_TOO_LARGE: &str = "status too large";
 const MAX_NUMSTAT_BYTES: usize = 256 * 1024;
 const NUMSTAT_MARKER: &str = "\0TUNARA_NUMSTAT\0";
 const UNSTAGED_MARKER: &str = "\0TUNARA_UNSTAGED\0";
@@ -55,6 +56,7 @@ const MAX_SNAPSHOT_BYTES: usize = MAX_STATUS_BYTES
     + UNSTAGED_MARKER.len()
     + NUMSTAT_END.len();
 const MAX_DIFF_BYTES: usize = 256 * 1024;
+const UNTRACKED_TOO_LARGE: &str = "\0TUNARA_UNTRACKED_TOO_LARGE\0";
 /// Line cap mirroring the local path's `DIFF_MAX_LINES` (git/mod.rs), so the
 /// DiffPanel shows the same "truncated" hint for local and remote diffs.
 const MAX_DIFF_LINES: usize = 2000;
@@ -318,6 +320,7 @@ pub struct RemoteGitSnapshotRequestV1 {
 #[derive(Clone)]
 struct SnapshotCacheEntry {
     status: StatusResult,
+    status_incomplete: bool,
     upstream: RemoteState,
     workspace: Option<WorkspaceContext>,
     observed_at: u64,
@@ -577,14 +580,16 @@ fn cached_snapshot_response(
     freshness: SnapshotFreshness,
     error: Option<RemoteGitErrorKind>,
 ) -> RemoteGitSnapshotV1 {
-    let unavailable_fields = if entry.workspace.is_none() {
-        vec![UnavailableFieldV1 {
+    let mut unavailable_fields = Vec::new();
+    if entry.status_incomplete {
+        unavailable_fields.push(status_unavailable());
+    }
+    if entry.workspace.is_none() {
+        unavailable_fields.push(UnavailableFieldV1 {
             field: "workspace",
             kind: RemoteGitErrorKind::Unknown,
-        }]
-    } else {
-        Vec::new()
-    };
+        });
+    }
     RemoteGitSnapshotV1 {
         request_id: request.request_id.clone(),
         generation: request.generation,
@@ -601,16 +606,75 @@ fn cached_snapshot_response(
     }
 }
 
-fn remote_status_command(cwd: &str) -> Result<String, String> {
+fn status_unavailable() -> UnavailableFieldV1 {
+    UnavailableFieldV1 {
+        field: "status",
+        kind: RemoteGitErrorKind::Unknown,
+    }
+}
+
+fn remote_status_command(cwd: &str, include_untracked: bool) -> Result<String, String> {
     let cwd = remote_git_cwd(cwd)?;
-    let status = format!("git -C {cwd} status --porcelain=v2 --branch --no-renames -z || {{ printf 'TUNARA_V1\\0'; git -C {cwd} status --porcelain=v1 --branch --no-renames -z; rc=$?; printf 'TUNARA_META\\0TUNARA_RC %s\\n' \"$rc\"; git -C {cwd} symbolic-ref --short HEAD 2>/dev/null || git -C {cwd} rev-parse HEAD 2>/dev/null || true; git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null || true; }}");
+    let untracked = if include_untracked { "all" } else { "no" };
+    let status_args = format!("--branch --no-renames --untracked-files={untracked} -z");
+    let status = format!("git -C {cwd} status --porcelain=v2 {status_args} || {{ printf 'TUNARA_V1\\0'; git -C {cwd} status --porcelain=v1 {status_args}; rc=$?; printf 'TUNARA_META\\0TUNARA_RC %s\\n' \"$rc\"; git -C {cwd} symbolic-ref --short HEAD 2>/dev/null || git -C {cwd} rev-parse HEAD 2>/dev/null || true; git -C {cwd} rev-list --left-right --count @{{u}}...HEAD 2>/dev/null || true; }}");
     Ok(format!("{status}; printf '\\0TUNARA_NUMSTAT\\0'; git -c diff.relative=false -C {cwd} diff --cached --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_UNSTAGED\\0'; git -c diff.relative=false -C {cwd} diff --numstat --no-renames -z 2>/dev/null || true; printf '\\0TUNARA_NUMSTAT_END\\0'"))
+}
+
+fn remote_worktree_root_command(cwd: &str) -> Result<String, String> {
+    let cwd = remote_git_cwd(cwd)?;
+    Ok(format!(
+        "cd {cwd} && up=$(git rev-parse --show-cdup) && cd \"./$up\""
+    ))
+}
+
+fn remote_small_regular_file() -> String {
+    format!(
+        "[ -n \"$(find \"$target\" -prune -type f -size -{}c 2>/dev/null)\" ]",
+        MAX_DIFF_BYTES + 1
+    )
+}
+
+fn remote_untracked_counts_command(cwd: &str) -> Result<String, String> {
+    let root = remote_worktree_root_command(cwd)?;
+    let small = remote_small_regular_file();
+    let count = shell_quote(&format!(
+        r#"tab=$(printf '\t')
+for file do
+    target="./$file"
+    {small} || continue
+    stat=$(git diff --no-index --no-ext-diff --no-textconv --numstat -- /dev/null "$target") ||
+        [ "$?" -eq 1 ] || continue
+    added=${{stat%%"$tab"*}}
+    [ "$added" != "$stat" ] && [ "$added" != - ] && printf '%s\t0\t%s\0' "$added" "$file"
+done
+exit 0"#
+    ));
+    Ok(format!(
+        "{root} && git ls-files --others --exclude-standard -z | xargs -0 sh -c {count} sh"
+    ))
+}
+
+fn apply_untracked_counts(status: &mut StatusResult, raw: &str) {
+    if raw.len() > MAX_NUMSTAT_BYTES {
+        return;
+    }
+    let Some(counts) = parse_numstat(raw) else {
+        return;
+    };
+    for file in &mut status.files {
+        if file.stage == "untracked" {
+            if let Some(&(added, _)) = counts.get(file.path.as_str()) {
+                file.added = added;
+            }
+        }
+    }
 }
 
 fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), String> {
     let (raw, numstat) = raw.split_once(NUMSTAT_MARKER).unwrap_or((raw, ""));
     if raw.len() > MAX_STATUS_BYTES {
-        return Err("status too large".into());
+        return Err(STATUS_TOO_LARGE.into());
     }
     let (mut status, upstream) = if let Some(v1) = raw.strip_prefix("TUNARA_V1\0") {
         let (status_raw, meta) = v1.split_once("TUNARA_META\0").unwrap_or((v1, ""));
@@ -656,6 +720,22 @@ fn parse_status_snapshot(raw: &str) -> Result<(StatusResult, RemoteState), Strin
     Ok((status, upstream))
 }
 
+async fn read_status_snapshot<Fut>(
+    mut run: impl FnMut(bool) -> Fut,
+) -> Result<(StatusResult, RemoteState, bool), String>
+where
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    match parse_status_snapshot(&run(true).await?) {
+        Ok((status, upstream)) => Ok((status, upstream, false)),
+        Err(error) if error == STATUS_TOO_LARGE => {
+            let (status, upstream) = parse_status_snapshot(&run(false).await?)?;
+            Ok((status, upstream, true))
+        }
+        Err(error) => Err(error),
+    }
+}
+
 fn parse_numstat(raw: &str) -> Option<HashMap<&str, (usize, usize)>> {
     if !raw.is_empty() && !raw.ends_with('\0') {
         return None;
@@ -677,8 +757,8 @@ fn parse_numstat(raw: &str) -> Option<HashMap<&str, (usize, usize)>> {
 }
 
 /// Generation-safe aggregate used by every remote Review consumer. Modern Git
-/// needs one status exec; its fallback remains in that same channel. Workspace
-/// discovery is a second exec only on a snapshot cache miss.
+/// needs one status exec; its fallback remains in that same channel. Untracked
+/// counts are best-effort, so a slow scan cannot discard tracked status.
 #[tauri::command]
 pub async fn ssh_remote_git_snapshot_v1(
     state: State<'_, PtyState>,
@@ -739,11 +819,23 @@ pub async fn ssh_remote_git_snapshot_v1(
         let session = state.get_for_ssh_binding(&request.binding).ok_or_else(|| "stale binding".to_string())?;
         let ssh = match session.as_ref() { Session::Ssh(ssh) => ssh, _ => return Err("stale binding".into()) };
         let cwd = remote_git_cwd(&request.cwd)?;
-        let command = remote_status_command(&request.cwd)?;
-        crate::modules::perf_counters::git_process();
-        let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
-        if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) { return Err("cancelled".into()); }
-        let (status, upstream) = parse_status_snapshot(&raw)?;
+        let (mut status, upstream, status_incomplete) = read_status_snapshot(|include_untracked| {
+            let (cwd, cancelled, generation_cancelled) = (&request.cwd, &cancelled, &generation_cancelled);
+            async move {
+                let command = remote_status_command(cwd, include_untracked)?;
+                crate::modules::perf_counters::git_process();
+                let raw = ssh.exec_cancellable(&command, MAX_SNAPSHOT_BYTES + 1, cancelled.clone()).await?;
+                if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) { return Err("cancelled".into()); }
+                Ok(raw)
+            }
+        }).await?;
+        if status.files.iter().any(|file| file.stage == "untracked") {
+            let command = remote_untracked_counts_command(&request.cwd)?;
+            crate::modules::perf_counters::git_process();
+            if let Ok(raw) = ssh.exec_cancellable(&command, MAX_NUMSTAT_BYTES + 1, cancelled.clone()).await {
+                apply_untracked_counts(&mut status, &raw);
+            }
+        }
         let workspace = if cached_workspace.is_some() {
             cached_workspace
         } else {
@@ -752,7 +844,7 @@ pub async fn ssh_remote_git_snapshot_v1(
             ssh.exec_cancellable(&workspace_command, MAX_STATUS_BYTES + 1, cancelled.clone()).await.ok().and_then(|raw| parse_remote_workspace(&raw, &request.repository_key).ok())
         };
         if cancelled.load(Ordering::Acquire) || generation_cancelled.load(Ordering::Acquire) || !generation_is_latest(&key, request.generation) || state.get_for_ssh_binding(&request.binding).is_none() { return Err("cancelled".into()); }
-        Ok(SnapshotCacheEntry { status, upstream, workspace, observed_at: observed_now(), inserted: Instant::now() })
+        Ok(SnapshotCacheEntry { status, status_incomplete, upstream, workspace, observed_at: observed_now(), inserted: Instant::now() })
     }.await;
     let finish_request_id = request.request_id.clone();
     let response = match result {
@@ -802,12 +894,13 @@ pub async fn ssh_remote_git_snapshot_v1(
                     | RemoteGitErrorKind::Unknown
             );
             if stale_allowed {
-                if let Some(entry) = snapshot_cache()
+                if let Some(mut entry) = snapshot_cache()
                     .lock()
                     .ok()
                     .and_then(|cache| cache.get(&key).cloned())
                     .filter(|entry| entry.inserted.elapsed() < Duration::from_secs(30))
                 {
+                    entry.status_incomplete |= error == STATUS_TOO_LARGE;
                     cancel_state.finish_operation("remoteGit", &finish_request_id, &cancelled);
                     return Ok(cached_snapshot_response(
                         &request,
@@ -824,7 +917,11 @@ pub async fn ssh_remote_git_snapshot_v1(
                 observed_at: observed_now(),
                 freshness: SnapshotFreshness::Fresh,
                 repo: None,
-                unavailable_fields: Vec::new(),
+                unavailable_fields: if error == STATUS_TOO_LARGE {
+                    vec![status_unavailable()]
+                } else {
+                    Vec::new()
+                },
                 error: Some(wire_error(kind)),
             })
         }
@@ -1028,6 +1125,70 @@ fn remote_diff_command(cwd: &str, file: &str, arg: &str) -> Result<String, Strin
     Ok(format!("git -C {cwd} diff {arg} -- {quoted}"))
 }
 
+fn remote_untracked_diff_command(cwd: &str, file: &str) -> Result<String, String> {
+    if file.contains('\0') || file.split('/').any(|part| matches!(part, "" | "." | "..")) {
+        return Err("invalid untracked file path".into());
+    }
+    let root = remote_worktree_root_command(cwd)?;
+    let pathspec = shell_quote(&format!(":(top,literal){file}"));
+    let target = shell_quote(&format!("./{file}"));
+    let small = remote_small_regular_file();
+    Ok(format!(
+        r#"{root} && git ls-files --error-unmatch --others --exclude-standard -- {pathspec} >/dev/null &&
+target={target} &&
+if [ ! -f "$target" ] || [ -L "$target" ]; then
+    exit 0
+elif ! {small}; then
+    printf '\0TUNARA_UNTRACKED_TOO_LARGE\0'
+else
+    LC_ALL=C git --no-pager diff --no-index --no-color --no-ext-diff --no-textconv -- /dev/null "$target" ||
+        [ "$?" -eq 1 ]
+fi"#
+    ))
+}
+
+fn remote_file_diff(file: String, out: String, untracked: bool) -> FileDiff {
+    if untracked && out == UNTRACKED_TOO_LARGE {
+        return FileDiff::TooLarge {
+            path: file,
+            bytes: MAX_DIFF_BYTES + 1,
+        };
+    }
+    if out.len() > MAX_DIFF_BYTES {
+        return FileDiff::TooLarge {
+            path: file,
+            bytes: out.len(),
+        };
+    }
+    if untracked {
+        if out.is_empty() {
+            return FileDiff::MetadataOnly {
+                path: file,
+                change: "untracked".into(),
+            };
+        }
+        if out.lines().any(|line| line.starts_with("Binary files ")) {
+            return FileDiff::Binary { path: file };
+        }
+    }
+    let total_lines = out.lines().count();
+    let truncated = total_lines > MAX_DIFF_LINES;
+    let patch = if truncated {
+        out.lines()
+            .take(MAX_DIFF_LINES)
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        out
+    };
+    FileDiff::Text {
+        path: file,
+        patch,
+        truncated,
+        total_lines,
+    }
+}
+
 /// Run a remote `git diff` for one file/stage and wrap it as a `FileDiff::text`
 /// (or `tooLarge` when the exec hit its byte cap).
 #[tauri::command]
@@ -1047,27 +1208,19 @@ pub async fn ssh_git_diff(
             Session::Ssh(s) => s,
             Session::Local(_) => return Err("not a remote session".to_string()),
         };
-        // Stage → git diff flag. Untracked files have no diff, so surface them as
-        // metadataOnly (the local path does the same for empty-delta untracked).
-        let arg = match stage.as_str() {
-            "staged" => "--cached",
-            "unstaged" => "",
-            "untracked" => {
-                return Ok(FileDiff::MetadataOnly {
-                    path: file,
-                    change: "untracked".to_string(),
-                });
-            }
-            _ => "",
-        };
         if let Some(error) = skip_unconfirmed_remote_git(session_id, &cwd) {
             return Err(error);
         }
-        let requested_cwd = cwd.clone();
         // No `2>&1` — let the exec function's stderr-capture return git errors
         // (e.g. "fatal: not a git repository") as Err instead of merging them
         // into the patch text.
-        let cmd = remote_diff_command(&cwd, &file, arg)?;
+        let untracked = stage == "untracked";
+        let cmd = if untracked {
+            remote_untracked_diff_command(&cwd, &file)?
+        } else {
+            let arg = if stage == "staged" { "--cached" } else { "" };
+            remote_diff_command(&cwd, &file, arg)?
+        };
         // Ask exec for one byte over the cap: exec truncates to its limit, so a
         // result strictly longer than MAX_DIFF_BYTES is the only unambiguous
         // overflow signal (a diff of exactly the cap is complete, not too large).
@@ -1077,46 +1230,8 @@ pub async fn ssh_git_diff(
             .await;
         search_state.finish(&request_id, &cancelled);
         let out = result?;
-        if out.len() > MAX_DIFF_BYTES {
-            remember_remote_repo_knowledge(
-                session_id,
-                &requested_cwd,
-                RemoteRepoKnowledge::Confirmed,
-            );
-            return Ok(FileDiff::TooLarge {
-                path: file,
-                bytes: out.len(),
-            });
-        }
-        // Under the byte cap but over the line cap: cut and flag truncation the
-        // same way the local path does, instead of silently returning a patch the
-        // local DiffPanel would have labelled as truncated.
-        let total_lines = out.lines().count();
-        if total_lines > MAX_DIFF_LINES {
-            remember_remote_repo_knowledge(
-                session_id,
-                &requested_cwd,
-                RemoteRepoKnowledge::Confirmed,
-            );
-            let patch = out
-                .lines()
-                .take(MAX_DIFF_LINES)
-                .collect::<Vec<_>>()
-                .join("\n");
-            return Ok(FileDiff::Text {
-                path: file,
-                patch,
-                truncated: true,
-                total_lines,
-            });
-        }
-        remember_remote_repo_knowledge(session_id, &requested_cwd, RemoteRepoKnowledge::Confirmed);
-        Ok(FileDiff::Text {
-            path: file,
-            patch: out,
-            truncated: false,
-            total_lines,
-        })
+        remember_remote_repo_knowledge(session_id, &cwd, RemoteRepoKnowledge::Confirmed);
+        Ok(remote_file_diff(file, out, untracked))
     })
     .await
     .map_err(|error: String| map_remote_git_error(session_id, &cwd, error))
@@ -1442,17 +1557,39 @@ mod tests {
         }
 
         fn snapshot_with_shell(&self, prefix: &str) -> Result<StatusResult, String> {
-            let command = format!(
-                "{prefix} {}",
-                remote_status_command(self.0.to_str().unwrap()).unwrap()
-            );
+            self.status_with_counts(prefix).map(|(status, _)| status)
+        }
+
+        fn status_with_counts(&self, prefix: &str) -> Result<(StatusResult, bool), String> {
+            let (mut status, _, incomplete) = tauri::async_runtime::block_on(
+                read_status_snapshot(|include_untracked| async move {
+                    let command =
+                        remote_status_command(self.0.to_str().unwrap(), include_untracked).unwrap();
+                    let mut raw = self.run_shell(&format!("{prefix} {command}"));
+                    if let Some((end, _)) = raw
+                        .char_indices()
+                        .find(|(index, _)| *index > MAX_SNAPSHOT_BYTES)
+                    {
+                        raw.truncate(end);
+                    }
+                    Ok(raw)
+                }),
+            )?;
+            if status.files.iter().any(|file| file.stage == "untracked") {
+                let counts = self
+                    .run_shell(&remote_untracked_counts_command(self.0.to_str().unwrap()).unwrap());
+                apply_untracked_counts(&mut status, &counts);
+            }
+            Ok((status, incomplete))
+        }
+
+        fn run_shell(&self, command: &str) -> String {
             let output = std::process::Command::new("sh")
-                .args(["-c", &command])
+                .args(["-c", command])
                 .output()
                 .unwrap();
             assert!(output.status.success(), "{output:?}");
-            parse_status_snapshot(&String::from_utf8(output.stdout).unwrap())
-                .map(|(status, _)| status)
+            String::from_utf8(output.stdout).unwrap()
         }
     }
 
@@ -1482,7 +1619,8 @@ mod tests {
         std::fs::write(repo.0.join("same.txt"), "root final\n").unwrap();
         std::fs::write(repo.0.join("sub dir/same.txt"), "sub final\nsub extra\n").unwrap();
 
-        let command = remote_status_command(repo.0.join("sub dir").to_str().unwrap()).unwrap();
+        let command =
+            remote_status_command(repo.0.join("sub dir").to_str().unwrap(), true).unwrap();
         let output = std::process::Command::new("sh")
             .args(["-c", &command])
             .output()
@@ -1646,12 +1784,110 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_keeps_tracked_changes_when_untracked_paths_exceed_the_budget() {
+        let repo = SnapshotTestRepo::new();
+        for file in ["staged", "unstaged"] {
+            std::fs::write(repo.0.join(file), "old\n").unwrap();
+        }
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "initial"]);
+        for file in ["staged", "unstaged"] {
+            std::fs::write(repo.0.join(file), "new\n").unwrap();
+        }
+        repo.git(&["add", "staged"]);
+        let nested = repo.0.join("untracked");
+        std::fs::create_dir(&nested).unwrap();
+        for i in 0..2300 {
+            std::fs::write(nested.join(format!("{i:04}-{}", "x".repeat(230))), "").unwrap();
+        }
+
+        let (status, incomplete) = repo.status_with_counts("").unwrap();
+        let changes: Vec<_> = status
+            .files
+            .iter()
+            .map(|file| {
+                (
+                    file.path.as_str(),
+                    file.stage.as_str(),
+                    file.added,
+                    file.removed,
+                )
+            })
+            .collect();
+        assert_eq!(
+            changes,
+            [("staged", "staged", 1, 1), ("unstaged", "unstaged", 1, 1)]
+        );
+        assert!(incomplete);
+
+        for file in ["staged", "unstaged"] {
+            std::fs::write(repo.0.join(file), "old\n").unwrap();
+        }
+        repo.git(&["add", "staged"]);
+        let (status, incomplete) = repo.status_with_counts("").unwrap();
+        assert!(status.files.is_empty());
+        assert!(incomplete);
+    }
+
+    #[test]
+    fn snapshot_shows_untracked_text_line_counts() {
+        let repo = SnapshotTestRepo::new();
+        let file = "new files/new 'file [1]\t.txt";
+        std::fs::create_dir(repo.0.join("new files")).unwrap();
+        std::fs::write(repo.0.join(file), "first\n\nlast").unwrap();
+        std::fs::write(repo.0.join("binary"), b"one\0two\n").unwrap();
+        std::fs::write(repo.0.join("large"), vec![b'x'; MAX_DIFF_BYTES + 1]).unwrap();
+        let status = repo.snapshot();
+        let change = status
+            .files
+            .iter()
+            .find(|change| change.path == file)
+            .unwrap();
+        assert_eq!((&*change.path, &*change.stage), (file, "untracked"));
+        assert_eq!((change.added, change.removed), (3, 0));
+        assert!(status
+            .files
+            .iter()
+            .filter(|change| change.path != file)
+            .all(|change| (change.added, change.removed) == (0, 0)));
+    }
+
+    #[test]
+    fn remote_diff_shows_untracked_text_and_bounds_special_files() {
+        let repo = SnapshotTestRepo::new();
+        let cwd = repo.0.join("subdir");
+        std::fs::create_dir(&cwd).unwrap();
+        let file = "new 'file [1].txt";
+        std::fs::write(repo.0.join(file), "first\n\nlast").unwrap();
+        std::fs::write(repo.0.join("binary"), b"one\0two\n").unwrap();
+        std::fs::write(repo.0.join("large"), vec![b'x'; MAX_DIFF_BYTES + 1]).unwrap();
+        let diff = |file: &str| {
+            let command = remote_untracked_diff_command(cwd.to_str().unwrap(), file).unwrap();
+            remote_file_diff(file.into(), repo.run_shell(&command), true)
+        };
+        let FileDiff::Text {
+            patch, truncated, ..
+        } = diff(file)
+        else {
+            panic!("expected text diff");
+        };
+        assert!(
+            patch.contains("@@ -0,0 +1,3 @@\n+first\n+\n+last\n"),
+            "{patch:?}"
+        );
+        assert!(!truncated);
+        assert!(matches!(diff("binary"), FileDiff::Binary { .. }));
+        assert!(matches!(diff("large"), FileDiff::TooLarge { .. }));
+        assert!(remote_untracked_diff_command(cwd.to_str().unwrap(), "../outside").is_err());
+    }
+
+    #[test]
     fn snapshot_unborn_and_non_repository_keep_status_semantics() {
         let repo = SnapshotTestRepo::new();
         std::fs::write(repo.0.join("untracked.txt"), "one\ntwo\n").unwrap();
         let status = repo.snapshot();
         assert_eq!(status.files[0].stage, "untracked");
-        assert_eq!((status.files[0].added, status.files[0].removed), (0, 0));
+        assert_eq!((status.files[0].added, status.files[0].removed), (2, 0));
         let local = git2::Repository::open(&repo.0).unwrap();
         let mut options = git2::DiffOptions::new();
         options.include_untracked(true).recurse_untracked_dirs(true);
@@ -1672,7 +1908,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(lines, 0);
-        println!("local untracked counts: +0 -0; remote untracked counts: +0 -0");
+        println!("libgit2 without untracked content: +0 -0; remote untracked counts: +2 -0");
         drop(diff);
         drop(local);
         repo.git(&["add", "."]);
@@ -1802,7 +2038,7 @@ mod tests {
         let raw = String::from_utf8(output.stdout).unwrap();
         println!("real git status: {}", raw.replace('\0', "\\0"));
         let (status, _) = parse_porcelain_v2(&raw).unwrap();
-        let command = remote_status_command(path.to_str().unwrap()).unwrap();
+        let command = remote_status_command(path.to_str().unwrap(), true).unwrap();
         let output = std::process::Command::new("sh")
             .args(["-c", &command])
             .output()

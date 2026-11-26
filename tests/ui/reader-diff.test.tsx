@@ -23,6 +23,20 @@ beforeEach(() => {
   useUIStore.setState({ readers: {}, split: { root: null }, toasts: [] });
 });
 
+test("Changes warns about incomplete SSH status without hiding available changes", () => {
+  const remote: Session = { ...session, remote: { user: "deploy", host: "example.test", port: 22 }, ptyId: 42, gitTruncated: true };
+  const view = render(<DiffPanel session={remote} embedded />);
+  expect(screen.getByRole("status").textContent).toContain("truncated");
+  expect(screen.getByRole("button", { name: "app.ts" })).toBeTruthy();
+
+  view.rerender(<DiffPanel session={{ ...remote, changes: { files: [] } }} embedded />);
+  expect(screen.getByRole("status").textContent).toContain("truncated");
+  expect(screen.queryByText("Working tree clean")).toBeNull();
+
+  view.rerender(<DiffPanel session={{ ...remote, changes: { files: [] }, gitTruncated: false }} embedded />);
+  expect(screen.getByText("Working tree clean")).toBeTruthy();
+});
+
 test("a change opens the shared reader, and file/diff navigation retains separate history", async () => {
   const calls: string[] = [];
   mockIPC((command) => { calls.push(command); return command === "git_diff" ? patch("new content") : null; });
