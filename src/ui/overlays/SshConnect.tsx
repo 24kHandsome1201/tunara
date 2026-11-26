@@ -215,6 +215,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     || Boolean(prefill?.authMethod && prefill.authMethod !== "auto"),
   );
   const [configOpen, setConfigOpen] = useState(false);
+  const [configBrowseTarget, setConfigBrowseTarget] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
 
@@ -254,6 +255,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   }, [localAccount, needsLocalAccount]);
 
   const resetConnectionForm = () => {
+    setConfigBrowseTarget(null);
     setSelectedProfile(null);
     setRouteResolution(null);
     setTarget("");
@@ -313,6 +315,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
+    setConfigBrowseTarget(null);
     if (source === "sshConfig") {
       setConfigOpen(false);
       requestAnimationFrame(() => targetRef.current?.focus());
@@ -443,7 +446,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
   const savedSuggestions = filterSshProfileEntries(entries.filter((entry) => entry.source === "saved"), suggestionQuery);
   const configAlias = sshAliasProfileMatch(configHosts, suggestionQuery);
   const configMatches = configEntries.filter(({ profile }) => profile === configAlias || profileMatchesTarget(profile, suggestionQuery));
-  const suggestions = configOpen ? [...configMatches, ...savedSuggestions] : savedSuggestions;
+  const configOptions = configBrowseTarget === target ? configEntries : configMatches;
+  const suggestions = configOpen ? [...configOptions, ...savedSuggestions] : savedSuggestions;
   const highlightedEntry = suggestions.find((entry) => entry.key === highlight);
 
   const methodReady = authMethod === "key"
@@ -657,6 +661,19 @@ export function SshConnect({ onClose }: SshConnectProps) {
     },
   };
 
+  const toggleConfigPicker = () => {
+    const typedEndpoint = !commandInput && parsedTarget?.user
+      ? formatSshTarget(parsedTarget.user, parsedTarget.host.toLowerCase(), parsedTarget.port)
+      : null;
+    const knownEndpoint = typedEndpoint !== null && allProfiles.some(({ user, host, port }) => (
+      typedEndpoint === formatSshTarget(user, host.toLowerCase(), port)
+    ));
+    const selectedEndpoint = selectedProfile && routeResolution?.status === "ready";
+    setConfigBrowseTarget(!configOpen && (knownEndpoint || selectedEndpoint) ? target : null);
+    setHighlight(null);
+    setConfigOpen(!configOpen);
+  };
+
   const moveHighlight = (delta: number) => {
     const currentIndex = suggestions.findIndex((entry) => entry.key === highlight);
     const nextIndex = currentIndex < 0 ? (delta > 0 ? 0 : -1) : currentIndex + delta;
@@ -776,6 +793,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                   const value = event.target.value;
                   const nextCommand = parseSshCommand(value);
                   const nextTarget = isSshCommandInput(value) ? nextCommand?.target : parseSshTarget(value);
+                  setConfigBrowseTarget(null);
                   setTarget(value);
                   if (nextTarget?.port !== undefined) {
                     if (!nextCommand || nextTarget.port !== parsedTarget?.port || !commandInput) {
@@ -818,7 +836,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 autoCapitalize="off"
                 autoComplete="off"
                 aria-autocomplete="list"
-                aria-controls={configOpen && configMatches.length > 0 ? "ssh-connect-config-options ssh-connect-suggestions" : "ssh-connect-suggestions"}
+                aria-controls={configOpen && configOptions.length > 0 ? "ssh-connect-config-options ssh-connect-suggestions" : "ssh-connect-suggestions"}
                 aria-activedescendant={highlightedEntry ? `ssh-connect-option-${highlightedEntry.key}` : undefined}
               />
             </div>
@@ -835,19 +853,16 @@ export function SshConnect({ onClose }: SshConnectProps) {
           <section className="ssh-connect-hosts" aria-labelledby="ssh-connect-hosts-title">
             <div className="ssh-connect-hosts-heading">
               <h3 id="ssh-connect-hosts-title">{t("ssh.choose_host")}</h3>
-              <button type="button" className="hover-bg ssh-connect-browse" aria-expanded={configOpen} aria-controls="ssh-connect-config-picker" onClick={() => {
-                setHighlight(null);
-                setConfigOpen((current) => !current);
-              }}>
+              <button type="button" className="hover-bg ssh-connect-browse" aria-expanded={configOpen} aria-controls="ssh-connect-config-picker" onClick={toggleConfigPicker}>
                 <Icon icon={FileText} size={13} />
                 {t("ssh.config.browse")}
                 <Icon icon={configOpen ? CaretDown : CaretRight} size={11} />
               </button>
             </div>
             <div id="ssh-connect-config-picker" hidden={!configOpen}>
-              {configOpen && (configMatches.length > 0 ? (
+              {configOpen && (configOptions.length > 0 ? (
                 <div id="ssh-connect-config-options" className="ssh-connect-options ssh-connect-config-options" role="listbox" aria-label={t("ssh.source.config")}>
-                  {configMatches.map(renderSuggestion)}
+                  {configOptions.map(renderSuggestion)}
                 </div>
               ) : (
                 <PanelEmptyState label={t(loadingConfig ? "ssh.config.loading" : configEntries.length > 0 ? "ssh.search_empty" : "ssh.config.empty")} compact />

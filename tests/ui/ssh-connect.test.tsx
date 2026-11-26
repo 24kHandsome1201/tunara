@@ -224,6 +224,37 @@ describe("SSH connection sheet", () => {
     expect(input.value).toBe(alias);
   });
 
+  test("browses other config hosts after selecting a host or entering its endpoint", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_hosts_load") return [];
+      if (command === "ssh_hosts_import_config") return {
+        imported: [
+          { id: "staging", label: "staging", host: "staging.example", port: 22, user: "deploy", identity_file: "" },
+          { id: "prod", label: "production", host: "prod.example", port: 2222, user: "ops", identity_file: "" },
+        ],
+        skipped: 0,
+      };
+      throw new Error(`unexpected command: ${command}`);
+    });
+    render(<SshConnect onClose={vi.fn()} />);
+
+    const browse = browseConfig();
+    const config = await screen.findByRole("listbox", { name: "SSH config" });
+    fireEvent.click(within(config).getByRole("button", { name: /staging/ }));
+    const input = hostInput();
+    expect(input.value).toBe("deploy@staging.example");
+    fireEvent.click(browse);
+    expect(within(screen.getByRole("listbox", { name: "SSH config" })).getByRole("option", { name: /production/ })).toBeTruthy();
+    expect(input.value).toBe("deploy@staging.example");
+
+    fireEvent.click(browse);
+    fireEvent.change(input, { target: { value: "ops@prod.example:2222" } });
+    fireEvent.click(browse);
+    expect(within(screen.getByRole("listbox", { name: "SSH config" })).getByRole("option", { name: /staging/ })).toBeTruthy();
+    fireEvent.change(input, { target: { value: "production" } });
+    expect(within(screen.getByRole("listbox", { name: "SSH config" })).queryByRole("option", { name: /staging/ })).toBeNull();
+  });
+
   test("connects from one target field without showing auth chooser first", async () => {
     mockEmptySources();
     render(<SshConnect onClose={vi.fn()} />);
