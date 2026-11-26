@@ -2,16 +2,16 @@ import type { ThemeType } from "@/ui/types";
 
 /**
  * 默认「纸面 / 暖墨」终端调色板。背景与前景直接取 tokens.css 的主纸面
- * （--c-bg-white）与主墨色（--c-text-primary）的 sRGB 等效值，终端画布与
+ * （--c-workspace-canvas）与主墨色（--c-text-primary）的 sRGB 等效值，终端画布与
  * 界面外壳同源，WebGL 渲染时与侧栏、标题栏之间没有冷暖或明度接缝。
  * ANSI 色相在保持辨认度的前提下向暖纸/暖墨调和：常规色与白底对比度
  * ≥ 4.4:1（接近 AA），亮色组保持可区分的同时不荧光。
  */
 export const LIGHT_THEME = {
-  background: "#fffdfb",
+  background: "#fdfcfb",
   foreground: "#241e1a",
   cursor: "#241e1a",
-  cursorAccent: "#fffdfb",
+  cursorAccent: "#fdfcfb",
   selectionBackground: "#c2683c44",
   black: "#3a332a", red: "#b3261e", green: "#2e7d32", yellow: "#8f6200",
   blue: "#1a5fb4", magenta: "#8e3fa8", cyan: "#006b75", white: "#efe9e0",
@@ -20,10 +20,10 @@ export const LIGHT_THEME = {
 };
 
 export const DARK_THEME = {
-  background: "#0f0b09",
+  background: "#181411",
   foreground: "#e6e0dc",
   cursor: "#e6e0dc",
-  cursorAccent: "#0f0b09",
+  cursorAccent: "#181411",
   selectionBackground: "#e0907066",
   black: "#4a4238", red: "#f47067", green: "#8edb8c", yellow: "#e3b341",
   blue: "#6ea8fe", magenta: "#d2a8ff", cyan: "#56d4dd", white: "#e8e2d8",

@@ -73,10 +73,11 @@ test("default terminal canvases stay in sync with the shell paper tokens", () =>
   const css = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
   const lightBlock = css.slice(css.indexOf(":root {"), css.indexOf(".dark {"));
   const darkBlock = css.slice(css.indexOf(".dark {"), css.indexOf(".hover-bg"));
+  const canvasFallback = (block) => block.match(/--c-workspace-canvas: var\(--terminal-canvas-bg, (#[\da-f]{6})\)/)?.[1];
 
-  assert.equal(LIGHT_THEME.background, oklchToHex(parseOklch(lightBlock, "--c-bg-white")));
+  assert.equal(LIGHT_THEME.background, canvasFallback(lightBlock));
   assert.equal(LIGHT_THEME.foreground, oklchToHex(parseOklch(lightBlock, "--c-text-primary")));
-  assert.equal(DARK_THEME.background, oklchToHex(parseOklch(darkBlock, "--c-bg-white")));
+  assert.equal(DARK_THEME.background, canvasFallback(darkBlock));
   assert.equal(DARK_THEME.foreground, oklchToHex(parseOklch(darkBlock, "--c-text-primary")));
 });
 

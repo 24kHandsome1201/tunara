@@ -258,8 +258,7 @@ function TitlebarImpl({
       onMouseDown={borderlessChrome ? handleBorderlessTitlebarMouseDown : undefined}
       style={{
         height: "var(--h-titlebar)",
-        background: "var(--c-bg-1)",
-        borderBottom: "1px solid var(--c-border-1)",
+        background: "var(--c-workspace-rail)",
         display: "flex",
         alignItems: "center",
         flexShrink: 0,

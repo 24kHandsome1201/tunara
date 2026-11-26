@@ -33,32 +33,15 @@ export function SidebarNewTerminalControl({
 
   return (
     <>
-      <div style={{ padding: "8px 12px 6px" }}>
-        <div style={{ display: "flex", width: "100%" }}>
+      <div className="sidebar-new-terminal">
+        <div>
           <Tooltip label={t("common.new_terminal")} style={{ flex: 1, minWidth: 0 }}>
           <button
             type="button"
             onClick={onNewTerminal}
-            className="hover-bg"
-            style={{
-              flex: 1,
-              height: "var(--h-btn-md)",
-              padding: "0 9px",
-              border: "1px solid var(--c-control-border)",
-              borderRadius: "var(--r-btn) 0 0 var(--r-btn)",
-              background: "var(--c-bg-white)",
-              color: "var(--c-text-2)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              fontFamily: "var(--font-ui)",
-              fontSize: "var(--fs-secondary)",
-              fontWeight: 600,
-            }}
           >
             <Icon icon={Plus} size={12} weight="bold" />
-            <span>{t("common.new_terminal")}</span>
+            <span className="sidebar-new-terminal-label">{t("common.new_terminal")}</span>
           </button>
           </Tooltip>
           <Tooltip label={t("sidebar.new_menu")}>
@@ -68,8 +51,6 @@ export function SidebarNewTerminalControl({
             aria-label={t("sidebar.new_menu")}
             aria-haspopup="menu"
             aria-expanded={Boolean(menu)}
-            className="hover-bg"
-            style={{ width: "var(--h-btn-md)", height: "var(--h-btn-md)", border: "1px solid var(--c-control-border)", borderLeft: 0, borderRadius: "0 var(--r-btn) var(--r-btn) 0", background: "var(--c-bg-white)", color: "var(--c-text-2)", cursor: "pointer", padding: 0 }}
           >
             <Icon icon={CaretDown} size={10} weight="bold" />
           </button>

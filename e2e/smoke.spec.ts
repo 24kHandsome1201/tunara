@@ -282,6 +282,7 @@ test("failed SSH banner clamps its message and keeps recovery actions together",
   const message = page.locator('[role="alert"] span[title^="SSH connection failed"]');
   await expect(message).toBeVisible();
   await expect(message).toContainText("Couldn't resolve the host name. Check the address or your DNS/VPN.");
+  await page.locator(".inspector-toolbar").hover();
   await page.getByRole("button", { name: "Close inspector" }).click();
   const messageStyle = await message.evaluate((element) => {
     const style = getComputedStyle(element);

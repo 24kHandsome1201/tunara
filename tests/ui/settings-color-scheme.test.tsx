@@ -134,7 +134,7 @@ test("System, Light, and Dark are one mutually exclusive synchronized choice", a
   fireEvent.click(light);
   expect(useUIStore.getState()).toMatchObject({ theme: "light" });
   await waitFor(() => {
-    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb");
+    expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe(LIGHT_THEME.background);
   });
   expect(light.getAttribute("aria-checked")).toBe("true");
   expect(dark.getAttribute("aria-checked")).toBe("false");
@@ -212,16 +212,16 @@ test("system media changes affect only the System scheme", async () => {
     for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
   });
   expect(document.documentElement.classList.contains("dark")).toBe(true);
-  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#0f0b09");
+  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe(DARK_THEME.background);
 
   fireEvent.click(screen.getByRole("radio", { name: "Light" }));
-  await waitFor(() => expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb"));
+  await waitFor(() => expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe(LIGHT_THEME.background));
   await act(async () => {
     media.matches = true;
     for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
   });
   expect(document.documentElement.classList.contains("dark")).toBe(false);
-  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe("#fffdfb");
+  expect(document.documentElement.style.getPropertyValue("--terminal-canvas-bg")).toBe(LIGHT_THEME.background);
 });
 
 test("presets update the live preview and retain the terminal font family", () => {

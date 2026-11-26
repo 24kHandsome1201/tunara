@@ -213,8 +213,7 @@ export function Sidebar({
     <div
       style={{
         width: "100%",
-        background: "var(--c-bg-2)",
-        borderRight: "1px solid var(--c-border-1)",
+        background: "var(--c-workspace-rail)",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -231,19 +230,7 @@ export function Sidebar({
       )}
       {hasSessions && <SidebarHosts sessions={sessions} activeSessionId={activeSessionId} onSelectSession={onSelectSession} />}
       {hasSessions && <div style={{ padding: "6px 12px" }}>
-        <div
-          className="sidebar-search"
-          style={{
-            background: "transparent",
-            borderRadius: "var(--r-input)",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "6px 10px",
-            border: "1px solid var(--c-control-border)",
-            transition: "background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)",
-          }}
-        >
+        <div className="sidebar-search">
           <SidebarSearchIcon />
           <input className="ui-native-control"
             type="text"

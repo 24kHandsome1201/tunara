@@ -149,7 +149,7 @@ html[data-chrome="borderless"] {
   background-repeat: no-repeat;
 }
 .scroll-fade-sidebar {
-  --scroll-fade-bg: var(--c-bg-2-glass);
+  --scroll-fade-bg: var(--c-workspace-rail);
 }
 
 /* Tunara animations — response-only. No idle loops. */
@@ -525,7 +525,7 @@ select.ui-control {
 .settings-preset[aria-pressed="true"] { border-color: var(--c-accent-border); background: var(--c-accent-bg-light); }
 .settings-preset strong, .settings-advanced-summary strong, .settings-preview figcaption { font-size: var(--fs-body); }
 .settings-preset-icon { display: grid; place-items: center; width: 38px; height: 30px; border: 1px solid var(--c-border-2); border-radius: var(--r-btn); background: var(--c-bg-white); color: var(--c-text-3); font-weight: 700; flex-shrink: 0; }
-.settings-preset-icon[data-preset="night"] { color: #e6e0dc; background: #0f0b09; }
+.settings-preset-icon[data-preset="night"] { color: #e6e0dc; background: #181411; }
 .settings-preset-check { margin-inline-start: auto; color: var(--c-accent-text); visibility: hidden; }
 .settings-preset[aria-pressed="true"] .settings-preset-check { visibility: visible; }
 .settings-appearance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
@@ -581,6 +581,40 @@ select.ui-control {
    line at its default width, then trade the redundant shortcut hint for label
    space before allowing text truncation at the narrowest supported width. */
 .tunara-sidebar { container: tunara-sidebar / inline-size; }
+.tunara-sidebar, .tunara-panel {
+  --fs-body: 13px;
+  --fs-secondary: 12px;
+  --fs-meta: 11px;
+}
+.sidebar-new-terminal { padding: 10px var(--sp-3); }
+.sidebar-new-terminal > div { display: flex; }
+.sidebar-new-terminal button {
+  height: var(--h-control);
+  border: 0;
+  background: var(--c-workspace-selection);
+  color: var(--c-accent-text);
+  cursor: pointer;
+  transition: background-color var(--dur-workspace) var(--ease-out);
+}
+.sidebar-new-terminal button:hover {
+  background: color-mix(in oklch, var(--c-workspace-selection), var(--c-accent) 7%);
+}
+.sidebar-new-terminal button:not([aria-haspopup]) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-inline: var(--sp-3);
+  border-radius: var(--r-btn) 0 0 var(--r-btn);
+  font: 600 var(--fs-secondary) var(--font-ui);
+}
+.sidebar-new-terminal button[aria-haspopup] {
+  width: var(--h-control);
+  border-radius: 0 var(--r-btn) var(--r-btn) 0;
+  padding: 0;
+  box-shadow: inset 1px 0 color-mix(in oklch, var(--c-accent-text) 14%, transparent);
+}
 .sidebar-new-terminal-label {
   min-width: 0;
   overflow: hidden;
@@ -589,6 +623,14 @@ select.ui-control {
 }
 @container tunara-sidebar (max-width: 260px) {
   .sidebar-new-terminal-shortcut { display: none !important; }
+}
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: var(--r-input);
+  background: var(--c-workspace-field);
 }
 
 /* SSH connection management separates the profile library from the editable
@@ -785,8 +827,8 @@ select.ui-control {
   gap: 8px;
 }
 .sidebar-host-status-dot {
-  width: 7px;
-  height: 7px;
+  width: var(--dot-sm);
+  height: var(--dot-sm);
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--c-text-7);
@@ -797,15 +839,13 @@ select.ui-control {
 .sidebar-host-copy { min-width: 0; display: block; }
 .sidebar-host-copy strong,
 .sidebar-host-endpoint { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-host-copy strong { color: var(--c-text-2); font-size: var(--fs-secondary); font-weight: 600; }
+.sidebar-host-copy strong { color: var(--c-text-2); font-size: var(--fs-secondary); font-weight: 550; }
 /* Only the endpoint truncates; source tags keep their full width. */
 .sidebar-host-copy small { margin-top: 1px; display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--c-text-6); font: var(--fs-meta-sm) var(--font-mono); }
 .sidebar-host-endpoint { min-width: 0; }
 .sidebar-host-source {
   flex-shrink: 0;
   padding: 0 5px;
-  border-radius: var(--r-badge-sm);
-  background: var(--c-bg-3);
   color: var(--c-text-5);
   font-family: var(--font-ui);
   line-height: 15px;
@@ -848,13 +888,11 @@ select.ui-control {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  background: var(--c-bg-1);
-  border-bottom: 1px solid var(--c-border-1);
 }
 .inspector-toolbar {
   min-height: var(--h-titlebar);
-  padding-left: 8px;
-  gap: 4px;
+  padding-inline: var(--sp-3) var(--sp-2);
+  gap: var(--sp-1);
 }
 .inspector-tab-list,
 .inspector-files-tab {
@@ -865,24 +903,27 @@ select.ui-control {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+  gap: var(--sp-1);
 }
 .inspector-files-tab { flex-shrink: 0; }
 .inspector-toolbar .inspector-tab {
   flex-shrink: 0;
-  min-height: 30px;
-  padding: 0 8px;
+  min-height: var(--h-control-sm);
+  padding-inline: 10px;
   border: none;
   border-radius: var(--r-btn);
   background: transparent;
   color: var(--c-text-4);
   font-size: var(--fs-secondary);
-  font-weight: 400;
+  font-weight: 500;
   cursor: pointer;
+  transition: background-color var(--dur-workspace) var(--ease-out), color var(--dur-workspace) var(--ease-out);
 }
+.inspector-toolbar .inspector-tab:hover { background: var(--c-bg-hover); }
 .inspector-toolbar .inspector-tab[data-active="true"] {
-  background: var(--c-bg-3);
-  color: var(--c-text-primary);
-  font-weight: 600;
+  background: var(--c-workspace-selection);
+  color: var(--c-accent-text);
+  font-weight: 650;
 }
 .inspector-toolbar .inspector-tab > span { margin-left: 4px; }
 #inspector-context-bar {
@@ -967,13 +1008,11 @@ select.ui-control {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-  padding: 4px var(--sp-2);
-  border-bottom: 1px solid var(--c-border-1);
-  background: var(--c-bg-1);
+  padding: var(--sp-1) var(--sp-3);
 }
 .explorer-nav { min-height: var(--h-panel-header); gap: 2px; }
 .explorer-nav button:disabled:not([aria-current]),
-.explorer-tools button:disabled { color: var(--c-text-6) !important; opacity: .45 !important; pointer-events: none; }
+.explorer-tools button:disabled { color: var(--c-text-6); opacity: .45; pointer-events: none; }
 .explorer-breadcrumbs { display: flex; align-items: center; gap: 1px; flex: 1; min-width: 0; padding: 0 2px; margin-block: -2px; overflow: hidden; white-space: nowrap; }
 .explorer-path-input {
   flex: 1;
@@ -1006,7 +1045,7 @@ select.ui-control {
 }
 .explorer-breadcrumb-current {
   color: var(--c-text-2);
-  font-weight: 500;
+  font-weight: 650;
   cursor: default;
 }
 .explorer-breadcrumb-link { cursor: pointer; }
@@ -1018,9 +1057,10 @@ select.ui-control {
   font-family: var(--font-mono);
   flex-shrink: 0;
 }
-.explorer-search-row { padding: 6px var(--sp-2); }
+.explorer-search-row { padding-block: var(--sp-1) var(--sp-2); }
 .explorer-search-row[hidden] { display: none; }
 .file-explorer > .scroll-fade-y {
+  --scroll-fade-bg: var(--c-workspace-tools);
   flex: 1;
   overflow-y: auto;
   padding: 6px var(--sp-2);
@@ -1132,14 +1172,12 @@ select.ui-control {
 .explorer-search {
   flex: 1;
   min-width: 0;
-  background: var(--c-bg-3);
+  background: var(--c-workspace-field);
   border-radius: var(--r-input);
   display: flex;
   align-items: center;
   gap: 7px;
   padding: 5px var(--sp-2);
-  border: 1px solid var(--c-control-border);
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .explorer-search input {
   flex: 1;
@@ -1238,17 +1276,24 @@ select.ui-control {
   height: 24px;
   padding: 0 var(--sp-1) 0 var(--sp-2);
   margin-bottom: 3px;
-  border-bottom: 1px solid var(--c-border-1);
+  border-radius: var(--r-btn);
+  background: var(--c-workspace-field);
+}
+.explorer-listing-header .explorer-listing-modified .explorer-sort-button {
+  justify-content: flex-end;
+  flex-direction: row-reverse;
 }
 .explorer-listing-row {
   min-height: 30px;
   border-radius: var(--r-btn);
   padding-inline: var(--sp-2) var(--sp-1);
+  transition: background-color var(--dur-workspace) var(--ease-out);
 }
-.explorer-listing-row.hover-bg { border: none; background: transparent; }
-.explorer-listing-row[data-active="true"] { background: var(--c-accent-bg-light); }
+.explorer-tree-node:is(:hover, :focus-within) > .explorer-listing-row { background: var(--c-bg-hover); }
+.explorer-tree-node > .explorer-listing-row[data-active="true"] { background: var(--c-workspace-selection); }
 .explorer-tree-node[data-drop-target] > .explorer-listing-row {
-  border: 1px dashed var(--c-accent);
+  outline: 1px dashed var(--c-accent);
+  outline-offset: -1px;
   background: color-mix(in srgb, var(--c-accent) 12%, transparent);
 }
 .explorer-listing-grid > input.ui-choice { margin: 0; }
@@ -1258,7 +1303,7 @@ select.ui-control {
   height: 30px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .explorer-listing-label {
   min-width: 0;
@@ -1266,12 +1311,14 @@ select.ui-control {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--c-text-2);
+  font-size: var(--fs-body);
 }
 .explorer-listing-modified { min-width: 0; }
 .explorer-listing-row .explorer-listing-modified {
   color: var(--c-text-5);
   font: var(--fs-meta) var(--font-mono);
-  text-align: right;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
 .explorer-listing-actions {
@@ -1288,11 +1335,6 @@ button.explorer-listing-action {
   background: transparent;
   color: var(--c-text-4);
   cursor: pointer;
-}
-@media (hover: hover) {
-  .explorer-send-path { visibility: hidden; }
-  .explorer-tree-node:hover .explorer-send-path,
-  .explorer-tree-node:focus-within .explorer-send-path { visibility: visible; }
 }
 .explorer-state-shell {
   width: 100%;
@@ -1469,22 +1511,29 @@ button.explorer-listing-action {
 .sidebar-resize-handle:hover::after,
 .sidebar-resize-handle:focus-visible::after { opacity: 1; background: var(--c-accent); width: 3px; }
 
-/* Dir group header: + / × buttons fade on hover.
-   The scale lives on the glyph so the 24px hit target never shrinks. */
-.dir-group-header .dir-group-add,
-.dir-group-header .dir-group-close { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
-.dir-group-header .dir-group-add > svg,
-.dir-group-header .dir-group-close > svg { transition: transform var(--dur-fast) var(--ease-out); transform: scale(0.8); }
-.dir-group-header:hover .dir-group-add,
-.dir-group-header:hover .dir-group-close,
-.dir-group-header .dir-group-add:focus-visible,
-.dir-group-header .dir-group-close:focus-visible { opacity: 1; }
-.dir-group-header:hover .dir-group-add > svg,
-.dir-group-header:hover .dir-group-close > svg,
-.dir-group-header .dir-group-add:focus-visible > svg,
-.dir-group-header .dir-group-close:focus-visible > svg { transform: scale(1); }
+/* Opacity reserves each hit target without removing it from keyboard navigation. */
+@media (hover: hover) {
+  :is(.session-card-close, .dir-group-add, .dir-group-close, .explorer-listing-action, .workspace-reveal-action) {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-workspace) var(--ease-out), background-color var(--dur-workspace) var(--ease-out);
+  }
+  .session-card:is(:hover, :focus-within) .session-card-close,
+  .dir-group-header:is(:hover, :focus-within) :is(.dir-group-add, .dir-group-close),
+  .explorer-tree-node:is(:hover, :focus-within) .explorer-listing-action,
+  :is(.inspector-toolbar, .explorer-nav):is(:hover, :focus-within) .workspace-reveal-action,
+  :is(.session-card-close, .dir-group-close)[data-confirm="true"],
+  .workspace-reveal-action[aria-expanded="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .explorer-nav:is(:hover, :focus-within) .workspace-reveal-action:disabled {
+    opacity: .45;
+    pointer-events: none;
+  }
+}
 /* Dir group header: 容器整行 hover 底色；折叠切换是内部真实 button */
-.dir-group-header { transition: background var(--dur-fast) var(--ease-out); border-radius: var(--r-btn); }
+.dir-group-header { transition: background-color var(--dur-workspace) var(--ease-out); border-radius: var(--r-btn); }
 .dir-group-header:hover { background: var(--c-bg-hover); }
 .dir-group-toggle:active { transform: scale(0.99); }
 .dir-group-toggle { transition: transform var(--dur-fast) var(--ease-out); border-radius: var(--r-btn); }
@@ -2307,25 +2356,24 @@ select:focus-visible {
   .ssh-host-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Chrome micro-interactions (response-only, ≤ --dur-base). */
 .session-card {
-  transition: background var(--dur-fast) var(--ease-out);
+  padding: 6px 10px 6px var(--sp-3);
 }
+.session-card:has(.session-card-close) { padding-inline-end: 34px; }
 .session-card-rail {
   position: absolute;
-  left: 0;
+  left: var(--sp-1);
   top: 50%;
-  width: 1px;
-  height: 24px;
+  width: 2px;
+  height: 18px;
   background: var(--c-accent);
-  border-radius: 0 1px 1px 0;
-  transform: translateY(-50%) translateX(-4px);
+  border-radius: var(--r-pill);
+  transform: translateY(-50%);
   opacity: 0;
   pointer-events: none;
-  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  transition: opacity var(--dur-workspace) var(--ease-out);
 }
 .session-card:has(.session-card-select[aria-current="page"]) .session-card-rail {
-  transform: translateY(-50%) translateX(0);
   opacity: 1;
 }
 .session-state-dot {
@@ -2550,10 +2598,9 @@ html[data-window-translucent] {
   --c-bg-2: color-mix(in srgb, var(--c-bg-2-solid) var(--window-bg-opacity), transparent);
   --c-bg-3: color-mix(in srgb, var(--c-bg-3-solid) var(--window-bg-opacity), transparent);
   --c-bg-hover: color-mix(in srgb, var(--c-bg-hover-solid) var(--window-bg-opacity), transparent);
-}
-html[data-window-translucent] .tunara-sidebar > *,
-html[data-window-translucent] .tunara-panel > * {
-  background: var(--c-bg-2) !important;
+  --c-workspace-rail: color-mix(in srgb, var(--c-workspace-rail-solid) var(--window-bg-opacity), transparent);
+  --c-workspace-tools: color-mix(in srgb, var(--c-workspace-tools-solid) var(--window-bg-opacity), transparent);
+  --c-workspace-canvas: transparent;
 }
 
 /* Overlays never show the desktop through: sheets, menus and toasts restore the solid tokens. */

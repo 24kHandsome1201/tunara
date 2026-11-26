@@ -268,7 +268,6 @@ function SessionCardImpl({ session, active, confirmCloseAt = 0, tabIndex, onSele
       className="session-card"
       style={{
         position: "relative",
-        padding: "7px 10px 7px 12px",
         borderRadius: "var(--r-card)",
         // cursor 由外层 wrapper 控制（grab / grabbing / pointer），允许 inherit
         userSelect: "none",

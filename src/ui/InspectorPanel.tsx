@@ -72,7 +72,7 @@ function SwitcherButton({
       data-tab-id={tabId}
       tabIndex={active ? 0 : -1}
       data-active={active ? "true" : "false"}
-      className={active ? "inspector-tab" : "inspector-tab hover-text-3"}
+      className="inspector-tab"
     >
       {label}
       {children}
@@ -206,8 +206,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
     <div
       style={{
         width: "100%",
-        background: "var(--c-bg-1)",
-        borderLeft: "1px solid var(--c-border-1)",
+        background: "var(--c-workspace-tools)",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -242,6 +241,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
 
         {!filesOnly && navigation.secondary.length > 0 && (
           <PanelIconButton
+            className="workspace-reveal-action"
             aria-label={t("inspector.more")}
             title={t("inspector.more")}
             aria-haspopup="menu"
@@ -256,6 +256,7 @@ export function InspectorPanel({ session: terminalSession, onClose, filesOnly = 
         )}
         {onClose && (
           <PanelIconButton
+            className="workspace-reveal-action"
             onClick={onClose}
             title={t("diff.close_panel")}
             aria-label={t("diff.close_panel")}

@@ -221,6 +221,7 @@ export function DirGroupHeader({
         <button
           type="button"
           className="dir-group-close hover-close"
+          data-confirm={confirmClose || undefined}
           onClick={(e) => { e.stopPropagation(); onCloseAll(); }}
           aria-label={closeAllTitle}
           style={{
@@ -235,7 +236,6 @@ export function DirGroupHeader({
             justifyContent: "center",
             cursor: "pointer",
             color: confirmClose ? "var(--c-error)" : "var(--c-text-5)",
-            opacity: confirmClose ? 1 : undefined,
             padding: 0,
           }}
         >

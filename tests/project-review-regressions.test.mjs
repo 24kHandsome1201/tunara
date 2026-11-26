@@ -1352,7 +1352,8 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.equal(titlebar.match(/transform: titlebarControlTransform/g)?.length, 4);
   assert.match(titlebar, /paddingLeft: 4/);
   assert.match(tokens, /--h-titlebar: 36px/);
-  assert.match(sidebarNewTerminal, /padding: "8px 12px 6px"/);
+  assert.match(sidebarNewTerminal, /className="sidebar-new-terminal"/);
+  assert.match(globals, /\.sidebar-new-terminal \{ padding: 10px var\(--sp-3\)/);
   assert.match(sidebar, /className="no-scrollbar scroll-fade-y scroll-fade-sidebar"/);
   assert.match(sidebar, /const visibleSessionIds = groupEntries\.flatMap/);
   assert.match(sidebar, /const tabbableSessionId = visibleSessionIds\.includes\(activeSessionId\)/);
@@ -1374,7 +1375,7 @@ test("follow-up review fixes polish dense UI surfaces", () => {
   assert.match(terminalSearch, /<SearchIcon size=\{13\} color=\{hasResults \? "var\(--c-accent\)" : noMatch \? "var\(--c-error\)" : "var\(--c-text-5\)"\} \/>/);
   assert.match(palette, /<SearchIcon size=\{14\} \/>/);
   assert.match(globals, /\.session-card-rail/);
-  assert.match(sessionCard, /padding: "7px 10px 7px 12px"/);
+  assert.match(globals, /\.session-card \{\s*padding: 6px 10px 6px var\(--sp-3\)/);
   assert.match(sessionCard, /data-session-card-id=\{session\.id\}/);
   assert.match(sessionCard, /tabIndex=\{tabIndex \?\? 0\}/);
   assert.match(sessionCard, /aria-current=\{active \? "page" : undefined\}/);
