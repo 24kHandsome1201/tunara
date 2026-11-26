@@ -23,7 +23,8 @@ mod read;
 mod transfer;
 mod write;
 
-pub use browse::{ssh_fs_canonical_path, ssh_fs_home, ssh_fs_read_dir};
+pub(crate) use browse::resolve_remote_file_jump;
+pub use browse::{ssh_fs_home, ssh_fs_read_dir};
 pub use read::{
     ssh_file_view_head_v1, ssh_file_view_tail_v1, ssh_fs_read_file, ssh_fs_read_if_changed_v1,
 };
@@ -33,17 +34,14 @@ pub(crate) use transfer::{
 };
 pub use write::{ssh_fs_reconcile_text_write, ssh_fs_write_text_file};
 
-pub(crate) use browse::{__cmd__ssh_fs_canonical_path, __cmd__ssh_fs_home, __cmd__ssh_fs_read_dir};
+pub(crate) use browse::{__cmd__ssh_fs_home, __cmd__ssh_fs_read_dir};
 pub(crate) use read::{
     __cmd__ssh_file_view_head_v1, __cmd__ssh_file_view_tail_v1, __cmd__ssh_fs_read_file,
     __cmd__ssh_fs_read_if_changed_v1,
 };
 pub(crate) use write::{__cmd__ssh_fs_reconcile_text_write, __cmd__ssh_fs_write_text_file};
 
-pub(crate) use browse::{
-    __tauri_command_name_ssh_fs_canonical_path, __tauri_command_name_ssh_fs_home,
-    __tauri_command_name_ssh_fs_read_dir,
-};
+pub(crate) use browse::{__tauri_command_name_ssh_fs_home, __tauri_command_name_ssh_fs_read_dir};
 pub(crate) use read::{
     __tauri_command_name_ssh_file_view_head_v1, __tauri_command_name_ssh_file_view_tail_v1,
     __tauri_command_name_ssh_fs_read_file, __tauri_command_name_ssh_fs_read_if_changed_v1,

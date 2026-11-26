@@ -94,7 +94,7 @@ pub fn run() {
             pty::pty_close,
             fs::tree::fs_read_dir,
             fs::tree::fs_resolve_dir,
-            fs::tree::fs_canonical_path,
+            fs::tree::fs_resolve_file_jump,
             fs::file::fs_read_file,
             fs::file::fs_write_text_file,
             fs::file::fs_export_text_file,
@@ -174,7 +174,6 @@ pub fn run() {
             modules::ssh::known_hosts::ssh_known_hosts_refresh_v1,
             // §ssh-client Phase 3 SFTP 远程文件(只读浏览 + 下载)
             modules::ssh::sftp::ssh_fs_read_dir,
-            modules::ssh::sftp::ssh_fs_canonical_path,
             modules::ssh::sftp::ssh_fs_read_file,
             modules::ssh::sftp::ssh_fs_read_if_changed_v1,
             modules::ssh::sftp::ssh_file_view_head_v1,

@@ -8,13 +8,14 @@ const LISTING_ROW_HEIGHT = 32;
 const LISTING_TOP_INSET = 33;
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { fsCanonicalPath, fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
+import { fsReadDir, fsResolveDir, type DirEntry, type SearchHit } from "@/modules/fs/fs-bridge";
 import type { GrepFileGroup } from "@/modules/fs/lib/grep-group";
 import {
   invalidateRemoteSearchCache,
-  sshCanonicalPath,
+  resolveFileJump,
   sshHome,
   sshReadDir,
+  type FileJump,
 } from "@/modules/ssh/remote-fs-bridge";
 import { formatSize } from "./types";
 import { PanelEmptyState, PanelIconButton, PanelLoadingState, PanelState, SearchIcon } from "./shared";
@@ -249,8 +250,8 @@ export function FileExplorer({
   const [error, setError] = useState(false);
   const [navDir, setNavDir] = useState<"in" | "out" | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
-  const [pinnedFile, setPinnedFile] = useState<{ directory: string; name: string } | null>(null);
-  const pinnedFileName = pinnedFile?.directory === currentPath ? pinnedFile.name : undefined;
+  const [pin, setPin] = useState<FileJump | null>(null);
+  const pinnedFileName = pin?.directory === currentPath ? pin.pinnedFile : undefined;
   const readHidden = includeHidden || pinnedFileName?.startsWith(".") === true;
   const [reloadKey, setReloadKey] = useState(0);
   const [uploadReloadKey, setUploadReloadKey] = useState(0);
@@ -345,20 +346,14 @@ export function FileExplorer({
     pathJumpRequest.current += 1;
   }, [active, searchQuery, searchMode, treeRequestContext]);
   useEffect(() => {
-    setPinnedFile((pinned) => pinned?.directory === currentPath ? pinned : null);
+    setPin((pinned) => pinned?.directory === currentPath ? pinned : null);
   }, [currentPath]);
   const listingNodes = useMemo<ListingNode[]>(() => {
     if (!hasCachedListing) return [];
     const usable = usableExplorerEntries(entries).filter(({ name }) =>
       includeHidden || !name.startsWith(".") || name === pinnedFileName);
-    const sorted = [
-      ...sortExplorerEntries(usable.filter((entry) => entry.kind === "dir"), sort.key, sort.direction),
-      ...sortExplorerEntries(usable.filter((entry) => entry.kind !== "dir"), sort.key, sort.direction),
-    ];
-    const pinIndex = pinnedFileName === undefined ? -1
-      : sorted.findIndex(({ name, kind }) => name === pinnedFileName && kind !== "dir");
-    if (pinIndex > 0) sorted.unshift(sorted.splice(pinIndex, 1)[0]);
-    return sorted.map((entry) => ({ entry, path: joinPath(currentPath, entry.name) }));
+    return sortExplorerEntries(usable, sort.key, sort.direction, pinnedFileName)
+      .map((entry) => ({ entry, path: joinPath(currentPath, entry.name) }));
   }, [hasCachedListing, entries, currentPath, sort, includeHidden, pinnedFileName]);
   const nodeIndexByPath = useMemo(() => new Map(listingNodes.map(({ path }, index) => [path, index])), [listingNodes]);
   const isConfirmedMissingFile = useCallback((path: string) => (
@@ -583,7 +578,7 @@ export function FileExplorer({
     if (sourceChanged) {
       initializedDirectory.current = directorySource;
       setNavDir(null);
-      setPinnedFile(null);
+      setPin(null);
       search.resetSearch();
     }
     if (isRemote) {
@@ -1129,7 +1124,7 @@ export function FileExplorer({
         aria-label={node.entry.name}
         aria-setsize={listingRowCount}
         aria-posinset={listingIndex + 1}
-        aria-selected={pinned && !selectionMode ? true : batchSelectable ? batchSelected : batchSelected || active}
+        aria-selected={(pinned && !selectionMode) || batchSelected || (!batchSelectable && active)}
         data-explorer-item
         data-listing-index={listingIndex}
         data-tree-row-index={listingIndex}
@@ -1207,7 +1202,7 @@ export function FileExplorer({
         <div
           className="hover-bg explorer-listing-grid explorer-listing-row"
           data-selectable={selectionMode ? "true" : undefined}
-          data-active={batchSelected || active}
+          data-active={pinned || batchSelected || active}
         >
         {selectionMode && (
           <input
@@ -1267,52 +1262,12 @@ export function FileExplorer({
   async function jumpToPath(query: string) {
     if (!active || remoteDisconnected) return;
     const request = ++pathJumpRequest.current;
-    const readDir = remotePtyId !== undefined
-      ? (path: string, hidden: boolean) => sshReadDir(remotePtyId, path, hidden)
-      : fsReadDir;
-    const canonicalPath = remotePtyId !== undefined
-      ? (path: string) => sshCanonicalPath(remotePtyId, path)
-      : fsCanonicalPath;
     try {
-      const homeRelative = !query.startsWith("/");
-      const home = homeRelative
-        ? remotePtyId !== undefined ? await sshHome(remotePtyId) : await fsResolveDir("~")
-        : "";
-      if (request !== pathJumpRequest.current || (homeRelative && !home.startsWith("/"))) return;
-      const path = homeRelative ? home + query.slice(1) : query;
-      const isDirectory = await readDir(path, false).then(() => true, () => false);
+      const result = await resolveFileJump(query, remotePtyId, binding);
       if (request !== pathJumpRequest.current) return;
-      if (isDirectory) {
-        const directory = await canonicalPath(path);
-        if (request !== pathJumpRequest.current) return;
-        setPinnedFile(null);
-        navigateTo(directory);
-        return;
-      }
-      if (/\/(?:\.\.?)?$/.test(path)) return;
-      const parent = parentPath(path);
-      const name = path.slice(path.lastIndexOf("/") + 1);
-      const siblings = await readDir(parent, name.startsWith("."));
-      if (request !== pathJumpRequest.current) return;
-      let target = siblings.find((entry) => entry.name === name);
-      if (!target) {
-        const folded = name.toLowerCase();
-        const matches = siblings.filter((entry) => entry.name.toLowerCase() === folded);
-        if (matches.length === 1) target = matches[0];
-      }
-      if (!target || target.kind === "dir") return;
-      const directory = await canonicalPath(parent);
-      if (request !== pathJumpRequest.current) return;
-      const targetName = target.name;
-      if (targetName !== name) {
-        const typedPath = joinPath(directory, name);
-        const exists = isRemote
-          ? binding && await sshStatV1(binding, typedPath)
-          : await fsCanonicalPath(typedPath);
-        if (!exists || request !== pathJumpRequest.current) return;
-      }
-      setPinnedFile({ directory, name: targetName });
-      if (directory === currentPath && !entries.some((entry) => entry.name === targetName && entry.kind !== "dir")) refresh();
+      const { directory, pinnedFile: name } = result;
+      setPin(name ? result : null);
+      if (name && directory === currentPath && !entries.some((entry) => entry.name === name && entry.kind !== "dir")) refresh();
       navigateTo(directory);
     } catch {
       // Keep the query and its normal search results when a path cannot be resolved.
@@ -1521,7 +1476,7 @@ export function FileExplorer({
         onInputKeyDown={(event) => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing) {
             const query = searchQuery.trimStart();
-            if (query.startsWith("/") || query === "~" || query.startsWith("~/")) {
+            if (/^(?:\/|~(?:\/|$))/.test(query)) {
               event.preventDefault();
               void jumpToPath(query);
             }

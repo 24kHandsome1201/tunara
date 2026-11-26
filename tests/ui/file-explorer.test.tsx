@@ -20,17 +20,19 @@ describe("FileExplorer directory navigation", () => {
   test.each([false, true])("jumps to absolute directories and pins files without opening them (remote=%s)", async (remote) => {
     mockIPC((command, payload) => {
       if (command === "ssh_fs_home" || command === "fs_resolve_dir") return "/home/dev";
-      if (command === "fs_canonical_path" || command === "ssh_fs_canonical_path") {
-        const { path } = payload as { path: string };
-        if (path === "/home/dev/link/..") return "/other";
-        if (["/home/dev/docs", "/home//dev/../dev/./docs/", "/home/dev/./docs//archive/.."].includes(path)) return "/home/dev/docs";
+      if (command === "fs_resolve_file_jump") {
+        const { path, id } = payload as { path: string; id?: number };
+        expect(id).toBe(remote ? 40 : undefined);
+        if (path === "/home/dev/link/..") return { directory: "/other" };
+        if (["/home/dev/docs", "/home//dev/../dev/./docs/"].includes(path)) return { directory: "/home/dev/docs" };
+        if (path === "~/./docs//archive/../.notes.md") return { directory: "/home/dev/docs", pinnedFile: ".notes.md" };
         throw new Error("not found");
       }
       if (command === "fs_read_dir" || command === "ssh_fs_read_dir") {
         const { path, includeHidden } = payload as { path: string; includeHidden: boolean };
         if (path === "/srv/app") return [];
-        if (path === "/home/dev/link/.." || path === "/other") return [{ name: "symlink-target-parent.txt", kind: "file", size: 1, mtime: 0 }];
-        if (["/home/dev/docs", "/home//dev/../dev/./docs/", "/home/dev/./docs//archive/.."].includes(path)) return [
+        if (path === "/other") return [{ name: "symlink-target-parent.txt", kind: "file", size: 1, mtime: 0 }];
+        if (path === "/home/dev/docs") return [
           { name: "archive", kind: "dir", size: 0, mtime: 0 },
           { name: "readme.md", kind: "file", size: 1, mtime: 0 },
           ...(includeHidden ? [".notes.md", ".other"].map((name) => ({ name, kind: "file", size: 1, mtime: 0 })) : []),
@@ -87,7 +89,9 @@ describe("FileExplorer directory navigation", () => {
     let created = false;
     mockIPC((command, payload) => {
       if (command === "fs_resolve_dir") return "/home/dev";
-      if (command === "fs_canonical_path") return "/srv/app";
+      if (command === "fs_resolve_file_jump" && created && (payload as { path: string }).path === "/srv/app/new.md") {
+        return { directory: "/srv/app", pinnedFile: "new.md" };
+      }
       if (command === "fs_search") return { hits: [], unreadable: 0 };
       if (command !== "fs_read_dir") return null;
       if ((payload as { path: string }).path !== "/srv/app") throw new Error("not a directory");
@@ -111,12 +115,13 @@ describe("FileExplorer directory navigation", () => {
     let caseInsensitive = false;
     mockIPC((command, payload) => {
       if (command === "fs_resolve_dir" || command === "ssh_fs_home") return "/home/dev";
-      if (command === "fs_canonical_path" || command === "ssh_fs_canonical_path" || command === "ssh_fs_stat_v1") {
-        const { path } = payload as { path: string };
-        if (path === "/srv/app") return path;
+      if (command === "fs_resolve_file_jump") {
+        const { path, id } = payload as { path: string; id?: number };
+        expect(id).toBe(remote ? 40 : undefined);
         if (path === "/srv/app/README.md" && caseInsensitive) {
-          return command === "ssh_fs_stat_v1" ? { path, kind: "file" } : "/srv/app/Readme.md";
+          return { directory: "/srv/app", pinnedFile: "Readme.md" };
         }
+        if (path === "/srv/app/Title.ts") return { directory: "/srv/app", pinnedFile: "Title.ts" };
         throw new Error("not found");
       }
       if (command === "fs_search") return { hits: [], unreadable: 0 };

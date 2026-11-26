@@ -1,9 +1,12 @@
 use std::time::Duration;
 
 use super::{remote_mtime_millis, EntryKind, RemoteDirEntry, SFTP_CONTROL_TIMEOUT};
+use crate::modules::fs::tree::{expand_jump_path, resolve_file_jump, FileJump};
 use crate::modules::pty::{PtyState, Session};
 use crate::modules::ssh::connection::await_stage;
+use crate::modules::ssh::diagnostics::SessionBindingV1;
 use crate::modules::ssh::remote_fs::commands::validate_remote_path;
+use crate::modules::ssh::remote_fs::metadata::ssh_fs_stat_v1;
 const MAX_REMOTE_DIR_ENTRIES: usize = 10_000;
 
 const MAX_REMOTE_DIR_NAME_BYTES: usize = 4 * 1024 * 1024;
@@ -86,29 +89,51 @@ pub async fn ssh_fs_read_dir(
     })
 }
 
-#[tauri::command]
-pub async fn ssh_fs_canonical_path(
+pub(crate) async fn resolve_remote_file_jump(
     state: tauri::State<'_, PtyState>,
     id: u32,
     path: String,
-) -> Result<String, String> {
+    binding: Option<SessionBindingV1>,
+) -> Result<FileJump, String> {
     (async {
-        if path.len() > 16 * 1024 || !path.starts_with('/') || path.contains('\0') {
+        let home = if path == "~" || path.starts_with("~/") {
+            Some(ssh_fs_home(state.clone(), id).await?)
+        } else {
+            None
+        };
+        let path = expand_jump_path(path, || Ok(home.unwrap_or_default()))?;
+        if path.len() > 16 * 1024 || path.contains('\0') {
             return Err("remote path must be a bounded absolute POSIX path".into());
         }
         let session = state.get(id).ok_or_else(|| "no session".to_string())?;
         let Session::Ssh(ssh) = session.as_ref() else {
             return Err("not a remote session".into());
         };
-        let sftp = ssh.sftp().await?;
-        let canonical = await_stage(
-            "resolve remote path",
-            SFTP_CONTROL_TIMEOUT,
-            sftp.canonicalize(path),
+        resolve_file_jump(
+            path,
+            |path, hidden| ssh_fs_read_dir(state.clone(), id, path, Some(hidden)),
+            |entry| (&entry.name, matches!(entry.kind, EntryKind::Dir)),
+            |path| async {
+                let sftp = ssh.sftp().await?;
+                let canonical = await_stage(
+                    "resolve remote path",
+                    SFTP_CONTROL_TIMEOUT,
+                    sftp.canonicalize(path),
+                )
+                .await?;
+                validate_remote_path(&canonical)?;
+                Ok(canonical)
+            },
+            |path| async {
+                match binding {
+                    Some(binding) if binding.physical_pty_id == id => {
+                        ssh_fs_stat_v1(state.clone(), binding, path).await.is_ok()
+                    }
+                    _ => false,
+                }
+            },
         )
-        .await?;
-        validate_remote_path(&canonical)?;
-        Ok(canonical)
+        .await
     })
     .await
     .map_err(|error: String| {

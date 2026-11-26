@@ -13,7 +13,11 @@ async function mockListing(page: Page) {
     window.__TAURI_INTERNALS__.invoke = (cmd: string, args?: Record<string, unknown>) => {
       // Use the filesystem root as home so both revisions show the same absolute breadcrumbs.
       if (cmd === "ssh_fs_home" || (cmd === "fs_resolve_dir" && args?.path === "~")) return Promise.resolve("/");
-      if (cmd === "fs_canonical_path" && args?.path === "/home/e2e/src") return Promise.resolve(args.path);
+      if (cmd === "fs_resolve_file_jump") {
+        if (args?.path === "/home/e2e/src") return Promise.resolve({ directory: args.path });
+        if (args?.path === "/home/e2e/src/index.ts") return Promise.resolve({ directory: "/home/e2e/src", pinnedFile: "index.ts" });
+        return Promise.reject(new Error("Not found"));
+      }
       if (cmd === "fs_read_dir" || cmd === "ssh_fs_read_dir") {
         void invoke(cmd, args);
         if (args?.path === "/") return Promise.resolve([entry("home", "dir")]);
@@ -26,7 +30,6 @@ async function mockListing(page: Page) {
             ...(args.id === 2 ? [entry("refreshed.ts")] : []),
           ]);
         }
-        if (args?.path === "/home/e2e/src/index.ts") return Promise.reject(new Error("Not a directory"));
         return Promise.resolve([
           ...["assets", "bin", "config", "docs", "scripts", "src", "tests"].map((name) => entry(name, "dir")),
           entry("README.md"),

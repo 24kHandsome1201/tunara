@@ -47,10 +47,6 @@ export function fsResolveDir(path: string): Promise<string> {
   return invoke<string>("fs_resolve_dir", { path });
 }
 
-export function fsCanonicalPath(path: string): Promise<string> {
-  return invoke<string>("fs_canonical_path", { path });
-}
-
 export interface NearbyGitRepo {
   path: string;
   name: string;
