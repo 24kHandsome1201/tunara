@@ -1,14 +1,12 @@
-import { SlidersHorizontal } from "@phosphor-icons/react/dist/ssr/SlidersHorizontal";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionsStore, createRemoteSession } from "@/state/sessions";
 import { useUIStore } from "@/state/ui";
 import { errorToast } from "../lib/error-toast";
-import { CaretDown, CaretRight, FileText, HardDrives, Icon, Terminal } from "../icons";
+import { CaretDown, CaretRight, FileText, Gear, HardDrives, Icon, Terminal } from "../icons";
 import { CloseIcon, DestructiveConfirmNotice, PanelEmptyState } from "../shared";
 import { useT } from "@/modules/i18n";
 import {
-  saveHost,
   removeHost,
   normalizeSshPort,
   parseSshPort,
@@ -20,11 +18,8 @@ import {
   sshProfileEntries,
   type SshAuthMethod,
   type SshHostProfile,
-  type SshImportDiagnosticV1,
   type SshProfileRouteResolutionV1,
-  type SshProfileRouteV1,
   type SshProfileSourceV1,
-  type SshProfilesPanelActionsV1,
   type SshProfilesPanelModelV1,
 } from "@/modules/ssh/hosts-bridge";
 import { sshHostProfileFromSuccessfulConnect } from "@/modules/ssh/save-successful-host";
@@ -201,8 +196,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
     || Boolean(prefill?.route)
     || Boolean(prefill?.authMethod && prefill.authMethod !== "auto"),
   );
-  const [configOpen, setConfigOpen] = useState(false);
   const [configBrowseTarget, setConfigBrowseTarget] = useState<string | null>(null);
+  const configOpen = configBrowseTarget !== null;
   const [highlight, setHighlight] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
 
@@ -242,7 +237,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
   }, [localAccount, needsLocalAccount]);
 
   const resetConnectionForm = () => {
-    setConfigBrowseTarget(null);
+    if (configOpen) setConfigBrowseTarget("");
     setSelectedProfile(null);
     setRouteResolution(null);
     setTarget("");
@@ -266,7 +261,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
     requestAnimationFrame(() => targetRef.current?.focus());
   };
 
-  const refreshConfig = async (announce: boolean) => {
+  const refreshConfig = async () => {
     const generation = ++configGeneration.current;
     setLoadingConfig(true);
     setPanelModel((current) => ({ ...current, configProfiles: [], configSkipped: 0, configDiagnostics: [] }));
@@ -276,10 +271,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
       if (generation !== configGeneration.current) return;
       setPanelModel((current) => toProfilesPanelModel(current.savedProfiles, result));
       useUIStore.getState().bumpSshProfilesEpoch();
-      if (announce) setFormError("");
+      setFormError("");
     } catch {
-      if (generation !== configGeneration.current) return;
-      if (announce) setFormError(t("ssh.config.load_failed"));
+      if (generation === configGeneration.current) setFormError(t("ssh.config.load_failed"));
     } finally {
       if (generation === configGeneration.current) setLoadingConfig(false);
     }
@@ -302,9 +296,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
   const fillFrom = (profileId: string, source: SshProfileSourceV1, fallback?: SshHostProfile) => {
     const resolution = resolveSshProfileRoute(profileId, source, panelModel);
-    setConfigBrowseTarget(null);
-    if (source === "sshConfig") {
-      setConfigOpen(false);
+    if (configOpen) setConfigBrowseTarget(source === "sshConfig" ? null : "");
+    if (source === "sshConfig" || resolution.status === "ready") {
       requestAnimationFrame(() => targetRef.current?.focus());
     }
     setSelectedProfile({ id: profileId, source });
@@ -336,7 +329,6 @@ export function SshConnect({ onClose }: SshConnectProps) {
     setAutoReconnect(profile.autoReconnect ?? false);
     setPostConnectCommand(profile.postConnectCommand ?? "");
     setAdvancedOpen(true);
-    requestAnimationFrame(() => targetRef.current?.focus());
   };
 
   const deleteProfile = (id: string) => {
@@ -628,24 +620,10 @@ export function SshConnect({ onClose }: SshConnectProps) {
     onClose();
   };
 
-  const actions: SshProfilesPanelActionsV1 = {
-    onConnect: (_route: SshProfileRouteV1) => { void connect(); },
-    onSave: async (profile) => {
-      try {
-        const savedProfiles = await saveHost(profile);
-        setPanelModel((current) => ({ ...current, savedProfiles }));
-        useUIStore.getState().bumpSshProfilesEpoch();
-      } catch {
-        setFormError(t("ssh.profile.save_failed"));
-      }
-    },
-    onRemove: deleteProfile,
-    onRefreshConfig: () => refreshConfig(true),
-    onOpenConfigDiagnostic: (_diagnostic: SshImportDiagnosticV1) => {
-      setAdvancedOpen(true);
-      if (diagnosticsRef.current) diagnosticsRef.current.open = true;
-      diagnosticsRef.current?.focus();
-    },
+  const openConfigDiagnostic = () => {
+    setAdvancedOpen(true);
+    if (diagnosticsRef.current) diagnosticsRef.current.open = true;
+    diagnosticsRef.current?.focus();
   };
 
   const toggleConfigPicker = () => {
@@ -656,9 +634,8 @@ export function SshConnect({ onClose }: SshConnectProps) {
       typedEndpoint === formatSshTarget(user, host.toLowerCase(), port)
     ));
     const selectedEndpoint = selectedProfile && routeResolution?.status === "ready";
-    setConfigBrowseTarget(!configOpen && (knownEndpoint || selectedEndpoint) ? target : null);
+    setConfigBrowseTarget(configOpen ? null : knownEndpoint || selectedEndpoint ? target : "");
     setHighlight(null);
-    setConfigOpen(!configOpen);
   };
 
   const moveHighlight = (delta: number) => {
@@ -669,7 +646,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       ? configMatch
       : suggestions[(nextIndex + suggestions.length) % suggestions.length];
     if (!nextEntry) return;
-    if (!configOpen && nextEntry.source === "sshConfig") setConfigOpen(true);
+    if (!configOpen && nextEntry.source === "sshConfig") setConfigBrowseTarget("");
     setHighlight(nextEntry.key);
     requestAnimationFrame(() => document.getElementById(`ssh-connect-option-${nextEntry.key}`)?.scrollIntoView({ block: "nearest" }));
   };
@@ -686,7 +663,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
       selected={selectedProfile?.id === entry.profile.id && selectedProfile.source === entry.source}
       active={highlight === entry.key}
       onSelect={() => selectSuggestion(entry)}
-      onDelete={entry.source === "saved" ? () => { void actions.onRemove(entry.profile.id); } : undefined}
+      onDelete={entry.source === "saved" ? () => deleteProfile(entry.profile.id) : undefined}
       deletePending={isPending(`ssh-profile:${entry.profile.id}`)}
       deleteArmedAt={armedAt(`ssh-profile:${entry.profile.id}`)}
     />
@@ -713,14 +690,9 @@ export function SshConnect({ onClose }: SshConnectProps) {
             return;
           }
           const targetEl = event.target;
-          if (targetEl === targetRef.current && event.key === "ArrowDown") {
+          if (targetEl === targetRef.current && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
             event.preventDefault();
-            moveHighlight(1);
-            return;
-          }
-          if (targetEl === targetRef.current && event.key === "ArrowUp") {
-            event.preventDefault();
-            moveHighlight(-1);
+            moveHighlight(event.key === "ArrowDown" ? 1 : -1);
             return;
           }
           const excludesSubmit = targetEl instanceof HTMLButtonElement
@@ -765,7 +737,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                   const value = event.target.value;
                   const nextCommand = parseSshCommand(value);
                   const nextTarget = isSshCommandInput(value) ? nextCommand?.target : parseSshTarget(value);
-                  setConfigBrowseTarget(null);
+                  if (configOpen) setConfigBrowseTarget("");
                   setTarget(value);
                   if (nextTarget?.port !== undefined) {
                     if (!nextCommand || nextTarget.port !== parsedTarget?.port || !commandInput) {
@@ -850,7 +822,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
 
           <div>
             <button type="button" className="hover-bg ssh-connect-advanced" aria-expanded={advancedOpen} aria-controls="ssh-connect-advanced-fields" aria-labelledby="ssh-connect-advanced-label" aria-describedby="ssh-connect-advanced-hint" onClick={() => setAdvancedOpen((current) => !current)}>
-              <Icon icon={SlidersHorizontal} size={17} />
+              <Icon icon={Gear} size={17} />
               <span className="ssh-connect-advanced-copy">
                 <span id="ssh-connect-advanced-label">{t("ssh.advanced")}</span>
                 <span id="ssh-connect-advanced-hint">{t("ssh.advanced_hint")}</span>
@@ -938,7 +910,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                 <span className="ssh-connect-hint">{t("ssh.postConnectCommandHint")}</span>
               </label>
               <div className="ssh-connect-config-summary">
-                <button type="button" onClick={() => { void actions.onRefreshConfig(); }} disabled={loadingConfig} className="hover-bg">
+                <button type="button" onClick={refreshConfig} disabled={loadingConfig} className="hover-bg">
                   {loadingConfig ? t("ssh.config.loading") : t("ssh.config.refresh")}
                 </button>
                 <span role="status">
@@ -951,7 +923,7 @@ export function SshConnect({ onClose }: SshConnectProps) {
                   <p>{t("ssh.config.support_matrix")}</p>
                   <p>{t("ssh.config.never_execute")}</p>
                   {configDiagnostics.map((item, index) => (
-                    <button type="button" onClick={() => actions.onOpenConfigDiagnostic(item)} key={`${item.source}:${item.line ?? ""}:${index}`}>
+                    <button type="button" onClick={openConfigDiagnostic} key={`${item.source}:${item.line ?? ""}:${index}`}>
                       {[item.severity, item.source + (item.line == null ? "" : `:${item.line}`), item.alias, item.code, item.directive].filter((part): part is string => Boolean(part)).join(" · ")}
                     </button>
                   ))}
