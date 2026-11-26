@@ -47,6 +47,7 @@ describe("FileExplorer directory navigation", () => {
     };
     useSessionsStore.setState({ sessions: [session], activeSessionId: id });
     render(<FileExplorer sessionId={id} rootDir={session.dir} remotePtyId={session.ptyId} transportGeneration={session.transportGeneration} />);
+    if (remote) fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     const search = screen.getByRole("textbox", { name: "Search this folder" });
     const submit = async (value: string) => {
       fireEvent.change(search, { target: { value } });
@@ -126,6 +127,7 @@ describe("FileExplorer directory navigation", () => {
     });
     render(<FileExplorer sessionId="case-file-jump" rootDir="/srv/app" remotePtyId={remote ? 40 : undefined} transportGeneration={remote ? "g1" : undefined} />);
     await screen.findByRole("treeitem", { name: "Readme.md" });
+    if (remote) fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     const search = screen.getByRole("textbox", { name: "Search this folder" });
     const submit = async (name: string) => {
       fireEvent.change(search, { target: { value: `/srv/app/${name}` } });
@@ -507,7 +509,7 @@ describe("FileExplorer directory navigation", () => {
       throw new Error(`unexpected command: ${command}`);
     });
 
-    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" remoteHost="deploy@example" />);
     await screen.findByText("Directory is empty");
 
     const nav = screen.getByRole("navigation", { name: "Directory" });
@@ -517,12 +519,22 @@ describe("FileExplorer directory navigation", () => {
     expect(within(nav).queryByRole("button", { name: "Show dotfiles" })).toBeNull();
     expect(within(nav).queryByRole("button", { name: "Upload file…" })).toBeNull();
 
+    const toggle = screen.getByRole("button", { name: "Show file search" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("search", { name: "Search files" })).toBeNull();
+    fireEvent.click(toggle);
     const search = screen.getByRole("search", { name: "Search files" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-controls")).toBe(search.id);
     expect(within(search).getByPlaceholderText("Search this folder")).toBeTruthy();
     expect(within(search).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
     expect(within(search).queryByRole("button", { name: "Refresh file list" })).toBeNull();
 
     const tools = screen.getByRole("toolbar", { name: "Remote file tools" });
+    expect(within(tools).getByTitle("deploy@example").textContent).toBe("deploy@example");
+    expect(within(tools).getByRole("button", { name: "Hide file search" })).toBe(toggle);
+    expect(tools.nextElementSibling).toBe(nav);
+    expect(nav.nextElementSibling).toBe(search);
     expect(within(tools).getByRole("group", { name: "Remote locations" })).toBeTruthy();
     expect(within(tools).getByRole("group", { name: "File transfers" })).toBeTruthy();
     expect(within(tools).getByRole("button", { name: "Favorite and recent directories" })).toBeTruthy();
@@ -642,6 +654,35 @@ describe("FileExplorer directory navigation", () => {
     expect(within(screen.getByRole("search", { name: "Search files" })).getByRole("button", { name: "Show dotfiles" })).toBeTruthy();
     expect(screen.queryByRole("toolbar", { name: "Remote file tools" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Upload file…" })).toBeNull();
+  });
+
+  test("manages focus and clears the query when toggling remote search", async () => {
+    mockIPC((command) => {
+      if (command === "ssh_fs_read_dir" || command === "ssh_fs_search") return [];
+      return null;
+    });
+    render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={40} transportGeneration="g1" />);
+    await screen.findByText("Directory is empty");
+    const toggle = screen.getByRole("button", { name: "Show file search" });
+    fireEvent.click(toggle);
+    const input = screen.getByRole("textbox", { name: "Search this folder" });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "notes" } });
+    input.blur();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input).toHaveProperty("value", "");
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("search")).toBeNull();
+    expect(document.activeElement).toBe(toggle);
+    fireEvent.click(toggle);
+    fireEvent.change(input, { target: { value: "notes" } });
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("search")).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("textbox", { name: "Search this folder" })).toHaveProperty("value", "");
   });
 
   test("jumps to a favorite remote directory from the places menu", async () => {
@@ -963,6 +1004,7 @@ describe("FileExplorer workspace files", () => {
     const remoteView = render(<FileExplorer sessionId="remote" rootDir="/srv/app" remotePtyId={52} transportGeneration="current" />);
     await screen.findByRole("treeitem", { name: /^notes\.md$/ });
 
+    fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     const searchInput = screen.getByPlaceholderText("Search this folder");
     fireEvent.change(searchInput, { target: { value: ".env" } });
     await screen.findByText("No matching files");
@@ -1281,7 +1323,7 @@ describe("FileExplorer workspace files", () => {
     fireEvent.keyDown(file, { key: "F10", shiftKey: true });
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete remote item" }));
     const deleteDialog = await screen.findByRole("dialog", { name: "Delete remote item" });
-    expect(screen.getByText("deploy@example.com")).toBeTruthy();
+    expect(within(deleteDialog).getByText("deploy@example.com")).toBeTruthy();
     expect(screen.getByText("/srv/app/report.txt")).toBeTruthy();
     fireEvent.keyDown(deleteDialog, { key: "Escape" });
     await waitFor(() => expect(document.activeElement).toBe(file));
@@ -1941,9 +1983,11 @@ describe("FileExplorer workspace files", () => {
     });
 
     render(<FileExplorer sessionId="remote" rootDir="/tmp/repo" remotePtyId={42} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "match" } });
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
 
+    expect(screen.getByRole("button", { name: "Hide file search" }).getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByRole("button", { name: /^match\.txt/ })).toBeTruthy();
     expect(screen.getByPlaceholderText("Search this folder")).toHaveProperty("value", "match");
     expect(searchAttempts).toBe(2);
@@ -2050,6 +2094,7 @@ describe("FileExplorer workspace files", () => {
     fireEvent.click(openFileActions().getByRole("menuitem", { name: "Select files" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select report.txt for download" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Show file search" }));
     fireEvent.change(screen.getByPlaceholderText("Search this folder"), { target: { value: "report" } });
     expect(await screen.findByRole("button", { name: "report.txt" })).toBeTruthy();
     const searchActions = openFileActions();
