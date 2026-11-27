@@ -45,7 +45,7 @@ import { createTerminalLinkInputOwnership, type TerminalMouseTrackingMode } from
 import { captureTerminalActionTarget, handleTerminalInteractionKeyEvent, registerTerminalActions } from "@/modules/terminal/lib/terminal-action-registry";
 import { isFixedTerminalMenuEvent } from "@/modules/config/keybindings";
 import { useSessionsStore } from "@/state/sessions"; import { TerminalViewChrome } from "./TerminalViewChrome"; import { useTerminalSearch } from "./useTerminalSearch";
-import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
+import { useTerminalBlocks } from "./useTerminalBlocks"; import { useTerminalBlockMenu } from "./useTerminalBlockMenu"; import { useTerminalWebgl, type TerminalWebglRenderer } from "./useTerminalWebgl"; import { terminalThemeOpacity, useTerminalRuntimeSync } from "./useTerminalRuntimeSync";
 import { createInputQueueFullWarner, emitTerminalNotification, reportTerminalInitializationFailure, requestInformationalAttention, safeDispose } from "./terminal-attention"; import { handleTerminalProcessExit } from "./terminal-exit";
 import { waitForTerminalLayoutFrame } from "@/modules/terminal/lib/terminal-layout-frame"; import { recordTerminalBenchmarkOutput, recordTerminalBenchmarkOverflow, registerTerminalBenchmarkSnapshotReader, registerTerminalBenchmarkWriter, TERMINAL_BENCHMARK_MODE } from "@/modules/terminal/lib/terminal-benchmark"; import { TerminalExitBanner, PtyErrorBanner, ConnectingOverlay } from "./TerminalExitBanner"; import { createPreviewOutputScanner } from "@/modules/preview/preview-source";
 import { allocateTerminalInstanceEpoch, createDeferredTerminalFocus, issueFocusReturnToken, isTypingOutsidePane, registerTerminalBinding, returnTerminalFocus, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
@@ -102,7 +102,7 @@ function TerminalViewImpl({
   const cursorStyle = useUIStore((s) => s.cursorStyle);
   const cursorBlink = useUIStore((s) => s.cursorBlink);
   const screenReaderMode = useUIStore((s) => s.terminalScreenReaderMode); const optionAsMeta = useUIStore((s) => s.terminalOptionAsMeta); const accent = useUIStore((s) => s.accent);
-  const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
+  const backgroundOpacity = useUIStore((s) => terminalThemeOpacity(s.backgroundOpacity));
   useTerminalRuntimeSync({
     sessionId, active, termReady: ptyReady, termRef, fitRef, ptyRef, fontSize, fontFamily, nerdFontFallback, scrollback, cursorStyle, cursorBlink, screenReaderMode, optionAsMeta, theme, accent, backgroundOpacity,
   });
@@ -137,7 +137,7 @@ function TerminalViewImpl({
         cursorStyle,
         screenReaderMode,
         optionAsMeta,
-        backgroundOpacity: useUIStore.getState().backgroundOpacity,
+        backgroundOpacity: terminalThemeOpacity(useUIStore.getState().backgroundOpacity),
         atlasIsolationKey: sessionId,
         linkHandler: createTerminalHyperlinkHandler(openUrl, linkInputRef.current.shouldActivate),
       });
