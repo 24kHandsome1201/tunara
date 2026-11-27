@@ -21,7 +21,7 @@ export function KnownHostsPanel() {
   const [snapshot, setSnapshot] = useState<KnownHostsSnapshotV1 | null>(null);
   const [error, setError] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const load = (refresh = false) => {
     setError(false);

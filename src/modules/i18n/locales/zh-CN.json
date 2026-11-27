@@ -225,7 +225,7 @@
   "settings.section.appearance": "外观",
   "settings.section.terminal": "终端",
   "settings.section.ssh": "连接与传输",
-  "settings.section.about": "关于",
+  "settings.section.about": "关于本机",
   "settings.ssh.known_hosts.hint": "删除后，下次连接会重新确认",
   "settings.config.shortcuts_hint": "快捷键可在配置文件中修改。",
   "settings.appearance.theme.light": "浅色",
