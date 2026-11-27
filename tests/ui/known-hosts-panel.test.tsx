@@ -18,21 +18,28 @@ const snapshot = {
   ],
 };
 
-test("known hosts are expanded by default and can be collapsed for the current mount", async () => {
+test("known hosts are collapsed by default and can be expanded for the current mount", async () => {
   mockIPC((command) => command === "ssh_known_hosts_list_v1" ? snapshot : undefined);
   const view = render(<KnownHostsPanel />);
 
-  const collapse = await screen.findByRole("button", { name: "Collapse known hosts" });
-  expect(collapse.getAttribute("aria-expanded")).toBe("true");
-  expect(screen.getByText("Known hosts · 1")).toBeTruthy();
-  expect(screen.getByText("server.example")).toBeTruthy();
-
-  fireEvent.click(collapse);
+  expect(await screen.findByText("Known hosts · 1")).toBeTruthy();
   const expand = screen.getByRole("button", { name: "Expand known hosts" });
   expect(expand.getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByText("server.example")).toBeNull();
 
+  fireEvent.click(expand);
+  const collapse = screen.getByRole("button", { name: "Collapse known hosts" });
+  expect(collapse.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByText("server.example")).toBeTruthy();
+
+  fireEvent.click(collapse);
+  expect(screen.getByRole("button", { name: "Expand known hosts" }).getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByText("server.example")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Expand known hosts" }));
   view.unmount();
   render(<KnownHostsPanel />);
-  expect(await screen.findByRole("button", { name: "Collapse known hosts" })).toBeTruthy();
+  expect(await screen.findByText("Known hosts · 1")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Expand known hosts" })).toBeTruthy();
+  expect(screen.queryByText("server.example")).toBeNull();
 });

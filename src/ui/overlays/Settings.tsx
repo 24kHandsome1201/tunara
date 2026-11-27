@@ -17,7 +17,7 @@ import { useCliStatus } from "./settings/useCliStatus";
 import { useAppUpdate } from "./useAppUpdate";
 import { Modal, MODAL_COLUMN_LAYOUT } from "./Modal";
 
-const advancedSections = ["appearance-options", "terminal", "ssh", "advanced", "about"] as const;
+const advancedSections = ["appearance-options", "terminal", "ssh", "advanced"] as const;
 
 function SettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
@@ -31,7 +31,6 @@ function SettingsSection({ id, title, children }: { id: string; title: string; c
 function AdvancedSettings() {
   const t = useT();
   const cliStatus = useCliStatus();
-  const appUpdate = useAppUpdate();
   const [resetOverridesError, setResetOverridesError] = useState(false);
 
   return (
@@ -67,15 +66,13 @@ function AdvancedSettings() {
         </button>
         {resetOverridesError && <p className="settings-row-error" role="alert">{t("settings.cli.reset_overrides.error")}</p>}
       </SettingsSection>
-      <SettingsSection id="about" title={t("settings.section.about")}>
-        <AppSettings {...appUpdate} />
-      </SettingsSection>
     </>
   );
 }
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const t = useT();
+  const appUpdate = useAppUpdate();
   const configPath = useUIStore((s) => s.configPath);
   const configError = useUIStore((s) => s.configError);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -138,6 +135,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
             {t("settings.everyday.open_config")}
           </button>
         </section>
+
+        <SettingsSection id="about" title={t("settings.section.about")}>
+          <AppSettings {...appUpdate} />
+        </SettingsSection>
 
         <button
           type="button"

@@ -133,6 +133,7 @@ test("update toast opens About and preserves its target through lazy loading", a
     expect(useUIStore.getState().overlay).toBe("settings");
     expect(useUIStore.getState().toasts).toHaveLength(0);
     expect(await screen.findByRole("heading", { name: "About" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Advanced" }).getAttribute("aria-expanded")).toBe("false");
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     const scrolled = scrollIntoView.mock.instances[0] as HTMLElement | undefined;
     expect(scrolled?.id).toBe("settings-section-about");

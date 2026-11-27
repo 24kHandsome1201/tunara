@@ -207,13 +207,15 @@ test("Settings opens and every section is reachable", async ({ page, backend }) 
   const advanced = dialog.getByRole("button", { name: "Advanced", exact: true });
   await expect(advanced).toHaveAttribute("aria-expanded", "false");
   const about = dialog.getByRole("heading", { name: "About", exact: true });
-  await expect(about).toBeHidden();
+  await about.scrollIntoViewIfNeeded();
+  await expect(about).toBeInViewport();
+  await expect(dialog.getByText("Software updates", { exact: true })).toBeVisible();
 
   await dialog.getByRole("button", { name: /Large text/ }).click();
   await expect(dialog.locator(".settings-preview-terminal")).toHaveCSS("font-size", "18px");
   await advanced.click();
   await expect(advanced).toHaveAttribute("aria-expanded", "true");
-  for (const label of ["More appearance options", "Terminal", "Connections & transfers", "CLI tools", "About"]) {
+  for (const label of ["More appearance options", "Terminal", "Connections & transfers", "CLI tools"]) {
     const heading = dialog.getByRole("heading", { name: label, exact: true });
     await heading.scrollIntoViewIfNeeded();
     await expect(heading).toBeInViewport();
