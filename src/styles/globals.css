@@ -2791,7 +2791,7 @@ html[data-window-translucent] {
   --c-workspace-canvas: transparent;
 }
 
-html[data-window-translucent] [data-terminal-canvas="pane"] {
+html[data-window-translucent] [data-terminal-canvas="true"] {
   background: color-mix(in srgb, var(--terminal-canvas-bg) var(--window-bg-opacity), transparent);
 }
 
