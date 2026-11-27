@@ -186,8 +186,8 @@ export function useTerminalWebgl(
   const storeFontFamily = useUIStore((s) => s.fontFamily);
   const storeFontSize = useUIStore((s) => s.fontSize);
   const nerdFontFallback = useUIStore((s) => s.nerdFontFallback);
-  const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
-  const allowTransparency = transparency ?? backgroundOpacity < 1;
+  const translucent = useUIStore((s) => s.backgroundOpacity < 1);
+  const allowTransparency = transparency ?? translucent;
   const preference = policy?.preference ?? TERMINAL_BENCHMARK_RENDERER_OVERRIDE ?? storePreference;
   const fontFamily = policy?.fontFamily ?? buildTerminalFontFamily(storeFontFamily, nerdFontFallback);
   const fontSize = policy?.fontSize ?? storeFontSize;

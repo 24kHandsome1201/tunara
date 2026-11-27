@@ -9,8 +9,14 @@ import { requestGlobalTerminalAtlasRebuild } from "@/modules/terminal/lib/termin
 import { withAtlasIsolationFontFamily } from "@/modules/terminal/lib/terminal-atlas-isolation";
 import { buildTerminalFontFamily } from "@/modules/terminal/lib/terminal-font";
 import { isTypingOutsidePane, issueFocusReturnToken, runBindingAwareContinuation, setLogicalActiveTerminalPane } from "@/modules/terminal/lib/binding-aware-async-action";
+import { isMac } from "./lib/platform";
 
 const INACTIVE_SCROLLBACK_LIMIT = 1000;
+
+export function terminalThemeOpacity(opacity: number): number {
+  // The macOS opacity slider paints the surface in CSS, not in xterm's glyph atlas.
+  return isMac && opacity < 1 ? 0 : opacity;
+}
 
 interface TerminalRuntimeSyncOptions {
   sessionId: string;
@@ -53,6 +59,7 @@ export function useTerminalRuntimeSync({
   accent,
   backgroundOpacity = 1,
 }: TerminalRuntimeSyncOptions) {
+  const themeOpacity = terminalThemeOpacity(backgroundOpacity);
   const [systemIsDark, setSystemIsDark] = useState(() =>
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
   );
@@ -107,8 +114,8 @@ export function useTerminalRuntimeSync({
     term.options.screenReaderMode = screenReaderMode;
     term.options.macOptionIsMeta = optionAsMeta;
     const resolvedTheme = theme === "system" ? (systemIsDark ? "dark" : "light") : theme;
-    term.options.allowTransparency = backgroundOpacity < 1;
-    term.options.theme = withBackgroundOpacity(getTerminalTheme(resolvedTheme, accent), backgroundOpacity);
+    term.options.allowTransparency = themeOpacity < 1;
+    term.options.theme = withBackgroundOpacity(getTerminalTheme(resolvedTheme, accent), themeOpacity);
     term.options.minimumContrastRatio = getTerminalMinimumContrastRatio(resolvedTheme);
     try {
       fit?.fit();
@@ -129,5 +136,5 @@ export function useTerminalRuntimeSync({
     } catch {
       /* noop */
     }
-  }, [active, accent, backgroundOpacity, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, optionAsMeta, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
+  }, [active, accent, themeOpacity, cursorBlink, cursorStyle, fitRef, fontFamily, fontSize, nerdFontFallback, optionAsMeta, ptyRef, screenReaderMode, scrollback, sessionId, systemIsDark, termReady, termRef, theme]);
 }

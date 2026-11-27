@@ -2791,6 +2791,10 @@ html[data-window-translucent] {
   --c-workspace-canvas: transparent;
 }
 
+html[data-window-translucent] [data-terminal-canvas="true"] {
+  background: rgba(var(--terminal-canvas-rgb), var(--window-bg-alpha));
+}
+
 /* Overlays never show the desktop through: sheets, menus and toasts restore the solid tokens. */
 html[data-window-translucent] .overlay-sheet,
 html[data-window-translucent] .overlay-palette,

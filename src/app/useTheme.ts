@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useUIStore } from "@/state/ui";
 import { applyBootShellTint } from "@/styles/shell-tint-boot";
 import { getTerminalTheme } from "@/styles/terminalTheme";
+import { isMac } from "@/ui/lib/platform";
 
 export function useTheme() {
   const theme = useUIStore((s) => s.theme);
@@ -13,7 +14,12 @@ export function useTheme() {
 
     const apply = (systemDark: boolean) => {
       applyBootShellTint(root, theme, accent, systemDark);
-      root.style.setProperty("--terminal-canvas-bg", getTerminalTheme(theme, accent).background);
+      const background = getTerminalTheme(theme, accent).background;
+      root.style.setProperty("--terminal-canvas-bg", background);
+      if (isMac) {
+        const rgb = Number.parseInt(background.slice(1), 16);
+        root.style.setProperty("--terminal-canvas-rgb", `${rgb >> 16}, ${(rgb >> 8) & 255}, ${rgb & 255}`);
+      }
     };
 
     if (theme === "system") {
@@ -42,20 +48,24 @@ export function useTheme() {
   }, []);
 
   const backgroundOpacity = useUIStore((s) => s.backgroundOpacity);
-  const backgroundBlur = useUIStore((s) => s.backgroundBlur);
+  const nativeBlurEnabled = useUIStore((s) => s.backgroundOpacity < 1 && s.backgroundBlur);
   useEffect(() => {
-    if (!IS_MAC) return;
+    if (!isMac) return;
     const root = document.documentElement;
     const translucent = backgroundOpacity < 1;
     if (translucent) {
       root.dataset.windowTranslucent = "";
       root.style.setProperty("--window-bg-opacity", `${Math.round(backgroundOpacity * 100)}%`);
+      root.style.setProperty("--window-bg-alpha", String(backgroundOpacity));
     } else {
       delete root.dataset.windowTranslucent;
       root.style.removeProperty("--window-bg-opacity");
+      root.style.removeProperty("--window-bg-alpha");
     }
-    invoke("set_window_background_blur", { enabled: translucent && backgroundBlur }).catch(() => {});
-  }, [backgroundOpacity, backgroundBlur]);
-}
+  }, [backgroundOpacity]);
 
-const IS_MAC = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+  useEffect(() => {
+    if (!isMac) return;
+    invoke("set_window_background_blur", { enabled: nativeBlurEnabled }).catch(() => {});
+  }, [nativeBlurEnabled]);
+}
