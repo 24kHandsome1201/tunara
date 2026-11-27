@@ -260,7 +260,7 @@ export function TerminalViewChrome({
             onToggleCaseSensitive={search.toggleCaseSensitive}
           />
         )}
-        <div data-terminal-canvas ref={canvasRef} style={{ flex: 1, display: "flex", padding: "var(--sp-4) var(--sp-5)", minHeight: 0 }}>
+        <div data-terminal-canvas="pane" ref={canvasRef} style={{ flex: 1, display: "flex", padding: "var(--sp-4) var(--sp-5)", minHeight: 0 }}>
           <div ref={containerRef} style={{ flex: 1, minWidth: 0 }} />
         </div>
       </div>
