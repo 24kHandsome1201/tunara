@@ -47,6 +47,22 @@ test("dragging within the translucent range does not reapply native blur", () =>
   expect(blur.mock.calls.slice(2)).toEqual([[{ enabled: false }], [{ enabled: true }], [{ enabled: false }]]);
 });
 
+test("provides separate terminal RGB and alpha values for WebKit without color-mix", () => {
+  mockIPC(() => undefined);
+  renderHook(() => useTheme());
+  const style = document.documentElement.style;
+  act(() => useUIStore.getState().setBackgroundOpacity(0.3));
+  expect(style.getPropertyValue("--terminal-canvas-rgb")).toBe("253, 252, 251");
+  expect(style.getPropertyValue("--window-bg-alpha")).toBe("0.3");
+
+  act(() => useUIStore.getState().setTheme("dark"));
+  expect(style.getPropertyValue("--terminal-canvas-rgb")).toBe("24, 20, 17");
+  expect(style.getPropertyValue("--window-bg-alpha")).toBe("0.3");
+
+  act(() => useUIStore.getState().setBackgroundOpacity(1));
+  expect(style.getPropertyValue("--window-bg-alpha")).toBe("");
+});
+
 test("dragging within the translucent range does not change the glyph palette or rebuild the atlas", () => {
   const options: Terminal["options"] = {};
   const fit = vi.fn();

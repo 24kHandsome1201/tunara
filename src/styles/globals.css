@@ -2792,7 +2792,7 @@ html[data-window-translucent] {
 }
 
 html[data-window-translucent] [data-terminal-canvas="true"] {
-  background: color-mix(in srgb, var(--terminal-canvas-bg) var(--window-bg-opacity), transparent);
+  background: rgba(var(--terminal-canvas-rgb), var(--window-bg-alpha));
 }
 
 /* Overlays never show the desktop through: sheets, menus and toasts restore the solid tokens. */

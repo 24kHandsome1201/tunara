@@ -14,7 +14,12 @@ export function useTheme() {
 
     const apply = (systemDark: boolean) => {
       applyBootShellTint(root, theme, accent, systemDark);
-      root.style.setProperty("--terminal-canvas-bg", getTerminalTheme(theme, accent).background);
+      const background = getTerminalTheme(theme, accent).background;
+      root.style.setProperty("--terminal-canvas-bg", background);
+      if (isMac) {
+        const rgb = Number.parseInt(background.slice(1), 16);
+        root.style.setProperty("--terminal-canvas-rgb", `${rgb >> 16}, ${(rgb >> 8) & 255}, ${rgb & 255}`);
+      }
     };
 
     if (theme === "system") {
@@ -51,9 +56,11 @@ export function useTheme() {
     if (translucent) {
       root.dataset.windowTranslucent = "";
       root.style.setProperty("--window-bg-opacity", `${Math.round(backgroundOpacity * 100)}%`);
+      root.style.setProperty("--window-bg-alpha", String(backgroundOpacity));
     } else {
       delete root.dataset.windowTranslucent;
       root.style.removeProperty("--window-bg-opacity");
+      root.style.removeProperty("--window-bg-alpha");
     }
   }, [backgroundOpacity]);
 
